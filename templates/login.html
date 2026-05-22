@@ -1,26 +1,70 @@
-{% extends 'base.html' %}
-{% block title %}Login — INOVA{% endblock %}
-{% block content %}
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — INOVA Carreira</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function() {
+      const t = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
 <div class="login-page">
+  <button class="theme-toggle login-theme-toggle" onclick="toggleTheme()" title="Alternar tema" aria-label="Alternar tema">
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  </button>
+
   <div class="login-card">
     <div class="login-logo">
       <div class="login-logo-icon">IC</div>
-      <div class="login-logo-text">INOVA Carreira<small>Sistema de Gestão de Cursos</small></div>
+      <div>
+        <div class="login-logo-text">INOVA Carreira</div>
+        <small class="login-logo-sub">Sistema de Gestão de Cursos</small>
+      </div>
     </div>
+
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in msgs %}
         <div class="alert alert-{{ cat }}" style="margin:0 0 16px">{{ msg }}</div>
       {% endfor %}
     {% endwith %}
+
     <form method="POST">
-      <div class="form-group"><label>Usuário</label>
+      <div class="form-group">
+        <label>Usuário</label>
         <input type="text" name="username" required autofocus placeholder="Seu usuário">
       </div>
-      <div class="form-group"><label>Senha</label>
+      <div class="form-group" style="margin-top:14px">
+        <label>Senha</label>
         <input type="password" name="password" required placeholder="Sua senha">
       </div>
-      <button type="submit" class="btn btn-primary">Entrar</button>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px;padding:11px">
+        Entrar
+      </button>
     </form>
   </div>
 </div>
-{% endblock %}
+
+<script>
+function toggleTheme() {
+  const html = document.documentElement;
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+}
+</script>
+</body>
+</html>

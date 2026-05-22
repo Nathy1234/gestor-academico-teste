@@ -1,3 +1,11 @@
+// ── THEME ────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+}
+
 // ── GLOBAL SEARCH ────────────────────────────────────────────────
 const searchInput = document.getElementById('globalSearch');
 const searchResults = document.getElementById('searchResults');
@@ -35,10 +43,12 @@ function fetchSearch(q) {
 function closeSearch() { searchResults.classList.remove('open'); searchResults.innerHTML = ''; }
 
 function tipoLabel(t) {
-  const m = {pos:'Pós-Graduação',profissionalizante:'Profissionalizante',rapido:'Rápido',
-             pacote:'Pacote',terceiros:'Terceiros',evento:'Evento',
-             pratica_conectada:'Prática Conectada',pratica_estagio:'Prática Estágio',
-             projeto_ambiental:'Proj. Ambiental',ggbr:'GGBR',integra_edu:'Integra Edu'};
+  const m = {
+    pos:'Pós-Graduação', profissionalizante:'Profissionalizante', rapido:'Rápido',
+    pacote:'Pacote', terceiros:'Terceiros', evento:'Evento',
+    pratica_conectada:'Prática Conectada', pratica_estagio:'Prática Estágio',
+    projeto_ambiental:'Proj. Ambiental', ggbr:'GGBR', integra_edu:'Integra Edu'
+  };
   return m[t] || t;
 }
 
@@ -57,7 +67,7 @@ function renderMatrix() {
     <div class="matrix-row">
       <input type="text" value="${d.modulo||''}" placeholder="Mód. 01" oninput="updateDisc(${i},'modulo',this.value)">
       <input type="number" value="${d.ordem||i+1}" placeholder="#" oninput="updateDisc(${i},'ordem',this.value)">
-      <input type="text" value="${d.nome||''}" placeholder="Nome da disciplina" oninput="updateDisc(${i},'nome',this.value)" style="grid-column:span 1">
+      <input type="text" value="${d.nome||''}" placeholder="Nome da disciplina" oninput="updateDisc(${i},'nome',this.value)">
       <input type="text" value="${d.carga||''}" placeholder="30h" oninput="updateDisc(${i},'carga',this.value)">
       <input type="text" value="${d.professor||''}" placeholder="Professor" oninput="updateDisc(${i},'professor',this.value)">
       <input type="text" value="${d.titulacao||''}" placeholder="MSc" oninput="updateDisc(${i},'titulacao',this.value)">
@@ -69,22 +79,13 @@ function renderMatrix() {
   updateHidden();
 }
 
-function updateDisc(i, key, val) {
-  disciplines[i][key] = val;
-  updateHidden();
-}
-
-function removeDisc(i) {
-  disciplines.splice(i, 1);
-  renderMatrix();
-}
+function updateDisc(i, key, val) { disciplines[i][key] = val; updateHidden(); }
+function removeDisc(i) { disciplines.splice(i, 1); renderMatrix(); }
 
 function addDisc() {
-  disciplines.push({ modulo: '', ordem: disciplines.length + 1, nome: '', carga: '', professor: '', titulacao: '' });
+  disciplines.push({ modulo:'', ordem: disciplines.length + 1, nome:'', carga:'', professor:'', titulacao:'' });
   renderMatrix();
-  // scroll to last
-  const body = document.getElementById('matrixBody');
-  if (body) body.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('matrixBody')?.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function updateHidden() {
@@ -101,7 +102,7 @@ document.addEventListener('click', e => {
 
 // ── AUTO-DISMISS ALERTS ──────────────────────────────────────────
 document.querySelectorAll('.alert').forEach(a => {
+  a.style.transition = 'opacity .5s';
   setTimeout(() => a.style.opacity = '0', 3500);
   setTimeout(() => a.remove(), 4000);
-  a.style.transition = 'opacity .5s';
 });
