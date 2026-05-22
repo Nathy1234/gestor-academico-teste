@@ -474,6 +474,20 @@ def usuario_editar(id):
         return redirect(url_for('usuarios'))
     return render_template('usuario_form.html', user=u)
 
+@app.route('/usuarios/<int:id>/excluir', methods=['POST'])
+@admin_required
+def usuario_excluir(id):
+    u = User.query.get_or_404(id)
+    if u.id == session['user_id']:
+        flash('Você não pode excluir sua própria conta.', 'danger')
+        return redirect(url_for('usuarios'))
+    username = u.username
+    db.session.delete(u)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'user', id, username)
+    flash(f'Usuário "{username}" excluído.', 'success')
+    return redirect(url_for('usuarios'))
+
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
 @app.route('/backup/manual', methods=['POST'])
@@ -625,9 +639,12 @@ def seed_data():
             db.session.add(r)
 
         db.session.commit()
-        print("✅ Dados importados com sucesso!")
+        print("[OK] Dados importados com sucesso!")
+    except FileNotFoundError:
+        print("[INFO] Arquivo Excel nao encontrado. Iniciando sem dados pre-carregados.")
+        db.session.rollback()
     except Exception as e:
-        print(f"⚠️  Erro ao importar Excel: {e}")
+        print(f"[ERRO] Ao importar Excel: {e}")
         db.session.rollback()
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
