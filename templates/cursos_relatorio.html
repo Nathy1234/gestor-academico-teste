@@ -1,0 +1,188 @@
+{% set tipo_labels = {'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido','pacote':'Pacote','terceiros':'Terceiros','evento':'Evento','pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu'} %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório de Cursos — INOVA</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #fff; }
+
+    .toolbar { position: sticky; top: 0; z-index: 100; background: #fff;
+               border-bottom: 2px solid #6366f1; padding: 10px 24px;
+               display: flex; align-items: center; gap: 10px; }
+    .toolbar h1 { font-size: 15px; font-weight: 700; flex: 1; color: #6366f1; }
+    .btn { padding: 6px 14px; border-radius: 7px; font-size: 12px; cursor: pointer;
+           border: 1px solid #cbd5e1; background: #f8fafc; color: #334155;
+           text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+    .btn-primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+    .filters { padding: 10px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+               display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    select, input[type=text] { padding: 5px 9px; border: 1px solid #cbd5e1; border-radius: 6px;
+                                font-size: 12px; background: #fff; }
+
+    .content { padding: 20px 24px; }
+    .report-meta { font-size: 11px; color: #64748b; margin-bottom: 16px; }
+    .report-title { font-size: 18px; font-weight: 800; margin-bottom: 3px; }
+
+    .summary { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .sc { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+          padding: 10px 14px; text-align: center; flex: 1; min-width: 100px; }
+    .sv { font-size: 20px; font-weight: 800; color: #6366f1; }
+    .sl { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { background: #f1f5f9; padding: 7px 9px; text-align: left; font-weight: 700;
+         color: #64748b; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+         font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
+    td { padding: 6px 9px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    tr:hover td { background: #fafafa; }
+
+    .badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+             background: #e0e7ff; color: #4338ca; white-space: nowrap; display: inline-block; }
+    .badge-ativo { background: #dcfce7; color: #166534; }
+    .badge-em_edicao { background: #fef9c3; color: #854d0e; }
+    .badge-descontinuado { background: #f1f5f9; color: #64748b; }
+    .badge-oculto { background: #ede9fe; color: #5b21b6; }
+    .badge-finalizado { background: #dbeafe; color: #1d4ed8; }
+    .badge-externo { background: #ffedd5; color: #c2410c; }
+
+    @media print {
+      .toolbar, .filters { display: none !important; }
+      .content { padding: 8px; }
+      body { font-size: 10px; }
+      table { font-size: 9px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>INOVA — Relatório de Cursos</h1>
+  <button class="btn btn-primary" onclick="window.print()">
+    <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2">
+      <polyline points="6 9 6 2 18 2 18 9"/>
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir / PDF
+  </button>
+  <a href="{{ url_for('cursos_exportar_excel', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor) }}"
+     class="btn" style="background:#166534;color:#fff;border-color:#166534">
+    <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+    </svg>
+    Excel
+  </a>
+  <a href="{{ url_for('cursos') }}" class="btn">← Voltar</a>
+</div>
+
+<div class="filters">
+  <form method="GET" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar nome..." style="width:160px">
+    <select name="tipo" onchange="this.form.submit()">
+      <option value="">Todos os tipos</option>
+      {% for k,v in tipo_labels.items() %}
+      <option value="{{ k }}" {% if filtro_tipo==k %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+    <select name="area" onchange="this.form.submit()">
+      <option value="">Todas as áreas</option>
+      {% for a in areas %}<option value="{{ a }}" {% if filtro_area==a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <select name="status" onchange="this.form.submit()">
+      <option value="">Todos os status</option>
+      {% for s in ['ativo','em_edicao','finalizado','descontinuado','externo','oculto'] %}
+      <option value="{{ s }}" {% if filtro_status==s %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
+      {% endfor %}
+    </select>
+    <select name="insersor" onchange="this.form.submit()">
+      <option value="">Todos insersores</option>
+      {% for ins in insersores %}<option value="{{ ins }}" {% if filtro_insersor==ins %}selected{% endif %}>{{ ins }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn">Filtrar</button>
+    {% if filtro_tipo or filtro_area or filtro_status or filtro_insersor or busca %}
+    <a href="{{ url_for('cursos_relatorio') }}" class="btn">✕ Limpar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="content">
+  <div class="report-meta">
+    <div class="report-title">Relatório de Cursos</div>
+    Gerado em {{ now.strftime('%d/%m/%Y às %H:%M') }}
+    {% if filtro_tipo %} · Tipo: <strong>{{ tipo_labels.get(filtro_tipo, filtro_tipo) }}</strong>{% endif %}
+    {% if filtro_area %} · Área: <strong>{{ filtro_area }}</strong>{% endif %}
+    {% if filtro_status %} · Status: <strong>{{ filtro_status|replace('_',' ')|title }}</strong>{% endif %}
+    {% if filtro_insersor %} · Insersor: <strong>{{ filtro_insersor }}</strong>{% endif %}
+    {% if busca %} · Busca: <strong>"{{ busca }}"</strong>{% endif %}
+  </div>
+
+  {% set ns = namespace(ativos=0, edicao=0, finalizados=0, desc=0, ocultos=0, externos=0) %}
+  {% for c in cursos %}
+    {% if c.status == 'ativo' %}{% set ns.ativos = ns.ativos + 1 %}
+    {% elif c.status == 'em_edicao' %}{% set ns.edicao = ns.edicao + 1 %}
+    {% elif c.status == 'finalizado' %}{% set ns.finalizados = ns.finalizados + 1 %}
+    {% elif c.status == 'descontinuado' %}{% set ns.desc = ns.desc + 1 %}
+    {% elif c.status == 'oculto' %}{% set ns.ocultos = ns.ocultos + 1 %}
+    {% elif c.status == 'externo' %}{% set ns.externos = ns.externos + 1 %}
+    {% endif %}
+  {% endfor %}
+
+  <div class="summary">
+    <div class="sc"><div class="sv">{{ cursos|length }}</div><div class="sl">Total</div></div>
+    <div class="sc"><div class="sv" style="color:#16a34a">{{ ns.ativos }}</div><div class="sl">Ativos</div></div>
+    <div class="sc"><div class="sv" style="color:#854d0e">{{ ns.edicao }}</div><div class="sl">Em Edição</div></div>
+    <div class="sc"><div class="sv" style="color:#1d4ed8">{{ ns.finalizados }}</div><div class="sl">Finalizados</div></div>
+    <div class="sc"><div class="sv" style="color:#64748b">{{ ns.desc }}</div><div class="sl">Arquivados</div></div>
+    {% if ns.externos > 0 %}
+    <div class="sc"><div class="sv" style="color:#c2410c">{{ ns.externos }}</div><div class="sl">Externos</div></div>
+    {% endif %}
+    <div class="sc"><div class="sv" style="color:#5b21b6">{{ ns.ocultos }}</div><div class="sl">Ocultos</div></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Nome do Curso</th>
+        <th>Tipo</th>
+        <th>Área</th>
+        <th>Status</th>
+        <th>CH</th>
+        <th>Valor</th>
+        <th>Insersor</th>
+        <th>Cupom</th>
+        <th>Link</th>
+        <th>Obs</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in cursos %}
+      <tr>
+        <td style="color:#94a3b8">{{ loop.index }}</td>
+        <td style="font-weight:600;max-width:280px">{{ c.nome }}</td>
+        <td><span class="badge">{{ tipo_labels.get(c.tipo, c.tipo) }}</span></td>
+        <td style="font-size:10px;color:#475569">{{ c.area or '—' }}</td>
+        <td><span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span></td>
+        <td style="white-space:nowrap">{{ c.horas or '—' }}</td>
+        <td style="white-space:nowrap">{% if c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</td>
+        <td style="font-size:11px">{{ c.insersor or '—' }}</td>
+        <td style="font-size:10px;color:#475569">{{ c.cupom or '—' }}</td>
+        <td style="font-size:10px">
+          {% if c.link_venda and c.link_venda.startswith('http') %}
+          <a href="{{ c.link_venda }}" target="_blank" style="color:#6366f1">🔗 Link</a>
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size:10px;color:#64748b;max-width:150px">{{ c.obs or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" style="text-align:center;color:#94a3b8;padding:30px">Nenhum curso encontrado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</body>
+</html>

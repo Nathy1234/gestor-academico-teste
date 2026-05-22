@@ -1,0 +1,321 @@
+{% set tipo_labels = {'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido','pacote':'Pacote','terceiros':'Terceiros','evento':'Evento','pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu'} %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório de Matrizes — INOVA</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1e293b; background: #fff; }
+
+    .toolbar {
+      position: sticky; top: 0; z-index: 100;
+      background: #fff; border-bottom: 2px solid #6366f1;
+      padding: 10px 24px; display: flex; align-items: center; gap: 12px;
+    }
+    .toolbar h1 { font-size: 15px; font-weight: 700; flex: 1; color: #6366f1; }
+    .btn { padding: 6px 14px; border-radius: 7px; font-size: 12px; cursor: pointer;
+           border: 1px solid #cbd5e1; background: #f8fafc; color: #334155;
+           text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+    .btn-primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+    .filters { padding: 10px 24px; display: flex; gap: 10px; align-items: center;
+               background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+    select { padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; background: #fff; }
+
+    .content { padding: 20px 28px; max-width: 1200px; margin: 0 auto; }
+    .report-meta { font-size: 12px; color: #64748b; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
+    .report-title { font-size: 20px; font-weight: 800; color: #1e293b; margin-bottom: 4px; }
+
+    /* Summary cards */
+    .summary { margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+                    padding: 10px 16px; flex: 1; min-width: 120px; text-align: center; }
+    .summary-val { font-size: 22px; font-weight: 800; color: #6366f1; }
+    .summary-lbl { font-size: 10px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: .4px; }
+
+    /* Course block */
+    .course-block { margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+
+    .course-header {
+      padding: 12px 16px; background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+    }
+    .course-name { font-weight: 700; font-size: 15px; color: #1e293b; flex: 1; min-width: 0; }
+    .course-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+    /* Course meta info */
+    .course-meta { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 0;
+                   border-bottom: 1px solid #e2e8f0; background: #fafafa; }
+    .meta-item { padding: 5px 12px 5px 0; min-width: 160px; flex: 1; }
+    .meta-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 2px; }
+    .meta-value { font-size: 12px; color: #334155; font-weight: 500; }
+
+    /* Badge styles */
+    .badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+             background: #e0e7ff; color: #4338ca; white-space: nowrap; }
+    .badge-ativo { background: #dcfce7; color: #166534; }
+    .badge-em_edicao { background: #fef9c3; color: #854d0e; }
+    .badge-descontinuado { background: #f1f5f9; color: #64748b; }
+    .badge-oculto { background: #ede9fe; color: #5b21b6; }
+    .badge-finalizado { background: #dbeafe; color: #1d4ed8; }
+    .badge-externo { background: #ffedd5; color: #c2410c; }
+
+    /* Discipline table */
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f1f5f9; padding: 7px 10px; text-align: left; font-size: 10px;
+         font-weight: 700; color: #64748b; border-bottom: 1px solid #e2e8f0;
+         text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+    td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; font-size: 12px; }
+    tr:last-child td { border-bottom: none; }
+    .row-ok { background: rgba(34,197,94,.06); }
+    .row-pend { background: rgba(251,191,36,.1); }
+    .icon-ok { color: #22c55e; font-size: 15px; font-weight: 700; }
+    .icon-pend { color: #f59e0b; font-size: 14px; }
+
+    .table-footer { padding: 8px 12px; font-size: 11px; color: #64748b; background: #f8fafc;
+                    border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+    .progress-complete { color: #16a34a; font-weight: 700; }
+    .progress-partial { color: #d97706; font-weight: 600; }
+    .progress-none { color: #94a3b8; }
+
+    @media print {
+      .toolbar, .filters { display: none !important; }
+      .content { padding: 8px; }
+      .course-block { break-inside: avoid; margin-bottom: 20px; }
+      body { font-size: 11px; }
+      .summary-val { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>INOVA — Relatório de Matrizes Curriculares</h1>
+  <button class="btn btn-primary" onclick="window.print()">
+    <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2">
+      <polyline points="6 9 6 2 18 2 18 9"/>
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir / PDF
+  </button>
+  <a href="{{ url_for('matrizes_exportar_excel', tipo=filtro_tipo, status=filtro_status) }}"
+     class="btn" style="background:#166534;color:#fff;border-color:#166534">
+    <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
+    </svg>
+    Exportar Excel
+  </a>
+  <a href="{{ url_for('matrizes') }}" class="btn">← Voltar</a>
+</div>
+
+<div class="filters">
+  <form method="GET" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <label style="font-size:12px;color:#475569">Tipo:</label>
+    <select name="tipo" onchange="this.form.submit()">
+      <option value="">Todos os tipos</option>
+      {% for t in tipos_disponiveis %}
+      <option value="{{ t }}" {% if filtro_tipo==t %}selected{% endif %}>{{ tipo_labels.get(t, t) }}</option>
+      {% endfor %}
+    </select>
+    <label style="font-size:12px;color:#475569">Status:</label>
+    <select name="status" onchange="this.form.submit()">
+      <option value="">Todos os status</option>
+      {% for s in status_list %}
+      <option value="{{ s }}" {% if filtro_status==s %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
+      {% endfor %}
+    </select>
+    {% if filtro_tipo or filtro_status %}
+    <a href="{{ url_for('matrizes_relatorio') }}" class="btn" style="font-size:11px">✕ Limpar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="content">
+
+  <div class="report-meta">
+    <div class="report-title">Relatório de Matrizes Curriculares</div>
+    Gerado em {{ now.strftime('%d/%m/%Y às %H:%M') }}
+    {% if filtro_tipo %} &nbsp;·&nbsp; Tipo: <strong>{{ tipo_labels.get(filtro_tipo, filtro_tipo) }}</strong>{% endif %}
+    {% if filtro_status %} &nbsp;·&nbsp; Status: <strong>{{ filtro_status|replace('_',' ')|title }}</strong>{% endif %}
+  </div>
+
+  {# Totalizadores #}
+  {% set ns = namespace(total_discs=0, total_ok=0, total_horas=0) %}
+  {% for item in course_data %}
+    {% set ns.total_discs = ns.total_discs + item.disciplines|length %}
+    {% set ns.total_horas = ns.total_horas + item.total_ch %}
+    {% for d in item.disciplines %}{% if d.plataforma_ok %}{% set ns.total_ok = ns.total_ok + 1 %}{% endif %}{% endfor %}
+  {% endfor %}
+
+  <div class="summary">
+    <div class="summary-card">
+      <div class="summary-val">{{ course_data|length }}</div>
+      <div class="summary-lbl">Cursos</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val">{{ ns.total_discs }}</div>
+      <div class="summary-lbl">Disciplinas</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val" style="color:#22c55e">{{ ns.total_ok }}</div>
+      <div class="summary-lbl">Na plataforma</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val" style="color:#f59e0b">{{ ns.total_discs - ns.total_ok }}</div>
+      <div class="summary-lbl">Pendentes</div>
+    </div>
+    {% if ns.total_horas > 0 %}
+    <div class="summary-card">
+      <div class="summary-val" style="color:#6366f1">{{ ns.total_horas }}h</div>
+      <div class="summary-lbl">Carga Horária</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% for item in course_data %}
+  {% set c = item.course %}
+  {% set discs = item.disciplines %}
+  {% set total_ch = item.total_ch %}
+  {% set ok_count = discs|selectattr('plataforma_ok','equalto',True)|list|length %}
+  {% set is_complete = (ok_count == discs|length and discs|length > 0) %}
+
+  <div class="course-block">
+
+    <!-- Cabeçalho do curso -->
+    <div class="course-header">
+      <div style="flex:1;min-width:0">
+        <div class="course-name">{{ c.nome }}</div>
+        <div class="course-badges" style="margin-top:5px">
+          <span class="badge">{{ tipo_labels.get(c.tipo, c.tipo) }}</span>
+          <span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span>
+          {% if c.area %}<span class="badge" style="background:#f0fdf4;color:#166534">{{ c.area }}</span>{% endif %}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:18px;font-weight:800;
+             color:{% if is_complete %}#16a34a{% elif ok_count > 0 %}#d97706{% else %}#94a3b8{% endif %}">
+          {{ ok_count }}/{{ discs|length }}
+          {% if is_complete %} ✓{% endif %}
+        </div>
+        {% if total_ch > 0 %}<div style="font-size:11px;color:#64748b">{{ total_ch }}h</div>{% endif %}
+      </div>
+    </div>
+
+    <!-- Dados do curso -->
+    <div class="course-meta">
+      {% if c.horas %}
+      <div class="meta-item">
+        <div class="meta-label">Carga Horária</div>
+        <div class="meta-value">{{ c.horas }}</div>
+      </div>
+      {% endif %}
+      {% if c.meses %}
+      <div class="meta-item">
+        <div class="meta-label">Duração</div>
+        <div class="meta-value">{{ c.meses }}</div>
+      </div>
+      {% endif %}
+      {% if c.valor and c.valor not in ['-','','None'] %}
+      <div class="meta-item">
+        <div class="meta-label">Valor</div>
+        <div class="meta-value">R$ {{ c.valor }}</div>
+      </div>
+      {% endif %}
+      {% if c.insersor %}
+      <div class="meta-item">
+        <div class="meta-label">Insersor(es)</div>
+        <div class="meta-value">{{ c.insersor }}</div>
+      </div>
+      {% endif %}
+      {% if c.cupom %}
+      <div class="meta-item">
+        <div class="meta-label">Cupom</div>
+        <div class="meta-value">{{ c.cupom }}</div>
+      </div>
+      {% endif %}
+      {% if c.dono %}
+      <div class="meta-item">
+        <div class="meta-label">Dono / Professor</div>
+        <div class="meta-value">{{ c.dono }}</div>
+      </div>
+      {% endif %}
+      {% if c.ano %}
+      <div class="meta-item">
+        <div class="meta-label">Ano</div>
+        <div class="meta-value">{{ c.ano }}</div>
+      </div>
+      {% endif %}
+      {% if c.link_venda %}
+      <div class="meta-item" style="flex-basis:100%">
+        <div class="meta-label">Link de Venda</div>
+        <div class="meta-value" style="font-size:11px;word-break:break-all">{{ c.link_venda }}</div>
+      </div>
+      {% endif %}
+      {% if c.obs %}
+      <div class="meta-item" style="flex-basis:100%">
+        <div class="meta-label">Observações</div>
+        <div class="meta-value" style="color:#64748b">{{ c.obs }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Tabela de disciplinas -->
+    {% if discs %}
+    <table>
+      <thead>
+        <tr>
+          <th>Módulo</th>
+          <th>#</th>
+          <th>Disciplina</th>
+          <th>CH</th>
+          <th>Professor</th>
+          <th>Titulação</th>
+          <th style="text-align:center">Plataforma</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in discs %}
+        <tr class="{% if d.plataforma_ok %}row-ok{% else %}row-pend{% endif %}">
+          <td style="color:#94a3b8;font-size:11px">{{ d.modulo or '—' }}</td>
+          <td style="color:#94a3b8">{{ d.ordem }}</td>
+          <td style="font-weight:500">{{ d.nome }}</td>
+          <td>{{ d.carga or '—' }}</td>
+          <td style="color:#475569">{{ d.professor or '—' }}</td>
+          <td style="color:#94a3b8;font-size:11px">{{ d.titulacao or '—' }}</td>
+          <td style="text-align:center">
+            {% if d.plataforma_ok %}
+              <span class="icon-ok" title="Inserida em {{ d.plataforma_em.strftime('%d/%m/%Y') if d.plataforma_em else '' }}">✓</span>
+            {% else %}
+              <span class="icon-pend" title="Pendente">○</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="table-footer">
+      <span class="{% if is_complete %}progress-complete{% elif ok_count > 0 %}progress-partial{% else %}progress-none{% endif %}">
+        {{ ok_count }}/{{ discs|length }} inseridas na plataforma{% if is_complete %} — Completo!{% endif %}
+      </span>
+      {% if total_ch > 0 %}<span>Total CH: <strong>{{ total_ch }}h</strong></span>{% endif %}
+    </div>
+    {% else %}
+    <div style="padding:14px 16px;color:#94a3b8;font-size:12px;font-style:italic">Nenhuma disciplina cadastrada.</div>
+    {% endif %}
+
+  </div>
+  {% else %}
+  <div style="padding:40px;text-align:center;color:#94a3b8">
+    Nenhum curso encontrado com os filtros selecionados.
+  </div>
+  {% endfor %}
+
+</div>
+</body>
+</html>

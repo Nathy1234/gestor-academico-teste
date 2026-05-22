@@ -12,11 +12,57 @@
     {% endif %}
   </div>
 
+  <!-- FILTROS -->
+  <form method="GET" class="filters" style="margin-bottom:16px">
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar aluno ou curso..." class="filter-select" style="width:220px">
+    <select name="colab" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os colabs</option>
+      {% for c in colabs %}<option value="{{ c }}" {% if f_colab==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <select name="categoria" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todas as categorias</option>
+      {% for c in cats %}<option value="{{ c }}" {% if f_cat==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <select name="pendencia" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todas as situações</option>
+      <option value="sem_solic1" {% if f_pend=='sem_solic1' %}selected{% endif %}>Aguarda 1ª Solicitação</option>
+      <option value="sem_solic2" {% if f_pend=='sem_solic2' %}selected{% endif %}>Aguarda 2ª Solicitação</option>
+      <option value="sem_aprovacao" {% if f_pend=='sem_aprovacao' %}selected{% endif %}>Aguarda Aprovação</option>
+      <option value="sem_exclusao" {% if f_pend=='sem_exclusao' %}selected{% endif %}>Aguarda Exclusão do Curso</option>
+      <option value="concluido" {% if f_pend=='concluido' %}selected{% endif %}>Concluído</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    <a href="{{ url_for('reembolsos') }}" class="btn btn-secondary">Limpar</a>
+  </form>
+
+  <!-- ALERTAS DE PENDÊNCIA -->
+  {% set pendentes = contagem.sem_solic1 + contagem.sem_solic2 + contagem.sem_aprovacao + contagem.sem_exclusao %}
+  {% if pendentes > 0 %}
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+    {% for key,label,cor in [('sem_solic1','Aguarda 1ª Solicitação','#ef4444'),('sem_solic2','Aguarda 2ª Solicitação','#f97316'),('sem_aprovacao','Aguarda Aprovação','#eab308'),('sem_exclusao','Aguarda Exclusão do Curso','#6366f1')] %}
+    <a href="{{ url_for('reembolsos', pendencia=key) }}" style="text-decoration:none;
+       background:var(--card-bg);border:1px solid var(--border);border-left:4px solid {{ cor }};
+       border-radius:8px;padding:14px 16px;display:block;
+       {% if f_pend==key %}box-shadow:0 0 0 2px {{ cor }}40{% endif %}">
+      <div style="font-size:22px;font-weight:700;color:{{ cor }}">{{ contagem[key] }}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">{{ label }}</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if contagem.concluido > 0 %}
+  <div style="background:var(--card-bg);border:1px solid var(--border);border-left:4px solid #22c55e;border-radius:8px;padding:10px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
+    <span style="font-weight:700;color:#22c55e">{{ contagem.concluido }}</span>
+    <span style="font-size:13px;color:var(--text-muted)">reembolso(s) concluído(s)</span>
+  </div>
+  {% endif %}
+
   <div class="card">
     <div class="table-wrapper">
       <table style="min-width:1200px">
         <thead>
           <tr>
+            <th>Situação</th>
             <th>Colab</th>
             <th>Nome do Aluno</th>
             <th>Nome do Curso</th>
@@ -35,7 +81,18 @@
         </thead>
         <tbody>
           {% for r in items %}
+          {% set pend = r.pendencia %}
+          {% if pend[0] == 'sem_solic1' %}{% set badge_color = '#ef4444' %}
+          {% elif pend[0] == 'sem_solic2' %}{% set badge_color = '#f97316' %}
+          {% elif pend[0] == 'sem_aprovacao' %}{% set badge_color = '#eab308' %}
+          {% elif pend[0] == 'sem_exclusao' %}{% set badge_color = '#6366f1' %}
+          {% else %}{% set badge_color = '#22c55e' %}{% endif %}
           <tr>
+            <td style="white-space:nowrap">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:{{ badge_color }}20;color:{{ badge_color }};border:1px solid {{ badge_color }}40">
+                {{ pend[1] }}
+              </span>
+            </td>
             <td style="white-space:nowrap;font-size:12px">{{ r.colab or '—' }}</td>
             <td style="white-space:nowrap;font-weight:500;font-size:13px">{{ r.nome_aluno or '—' }}</td>
             <td style="max-width:180px;font-size:12px">{{ r.nome_curso or '—' }}</td>
@@ -66,7 +123,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="14" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum reembolso registrado.</td></tr>
+          <tr><td colspan="15" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum reembolso registrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>

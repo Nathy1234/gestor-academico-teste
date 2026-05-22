@@ -6,31 +6,94 @@
     <div class="page-title">Usuários</div>
     <a href="{{ url_for('usuario_novo') }}" class="btn btn-primary">+ Novo Usuário</a>
   </div>
+
   <div class="card">
     <div class="table-wrapper">
       <table>
-        <thead><tr><th>Usuário</th><th>Perfil</th><th>Criado em</th><th></th></tr></thead>
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>Perfil</th>
+            <th>Acesso</th>
+            <th>Restrições</th>
+            <th style="color:var(--text-muted);font-weight:500">Criado em</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
           {% for u in users %}
           <tr>
-            <td><div class="user-info" style="gap:10px">
-              <div class="user-avatar">{{ u.username[0]|upper }}</div>
-              <strong>{{ u.username }}</strong>
-            </div></td>
             <td>
-              {% if u.role == 'admin' %}<span class="badge badge-descontinuado">Admin</span>
-              {% elif u.role == 'editor' %}<span class="badge badge-ativo">Editor</span>
-              {% else %}<span class="badge badge-oculto">Leitor</span>{% endif %}
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="user-avatar">{{ u.username[0]|upper }}</div>
+                <strong>{{ u.username }}</strong>
+              </div>
             </td>
-            <td style="font-size:12px;color:var(--text-muted)">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
-            <td style="display:flex;gap:8px;align-items:center">
-              <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-              {% if u.id != session.user_id %}
-              <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
-                    onsubmit="return confirm('Excluir o usuário {{ u.username }}? Esta ação não pode ser desfeita.')">
-                <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none">Excluir</button>
-              </form>
+            <td>
+              {% if u.role == 'admin' %}
+                <span class="badge badge-descontinuado">Admin</span>
+              {% elif u.role == 'editor' %}
+                <span class="badge badge-ativo">Editor</span>
+              {% else %}
+                <span class="badge badge-oculto">Leitor</span>
               {% endif %}
+            </td>
+            <td>
+              {% if u.role == 'admin' %}
+                <span style="font-size:12px;color:var(--text-muted)">Acesso total</span>
+              {% else %}
+                {% set p = u._p() %}
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  {% if u.can_manage_cupons() %}
+                    <span class="perm-tag">Cupons</span>
+                  {% endif %}
+                  {% if u.can_manage_reembolsos() %}
+                    <span class="perm-tag">Reembolsos</span>
+                  {% endif %}
+                  {% if u.can_view_historico() %}
+                    <span class="perm-tag">Histórico</span>
+                  {% endif %}
+                  {% if u.can_edit() %}
+                    <span class="perm-tag perm-tag-edit">Editar cursos</span>
+                  {% endif %}
+                  {% if u.can_delete() %}
+                    <span class="perm-tag perm-tag-danger">Excluir cursos</span>
+                  {% endif %}
+                  {% if u.can_manage_usuarios() %}
+                    <span class="perm-tag perm-tag-edit">Usuários</span>
+                  {% endif %}
+                  {% if not u.can_manage_cupons() and not u.can_manage_reembolsos() and not u.can_view_historico() and not u.can_edit() %}
+                    <span style="font-size:12px;color:var(--text-muted)">Só visualização</span>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.role != 'admin' %}
+                {% set p = u._p() %}
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  {% if p.get('block_cupons') %}<span class="perm-tag perm-tag-block">− Cupons</span>{% endif %}
+                  {% if p.get('block_reembolsos') %}<span class="perm-tag perm-tag-block">− Reembolsos</span>{% endif %}
+                  {% if p.get('block_historico') %}<span class="perm-tag perm-tag-block">− Histórico</span>{% endif %}
+                  {% if not p.get('block_cupons') and not p.get('block_reembolsos') and not p.get('block_historico') %}
+                    <span style="font-size:12px;color:var(--text-muted)">—</span>
+                  {% endif %}
+                </div>
+              {% else %}
+                <span style="font-size:12px;color:var(--text-muted)">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+            <td style="white-space:nowrap">
+              <div style="display:flex;gap:6px;align-items:center">
+                <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+                {% if u.id != session.user_id %}
+                <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
+                      onsubmit="return confirm('Excluir o usuário {{ u.username }}? Não pode ser desfeito.')">
+                  <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none">Excluir</button>
+                </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -38,15 +101,37 @@
       </table>
     </div>
   </div>
+
+  <!-- GUIA DE PERFIS -->
   <div class="card" style="margin-top:16px">
     <div class="card-body">
-      <div class="card-title" style="margin-bottom:12px">Guia de Perfis</div>
+      <div class="card-title" style="margin-bottom:14px">Guia de Perfis</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:13px">
-        <div><strong style="color:#dc2626">Admin</strong><br>Acesso total. Pode excluir, criar usuários, fazer backup.</div>
-        <div><strong style="color:#065f46">Editor</strong><br>Pode criar e editar cursos, cupons e reembolsos. Não pode excluir.</div>
-        <div><strong style="color:#475569">Leitor</strong><br>Apenas visualização. Não pode criar nem editar.</div>
+        <div>
+          <div style="font-weight:600;color:#dc2626;margin-bottom:4px">Admin</div>
+          Acesso total. Pode excluir cursos, gerenciar usuários, fazer backup e publicar cursos.
+        </div>
+        <div>
+          <div style="font-weight:600;color:#065f46;margin-bottom:4px">Editor</div>
+          Cria e edita cursos, acessa cupons e reembolsos por padrão. Pode ter módulos bloqueados individualmente.
+        </div>
+        <div>
+          <div style="font-weight:600;color:#475569;margin-bottom:4px">Leitor</div>
+          Apenas visualiza cursos. Acesso a outros módulos deve ser concedido explicitamente.
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+.perm-tag {
+  font-size: 11px; font-weight: 500;
+  padding: 2px 7px; border-radius: 10px;
+  background: var(--surface-2); color: var(--text-muted);
+}
+.perm-tag-edit { background: #d1fae520; color: #065f46; }
+.perm-tag-danger { background: #fee2e2; color: #dc2626; }
+.perm-tag-block { background: #fef2f2; color: #dc2626; }
+</style>
 {% endblock %}

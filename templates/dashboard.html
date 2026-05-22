@@ -5,7 +5,18 @@
   <div class="page-header">
     <div>
       <div class="page-title">Dashboard</div>
-      <div class="page-subtitle">Bem-vindo, {{ session.username }} · {{ now().strftime('%d/%m/%Y') if now else '' }}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+        <div class="page-subtitle">Bem-vindo, {{ session.username }} · {{ now().strftime('%d/%m/%Y') if now else '' }}</div>
+        <form method="GET" style="display:flex;gap:6px;align-items:center">
+          <select name="insersor" class="filter-select" style="font-size:12px;padding:3px 8px" onchange="this.form.submit()">
+            <option value="">Todos os insersores</option>
+            {% for ins in insersores %}
+            <option value="{{ ins }}" {% if filtro_ins==ins %}selected{% endif %}>{{ ins }}</option>
+            {% endfor %}
+          </select>
+          {% if filtro_ins %}<a href="{{ url_for('dashboard') }}" class="btn btn-secondary" style="padding:3px 8px;font-size:12px">✕ Limpar</a>{% endif %}
+        </form>
+      </div>
     </div>
     {% if session.role == 'admin' %}
     <form method="POST" action="{{ url_for('backup_manual') }}">
@@ -43,6 +54,51 @@
       </div>
       <div><div class="stat-value">{{ desc }}</div><div class="stat-label">Descontinuados</div></div>
     </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#f9731620">
+        <svg viewBox="0 0 24 24" style="stroke:#f97316"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <div><div class="stat-value">{{ externos }}</div><div class="stat-label">Externos</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#64748b20">
+        <svg viewBox="0 0 24 24" style="stroke:#64748b"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </div>
+      <div><div class="stat-value">{{ ocultos }}</div><div class="stat-label">Ocultos</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#6366f120">
+        <svg viewBox="0 0 24 24" style="stroke:#6366f1"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <div><div class="stat-value">{{ finalizado }}</div><div class="stat-label">Finalizados</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Andamento da Plataforma — por Insersor</div></div>
+    <div class="card-body" style="padding:0">
+      <table>
+        <thead><tr><th>Insersor</th><th style="text-align:right">Disciplinas pendentes</th><th></th></tr></thead>
+        <tbody>
+        {% for ins, qtd in pend_por_ins %}
+        <tr>
+          <td style="font-weight:500">{{ ins }}</td>
+          <td style="text-align:right">
+            {% if qtd == 0 %}
+              <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:12px;font-weight:600;font-size:13px">✓ Em dia</span>
+            {% else %}
+              <span style="background:#ef444420;color:#ef4444;padding:2px 10px;border-radius:12px;font-weight:600;font-size:13px">{{ qtd }} pendente{{ 's' if qtd > 1 else '' }}</span>
+            {% endif %}
+          </td>
+          <td><a href="{{ url_for('cursos', insersor=ins) }}" class="btn btn-sm btn-secondary">Ver cursos</a></td>
+        </tr>
+        {% endfor %}
+        {% if not pend_por_ins %}
+        <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px;font-size:13px">Nenhum insersor cadastrado ainda.</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
@@ -70,7 +126,7 @@
         <div class="card-title">Atividade Recente</div>
         <a href="{{ url_for('historico') }}" class="btn btn-sm btn-secondary">Ver tudo</a>
       </div>
-      <div class="card-body" style="padding:12px 20px">
+      <div class="card-body" style="padding:12px 20px;max-height:260px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
         {% for log in recentes %}
         <div class="log-item">
           <div class="log-dot"></div>

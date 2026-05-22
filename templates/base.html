@@ -27,42 +27,61 @@
         Dashboard
       </a>
       <div class="nav-section">CURSOS</div>
-      <a href="{{ url_for('cursos') }}" class="nav-item {% if request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar'] %}active{% endif %}">
+      {% set cur_tipo = request.args.get('tipo', c.tipo if (request.endpoint == 'curso_detalhe' and c is defined) else '') %}
+      {% set em_curso = request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar'] %}
+      <a href="{{ url_for('cursos') }}" class="nav-item {% if em_curso and not cur_tipo %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         Todos os Cursos
       </a>
-      <a href="{{ url_for('cursos', tipo='pos') }}" class="nav-item nav-sub">
+      <a href="{{ url_for('cursos', tipo='pos') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='pos' %}active{% endif %}">
         <span class="dot dot-purple"></span> Pós-Graduação
       </a>
-      <a href="{{ url_for('cursos', tipo='profissionalizante') }}" class="nav-item nav-sub">
+      <a href="{{ url_for('cursos', tipo='profissionalizante') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='profissionalizante' %}active{% endif %}">
         <span class="dot dot-blue"></span> Profissionalizantes
       </a>
-      <a href="{{ url_for('cursos', tipo='rapido') }}" class="nav-item nav-sub">
+      <a href="{{ url_for('cursos', tipo='rapido') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='rapido' %}active{% endif %}">
         <span class="dot dot-green"></span> Rápidos
       </a>
-      <a href="{{ url_for('cursos', tipo='pacote') }}" class="nav-item nav-sub">
+      <a href="{{ url_for('cursos', tipo='pacote') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='pacote' %}active{% endif %}">
         <span class="dot dot-orange"></span> Pacotes
       </a>
-      <a href="{{ url_for('cursos', tipo='terceiros') }}" class="nav-item nav-sub">
+      <a href="{{ url_for('cursos', tipo='terceiros') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='terceiros' %}active{% endif %}">
         <span class="dot dot-gray"></span> Terceiros
       </a>
-      <a href="{{ url_for('cursos', tipo='evento') }}" class="nav-item nav-sub">
+      <a href="{{ url_for('cursos', tipo='evento') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='evento' %}active{% endif %}">
         <span class="dot dot-pink"></span> Eventos
       </a>
+      {% set cur_status = request.args.get('status','') %}
+      <a href="{{ url_for('cursos', status='descontinuado') }}" class="nav-item nav-sub {% if em_curso and cur_status=='descontinuado' %}active{% endif %}">
+        <span class="dot" style="background:#94a3b8"></span> Arquivados
+      </a>
 
+      <a href="{{ url_for('matrizes') }}" class="nav-item {% if request.endpoint=='matrizes' %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>
+        Matrizes
+      </a>
+
+      {% if can_cupons or can_reembolsos or can_historico %}
       <div class="nav-section">GESTÃO</div>
+      {% endif %}
+      {% if can_cupons %}
       <a href="{{ url_for('cupons') }}" class="nav-item {% if 'cupom' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M7 7h.01M17 17h.01M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0M7 7l10 10"/></svg>
         Cupons
       </a>
+      {% endif %}
+      {% if can_reembolsos %}
       <a href="{{ url_for('reembolsos') }}" class="nav-item {% if 'reembolso' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M3 12h18M3 12l6-6M3 12l6 6"/></svg>
         Reembolsos
       </a>
+      {% endif %}
+      {% if can_historico %}
       <a href="{{ url_for('historico') }}" class="nav-item {% if request.endpoint=='historico' %}active{% endif %}">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
         Histórico
       </a>
+      {% endif %}
 
       {% if session.role == 'admin' %}
       <div class="nav-section">ADMIN</div>
@@ -99,6 +118,147 @@
         <div id="searchResults" class="search-dropdown"></div>
       </div>
       <div class="topbar-actions">
+        <!-- SINO DE NOTIFICAÇÕES -->
+        <div class="notif-wrap">
+          {% set total_badge = (notif_count + admin_finalizado_count) if session.role == 'admin' else notif_count %}
+          <button class="theme-toggle" id="notifBtn" onclick="toggleNotif(event)" title="Notificações" style="position:relative">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            {% if total_badge > 0 %}
+            <span style="position:absolute;top:-5px;right:-5px;background:#ef4444;color:#fff;
+                         border-radius:50%;min-width:16px;height:16px;font-size:9px;font-weight:700;
+                         display:flex;align-items:center;justify-content:center;padding:0 2px;line-height:1">
+              {{ total_badge if total_badge < 100 else '99+' }}
+            </span>
+            {% endif %}
+          </button>
+        </div>
+        <!-- dropdown fixo, posicionado por JS -->
+        <div id="notifDropdown" style="display:none;position:fixed;width:360px;
+             background:var(--surface);border:1px solid var(--border);border-radius:10px;
+             box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:9999;overflow:hidden">
+
+          {% if session.role == 'admin' %}
+          <!-- ── SEÇÃO 1: CURSOS PRONTOS PARA PUBLICAR ── -->
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border);
+                      display:flex;align-items:center;justify-content:space-between">
+            <span style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">
+              Prontos para publicar
+            </span>
+            <span style="background:#f59e0b20;color:#d97706;font-size:11px;font-weight:700;
+                         padding:2px 8px;border-radius:10px">
+              {{ admin_finalizado_count }} curso(s)
+            </span>
+          </div>
+          {% if admin_finalizado %}
+          <div style="max-height:180px;overflow-y:auto;border-bottom:2px solid var(--border)">
+            {% for curso in admin_finalizado %}
+            <a href="{{ url_for('curso_detalhe', id=curso.id) }}"
+               style="display:flex;align-items:center;gap:10px;padding:9px 16px;
+                      border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)"
+               onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+              <span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  {{ curso.nome[:45] }}{% if curso.nome|length > 45 %}…{% endif %}
+                </div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+                  {{ curso.tipo|replace('_',' ')|title }}
+                  · insersor: <strong>{{ curso.insersor or '—' }}</strong>
+                  · {{ curso.updated_at.strftime('%d/%m/%Y') }}
+                </div>
+              </div>
+              <span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;
+                           padding:2px 6px;border-radius:6px;flex-shrink:0">PUBLICAR</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div style="padding:14px 16px;font-size:12px;color:var(--text-muted);border-bottom:2px solid var(--border)">
+            Nenhum curso aguardando publicação.
+          </div>
+          {% endif %}
+
+          <!-- ── SEÇÃO 2: DISCIPLINAS PENDENTES (ADMIN VÊ TODOS) ── -->
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border);
+                      display:flex;align-items:center;justify-content:space-between">
+            <span style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">
+              Disciplinas pendentes
+            </span>
+            <span style="background:#ef444420;color:#ef4444;font-size:11px;font-weight:700;
+                         padding:2px 8px;border-radius:10px">
+              {{ notif_count }} disc.
+            </span>
+          </div>
+          {% if notif_list %}
+          <div style="max-height:220px;overflow-y:auto">
+            {% for item in notif_list %}
+            <a href="{{ url_for('curso_detalhe', id=item.course.id) }}"
+               style="display:flex;align-items:center;gap:10px;padding:9px 16px;
+                      border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)"
+               onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+              <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0"></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  {{ item.course.nome[:42] }}{% if item.course.nome|length > 42 %}…{% endif %}
+                </div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+                  insersor: <strong>{{ item.course.insersor or '—' }}</strong>
+                </div>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:#ef4444;flex-shrink:0">
+                {{ item.total }} pend.
+              </span>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div style="padding:14px 16px;font-size:12px;color:var(--text-muted)">
+            Todas as disciplinas inseridas!
+          </div>
+          {% endif %}
+
+          {% else %}
+          <!-- ── COLABORADOR: APENAS SUAS DISCIPLINAS PENDENTES ── -->
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border);
+                      display:flex;align-items:center;justify-content:space-between">
+            <span style="font-weight:600;font-size:13px">Disciplinas pendentes</span>
+            <span style="color:#ef4444;font-size:12px;font-weight:700">{{ notif_count }} pendente(s)</span>
+          </div>
+          {% if notif_list %}
+          <div style="max-height:300px;overflow-y:auto">
+            {% for item in notif_list %}
+            <a href="{{ url_for('curso_detalhe', id=item.course.id) }}"
+               style="display:flex;align-items:center;gap:10px;padding:9px 16px;
+                      border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)"
+               onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+              <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0"></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  {{ item.course.nome[:45] }}{% if item.course.nome|length > 45 %}…{% endif %}
+                </div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+                  <span style="color:#ef4444;font-weight:600">{{ item.total }}</span> disciplina(s) não inserida(s)
+                </div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">
+            Todas as disciplinas inseridas!
+          </div>
+          {% endif %}
+          {% endif %}
+
+          <div style="padding:10px 16px;border-top:1px solid var(--border);text-align:center">
+            <a href="{{ url_for('matrizes') }}" style="font-size:12px;color:var(--primary);font-weight:500">
+              Ver todas as matrizes →
+            </a>
+          </div>
+        </div>
         <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema claro/escuro" aria-label="Alternar tema">
           <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>

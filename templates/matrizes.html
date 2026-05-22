@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% block title %}Matrizes Curriculares — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Matrizes Curriculares</div>
+      <div class="page-subtitle">
+        {{ course_data|length }} curso(s) exibido(s)
+        {% if total_pendentes > 0 %}
+        · <span style="color:#f59e0b;font-weight:600">{{ total_pendentes }} com pendências</span>
+        {% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      {% if session.role == 'admin' %}
+      <button type="button" onclick="marcarTudo()" class="btn btn-secondary" style="color:#22c55e">
+        ✓ Marcar tudo
+      </button>
+      {% endif %}
+      <a href="{{ url_for('matrizes_relatorio', tipo=filtro_tipo, insersor=filtro_insersor, pendente=filtro_pendente) }}"
+         target="_blank" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Relatório
+      </a>
+      <a href="{{ url_for('matrizes_exportar_excel', tipo=filtro_tipo, insersor=filtro_insersor, pendente=filtro_pendente) }}"
+         class="btn btn-secondary" style="color:#166534">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Excel
+      </a>
+    </div>
+  </div>
+
+  <!-- FILTRO RÁPIDO: PENDENTES -->
+  <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+    {% set pend_ativo = filtro_pendente == '1' %}
+    <a href="{{ url_for('matrizes', tipo=filtro_tipo, insersor=filtro_insersor, q=busca, pendente='' if pend_ativo else '1') }}"
+       style="padding:4px 14px;border-radius:20px;font-size:12px;font-weight:{% if pend_ativo %}600{% else %}400{% endif %};
+              text-decoration:none;border:1.5px solid #f59e0b;
+              background:{% if pend_ativo %}#f59e0b{% else %}transparent{% endif %};
+              color:{% if pend_ativo %}#fff{% else %}#f59e0b{% endif %}">
+      {% if pend_ativo %}&#10003;&nbsp;{% endif %}Somente Pendentes
+      {% if total_pendentes > 0 and not pend_ativo %}
+      <span style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:11px;margin-left:4px">{{ total_pendentes }}</span>
+      {% endif %}
+    </a>
+  </div>
+
+  {% set tipo_labels = {'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido','pacote':'Pacote','terceiros':'Terceiros','evento':'Evento','pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu'} %}
+
+  <!-- CHIPS DE TIPO COM INDICADOR DE PENDÊNCIAS -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    {% set t_ativo = (filtro_tipo == '') %}
+    <a href="{{ url_for('matrizes', insersor=filtro_insersor, q=busca, pendente=filtro_pendente) }}"
+       style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:{% if t_ativo %}600{% else %}400{% endif %};
+              text-decoration:none;border:1.5px solid {% if t_ativo %}var(--accent){% else %}var(--border){% endif %};
+              background:{% if t_ativo %}var(--accent){% else %}var(--card-bg){% endif %};
+              color:{% if t_ativo %}#fff{% else %}var(--text){% endif %}">
+      {% if t_ativo %}&#10003;&nbsp;{% endif %}Todos
+    </a>
+    {% for t in tipos_disponiveis %}
+    {% set t_sel = (filtro_tipo == t) %}
+    {% set pend_t = pendentes_por_tipo.get(t, 0) %}
+    <a href="{{ url_for('matrizes', tipo=t, insersor=filtro_insersor, q=busca, pendente=filtro_pendente) }}"
+       style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:{% if t_sel %}600{% else %}400{% endif %};
+              text-decoration:none;
+              border:1.5px solid {% if t_sel %}var(--accent){% elif pend_t > 0 %}#f59e0b{% else %}var(--border){% endif %};
+              background:{% if t_sel %}var(--accent){% elif pend_t > 0 %}rgba(251,191,36,.12){% else %}var(--card-bg){% endif %};
+              color:{% if t_sel %}#fff{% elif pend_t > 0 %}#92400e{% else %}var(--text){% endif %}">
+      {% if t_sel %}&#10003;&nbsp;{% endif %}{{ tipo_labels.get(t, t) }}
+      {% if pend_t > 0 and not t_sel %}
+      <span style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;margin-left:3px">{{ pend_t }}</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- FILTROS BUSCA + INSERSOR -->
+  <form method="GET" style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <div class="search-bar" style="flex:1;min-width:220px">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" name="q" value="{{ busca }}" placeholder="Buscar curso ou disciplina..." autocomplete="off">
+    </div>
+    <input type="hidden" name="tipo" value="{{ filtro_tipo }}">
+    <select name="insersor" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os insersores</option>
+      {% for ins in insersores_disponiveis %}
+      <option value="{{ ins }}" {% if filtro_insersor==ins %}selected{% endif %}>{{ ins }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="pendente" value="{{ filtro_pendente }}">
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    {% if busca or filtro_tipo or filtro_insersor or filtro_pendente %}
+    <a href="{{ url_for('matrizes') }}" class="btn btn-secondary">✕ Limpar</a>
+    {% endif %}
+  </form>
+
+  {% if not course_data %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+      Nenhum curso com matriz encontrado{% if busca %} para "{{ busca }}"{% endif %}.
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card" style="overflow:hidden">
+    {% for item in course_data %}
+    {% set c = item.course %}
+    {% set discs = item.disciplines %}
+    {% set total_ch = item.total_ch %}
+    {% set ok_count = item.ok_count %}
+    {% set is_complete = ok_count == discs|length and discs|length > 0 %}
+    {% set expand = busca|length > 0 %}
+
+    <!-- LINHA COLAPSÁVEL DO CURSO -->
+    <div class="matrix-accordion-item" style="border-bottom:1px solid var(--border);{% if not is_complete %}background:rgba(251,191,36,.13){% endif %}">
+      <button type="button"
+              onclick="toggleAccordion({{ loop.index0 }})"
+              style="width:100%;background:none;border:none;cursor:pointer;padding:14px 16px;
+                     display:flex;align-items:center;gap:12px;text-align:left;
+                     color:var(--text);font-family:inherit">
+        <!-- chevron -->
+        <svg id="chevron-{{ loop.index0 }}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" style="width:14px;height:14px;flex-shrink:0;transition:transform .2s;
+             {% if expand %}transform:rotate(90deg){% endif %}">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+
+        <!-- nome + badges -->
+        <div style="flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+          <span style="font-weight:600;font-size:14px">{{ c.nome }}</span>
+          <span class="badge badge-{{ c.tipo }}" style="font-size:10px">{{ tipo_labels.get(c.tipo, c.tipo) }}</span>
+          <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status|replace('_',' ')|title }}</span>
+          {% if total_ch > 0 %}
+          <span style="font-size:11px;color:var(--text-muted);font-weight:500">{{ total_ch }}h</span>
+          {% elif c.horas %}
+          <span style="font-size:11px;color:var(--text-muted);font-weight:500">{{ c.horas }}</span>
+          {% endif %}
+          <span style="font-size:11px;color:var(--text-muted)">· {{ discs|length }} disc.</span>
+          {% if c.insersor %}
+          <span style="font-size:11px;color:var(--text-muted);border-left:1px solid var(--border);padding-left:8px">
+            👤 {{ c.insersor }}
+          </span>
+          {% endif %}
+        </div>
+
+        <!-- progresso + link -->
+        <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+          <span style="font-size:12px;font-weight:700;
+                       color:{% if is_complete %}#22c55e{% else %}#f59e0b{% endif %}">
+            {{ ok_count }}/{{ discs|length }}{% if is_complete %} ✓{% endif %}
+          </span>
+          {% if session.role in ['admin','editor'] %}
+          <a href="{{ url_for('curso_editar', id=c.id, **{'from': 'matrizes'}) }}"
+             onclick="event.stopPropagation()"
+             class="btn btn-sm btn-secondary" style="padding:3px 8px;font-size:11px">Editar</a>
+          {% endif %}
+          <a href="{{ url_for('curso_detalhe', id=c.id, **{'from': 'matrizes'}) }}"
+             onclick="event.stopPropagation()"
+             style="font-size:11px;color:var(--primary)">Ver curso →</a>
+        </div>
+      </button>
+
+      <!-- MATRIZ EXPANDIDA -->
+      <div id="accordion-{{ loop.index0 }}"
+           style="{% if not expand %}display:none;{% endif %}overflow:hidden">
+        <div class="matrix-wrap" style="border:none;border-radius:0;border-top:1px solid var(--border)">
+          <div class="matrix-row header">
+            <div>Módulo</div><div>#</div><div>Disciplina</div><div>CH</div><div>Professor</div><div>Tit.</div>
+            <div title="Inserida na plataforma" style="text-align:center">Plataforma</div>
+          </div>
+          {% for d in discs %}
+          <div class="matrix-row"
+               style="{% if d.plataforma_ok %}background:rgba(34,197,94,.07){% else %}background:rgba(251,191,36,.12){% endif %}">
+            <div style="font-size:12px;color:var(--text-muted)">{{ d.modulo or '—' }}</div>
+            <div style="font-size:12px">{{ d.ordem }}</div>
+            <div style="font-weight:500">{{ d.nome }}</div>
+            <div style="font-size:12px">{{ d.carga or '—' }}</div>
+            <div style="font-size:12px;color:var(--text-muted)">{{ d.professor or '—' }}</div>
+            <div style="font-size:11px;color:var(--text-muted)">{{ d.titulacao or '—' }}</div>
+            <div style="text-align:center">
+              <span title="{{ 'Concluída em ' + d.plataforma_em.strftime('%d/%m/%Y') if d.plataforma_ok and d.plataforma_em else 'Pendente' }}"
+                    style="font-size:18px;color:{% if d.plataforma_ok %}#22c55e{% else %}#f59e0b{% endif %}">
+                {% if d.plataforma_ok %}&#10003;{% else %}&#9675;{% endif %}
+              </span>
+            </div>
+          </div>
+          {% endfor %}
+          <div style="padding:8px 12px;font-size:12px;color:var(--text-muted);display:flex;gap:16px;align-items:center">
+            <span>{{ ok_count }}/{{ discs|length }} inseridas na plataforma
+            {% if is_complete %} — <span style="color:#22c55e;font-weight:600">Completo!</span>{% endif %}
+            </span>
+            {% if total_ch > 0 %}
+            <span style="margin-left:auto">Total: <strong>{{ total_ch }}h</strong></span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+function toggleAccordion(idx) {
+  const body = document.getElementById('accordion-' + idx);
+  const chevron = document.getElementById('chevron-' + idx);
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  chevron.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+function marcarTudo() {
+  const total = document.querySelectorAll('.matrix-accordion-item').length;
+  const tipo = new URLSearchParams(window.location.search).get('tipo') || '';
+  const status = new URLSearchParams(window.location.search).get('status') || '';
+  const insersor = new URLSearchParams(window.location.search).get('insersor') || '';
+  const pendente = new URLSearchParams(window.location.search).get('pendente') || '';
+  let filtroDesc = tipo ? ' do tipo "' + tipo + '"' : '';
+  if (insersor) filtroDesc += ' do insersor "' + insersor + '"';
+  if (pendente) filtroDesc += ' (somente pendentes)';
+  if (!filtroDesc) filtroDesc = ' de TODOS os cursos';
+  if (!confirm('Marcar todas as disciplinas' + filtroDesc + ' como concluídas na plataforma?\n\n' +
+               total + ' curso(s) visível(is). Confirmar?')) return;
+  fetch('/matrizes/marcar-tudo', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify({marcar: true, tipo: tipo, status: status, insersor: insersor, pendente: pendente})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) { alert(data.total + ' disciplinas marcadas como concluídas!'); location.reload(); }
+  });
+}
+</script>
+{% endblock %}

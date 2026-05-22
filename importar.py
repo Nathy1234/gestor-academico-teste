@@ -89,6 +89,10 @@ with app.app_context():
             for row in ws.iter_rows(min_row=3, values_only=True):
                 if not is_numero(row[0]):
                     continue  # pula linhas de matriz de disciplinas e subtítulos
+                # Linha de disciplina da matriz: col[2] = "38h" (CH), não área
+                area_val = str(row[2] or '').strip()
+                if area_val.endswith('h') and area_val[:-1].isdigit():
+                    continue
                 nome  = row[1]
                 area  = row[2]
                 horas = limpar_horas(row[3])

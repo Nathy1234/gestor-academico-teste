@@ -5,6 +5,16 @@ from functools import wraps
 import hashlib, os, shutil, json, threading, time, io, zipfile
 
 app = Flask(__name__)
+
+AREAS_VALIDAS = [
+    'EDUCAÇÃO', 'SAÚDE', 'NEGÓCIOS', 'TECNOLOGIA',
+    'CRIATIVIDADE', 'GASTRONOMIA', 'EVENTO',
+]
+TIPOS_CURSO = [
+    'pos', 'profissionalizante', 'rapido', 'pacote', 'terceiros',
+    'evento', 'pratica_conectada', 'pratica_estagio',
+    'projeto_ambiental', 'ggbr', 'integra_edu',
+]
 app.config['SECRET_KEY'] = 'inova-carreira-secret-2024'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///inova.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -21,7 +31,6 @@ class User(db.Model):
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_perm(self, key):
-        """Retorna True se o usuario tem a permissao. Admin tem tudo."""
         if self.role == 'admin':
             return True
         try:
@@ -30,6 +39,12 @@ class User(db.Model):
             p = {}
         return p.get(key, False)
 
+    def _p(self):
+        try:
+            return json.loads(self.permissoes or '{}')
+        except:
+            return {}
+
     def can_edit(self):
         return self.role in ('admin', 'editor') or self.get_perm('cursos_editar')
 
@@ -37,10 +52,19 @@ class User(db.Model):
         return self.role == 'admin' or self.get_perm('cursos_excluir')
 
     def can_manage_cupons(self):
-        return self.role in ('admin', 'editor') or self.get_perm('cupons_gerenciar')
+        if self.role == 'admin': return True
+        if self._p().get('block_cupons'): return False
+        return self.role == 'editor' or self._p().get('cupons_gerenciar', False)
 
     def can_manage_reembolsos(self):
-        return self.role in ('admin', 'editor') or self.get_perm('reembolsos_gerenciar')
+        if self.role == 'admin': return True
+        if self._p().get('block_reembolsos'): return False
+        return self.role == 'editor' or self._p().get('reembolsos_gerenciar', False)
+
+    def can_view_historico(self):
+        if self.role == 'admin': return True
+        if self._p().get('block_historico'): return False
+        return self.role == 'editor' or self._p().get('historico_ver', False)
 
     def can_manage_usuarios(self):
         return self.role == 'admin' or self.get_perm('usuarios_gerenciar')
@@ -59,11 +83,12 @@ class Course(db.Model):
     link_venda    = db.Column(db.Text)
     descricao     = db.Column(db.Text)
     link_imagem   = db.Column(db.Text)
-    insersor      = db.Column(db.String(100))
+    insersor      = db.Column(db.Text)  # pode ser comma-separated para múltiplos insersores
     obs           = db.Column(db.Text)
     status        = db.Column(db.String(30), default='ativo')  # ativo, descontinuado, em_edicao, oculto
     cupom         = db.Column(db.String(100))
     dono          = db.Column(db.Text)        # para cursos terceiros
+    ano           = db.Column(db.String(10))  # ano de criação/edição do curso
     extra_data    = db.Column(db.Text)        # JSON com dados extras (matriz, disciplinas, etc.)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -77,8 +102,10 @@ class Discipline(db.Model):
     nome      = db.Column(db.String(300), nullable=False)
     carga     = db.Column(db.String(20))
     professor = db.Column(db.String(200))
-    cod_moodle= db.Column(db.String(50))
-    titulacao = db.Column(db.String(50))
+    cod_moodle    = db.Column(db.String(50))
+    titulacao     = db.Column(db.String(50))
+    plataforma_ok = db.Column(db.Boolean, default=False)
+    plataforma_em = db.Column(db.DateTime)
 
 class AuditLog(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
@@ -120,6 +147,19 @@ class Refund(db.Model):
     curso_excluido   = db.Column(db.Date)   # Data exclusão do curso
     obs              = db.Column(db.Text)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def pendencia(self):
+        """Retorna o estágio pendente atual do reembolso."""
+        if not self.solicitacao_1:
+            return ('sem_solic1', 'Aguarda 1ª Solicitação')
+        if not self.solicitacao_2:
+            return ('sem_solic2', 'Aguarda 2ª Solicitação')
+        if not self.data_aprovacao:
+            return ('sem_aprovacao', 'Aguarda Aprovação')
+        if not self.curso_excluido:
+            return ('sem_exclusao', 'Aguarda Exclusão do Curso')
+        return ('concluido', 'Concluído')
 
 class BackupRecord(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
@@ -164,6 +204,21 @@ def editor_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def perm_check(check_fn_name):
+    """Decorator que verifica uma permissão específica via método do User model."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            u = User.query.get(session['user_id'])
+            if not u or not getattr(u, check_fn_name)():
+                flash('Você não tem permissão para acessar esta seção.', 'danger')
+                return redirect(url_for('dashboard'))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
 def log_action(user_id, username, action, entity, entity_id, detail=''):
     entry = AuditLog(user_id=user_id, username=username, action=action,
                      entity=entity, entity_id=entity_id, detail=detail)
@@ -202,6 +257,55 @@ def backup_scheduler():
 def inject_now():
     return {'now': datetime.now}
 
+@app.context_processor
+def inject_notificacoes():
+    if 'user_id' not in session:
+        return {}
+    u = User.query.get(session['user_id'])
+    if not u:
+        return {}
+    # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
+    q = db.session.query(Discipline, Course)\
+        .join(Course, Discipline.course_id == Course.id)\
+        .filter(Discipline.plataforma_ok == False)\
+        .filter(Course.status.notin_(['descontinuado']))\
+        .filter(Course.insersor != None, Course.insersor != '')
+    if u.role != 'admin':
+        from sqlalchemy import or_ as sql_or
+        un = u.username
+        q = q.filter(sql_or(
+            Course.insersor == un,
+            Course.insersor.like(f'{un},%'),
+            Course.insersor.like(f'%,{un}'),
+            Course.insersor.like(f'%,{un},%'),
+        ))
+    pendentes = q.order_by(Course.nome, Discipline.ordem).all()
+
+    by_course = {}
+    for disc, curso in pendentes:
+        if curso.id not in by_course:
+            by_course[curso.id] = {'course': curso, 'discs': [], 'total': 0}
+        by_course[curso.id]['discs'].append(disc)
+        by_course[curso.id]['total'] += 1
+
+    notif_list = sorted(by_course.values(), key=lambda x: x['total'], reverse=True)[:8]
+
+    # Para admin: cursos marcados como finalizado aguardando publicação
+    admin_finalizado = []
+    if u.role == 'admin':
+        admin_finalizado = Course.query.filter_by(status='finalizado')\
+            .order_by(Course.updated_at.desc()).limit(15).all()
+
+    return {
+        'notif_count': len(pendentes),
+        'notif_list': notif_list,
+        'admin_finalizado': admin_finalizado,
+        'admin_finalizado_count': len(admin_finalizado),
+        'can_cupons': u.can_manage_cupons(),
+        'can_reembolsos': u.can_manage_reembolsos(),
+        'can_historico': u.can_view_historico(),
+    }
+
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -232,36 +336,183 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    total     = Course.query.count()
-    ativos    = Course.query.filter_by(status='ativo').count()
-    em_edicao = Course.query.filter_by(status='em_edicao').count()
-    desc      = Course.query.filter_by(status='descontinuado').count()
+    filtro_ins = request.args.get('insersor', '')
+    q_base = Course.query
+    if filtro_ins:
+        from sqlalchemy import or_ as sql_or
+        q_base = q_base.filter(sql_or(
+            Course.insersor == filtro_ins,
+            Course.insersor.like(f'{filtro_ins},%'),
+            Course.insersor.like(f'%,{filtro_ins}'),
+            Course.insersor.like(f'%,{filtro_ins},%'),
+        ))
+
+    total     = q_base.count()
+    ativos    = q_base.filter_by(status='ativo').count()
+    em_edicao = q_base.filter_by(status='em_edicao').count()
+    desc      = q_base.filter_by(status='descontinuado').count()
+    externos  = q_base.filter_by(status='externo').count()
+    ocultos   = q_base.filter_by(status='oculto').count()
+    finalizado = q_base.filter_by(status='finalizado').count()
+
     por_tipo  = db.session.query(Course.tipo, db.func.count(Course.id))\
                           .group_by(Course.tipo).all()
     recentes  = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(10).all()
     ultimo_bk = BackupRecord.query.order_by(BackupRecord.created_at.desc()).first()
+
+    # Pendências de plataforma por insersor — todos os insersores registrados
+    raw_pend = db.session.query(Course.insersor, db.func.count(Discipline.id))\
+        .join(Discipline, Discipline.course_id == Course.id)\
+        .filter(Discipline.plataforma_ok == False)\
+        .filter(Course.insersor != None, Course.insersor != '')\
+        .group_by(Course.insersor).all()
+    pend_map = {}
+    for ins_field, qtd in raw_pend:
+        for nome in ins_field.split(','):
+            nome = nome.strip()
+            if nome:
+                pend_map[nome] = pend_map.get(nome, 0) + qtd
+    # Garante que todos os usuários cadastrados apareçam, mesmo sem pendência
+    all_users = User.query.order_by(User.username).all()
+    for u_obj in all_users:
+        if u_obj.username not in pend_map:
+            pend_map[u_obj.username] = 0
+    pend_por_ins = sorted(pend_map.items(), key=lambda x: x[1], reverse=True)
+
+    insersores = [u.username for u in User.query.order_by(User.username).all()]
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
-        por_tipo=por_tipo, recentes=recentes, ultimo_bk=ultimo_bk)
+        externos=externos, ocultos=ocultos, finalizado=finalizado,
+        por_tipo=por_tipo, recentes=recentes,
+        ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
+        insersores=insersores, filtro_ins=filtro_ins)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
 @app.route('/cursos')
 @login_required
 def cursos():
-    tipo   = request.args.get('tipo','')
-    area   = request.args.get('area','')
-    status = request.args.get('status','')
-    busca  = request.args.get('q','')
+    tipo     = request.args.get('tipo','')
+    area     = request.args.get('area','')
+    status   = request.args.get('status','')
+    busca    = request.args.get('q','')
+    insersor = request.args.get('insersor','')
+    lista = _build_cursos_query(tipo, area, status, busca, insersor)
+    areas  = AREAS_VALIDAS
+    insersores = [u.username for u in User.query.order_by(User.username).all()]
+    return render_template('cursos.html', cursos=lista, areas=areas, insersores=insersores,
+                           filtro_tipo=tipo, filtro_area=area, filtro_status=status,
+                           filtro_insersor=insersor, busca=busca)
+
+def _build_cursos_query(tipo, area, status, busca, insersor):
+    from sqlalchemy import or_ as sql_or
     q = Course.query
-    if tipo:   q = q.filter_by(tipo=tipo)
-    if area:   q = q.filter_by(area=area)
-    if status: q = q.filter_by(status=status)
-    if busca:  q = q.filter(Course.nome.ilike(f'%{busca}%'))
-    cursos = q.order_by(Course.nome).all()
-    areas  = [r[0] for r in db.session.query(Course.area).distinct().all() if r[0]]
-    return render_template('cursos.html', cursos=cursos, areas=areas,
-                           filtro_tipo=tipo, filtro_area=area, filtro_status=status, busca=busca)
+    if tipo:     q = q.filter_by(tipo=tipo)
+    if area:     q = q.filter_by(area=area)
+    if status:   q = q.filter_by(status=status)
+    if insersor:
+        q = q.filter(sql_or(
+            Course.insersor == insersor,
+            Course.insersor.like(f'{insersor},%'),
+            Course.insersor.like(f'%,{insersor}'),
+            Course.insersor.like(f'%,{insersor},%'),
+        ))
+    if busca:    q = q.filter(Course.nome.ilike(f'%{busca}%'))
+    return q.order_by(Course.nome).all()
+
+@app.route('/cursos/exportar-excel')
+@login_required
+def cursos_exportar_excel():
+    import openpyxl, re
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    tipo     = request.args.get('tipo','')
+    area     = request.args.get('area','')
+    status   = request.args.get('status','')
+    busca    = request.args.get('q','')
+    insersor = request.args.get('insersor','')
+    lista = _build_cursos_query(tipo, area, status, busca, insersor)
+
+    TIPO_LABELS = {
+        'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido',
+        'pacote':'Pacote','terceiros':'Terceiros','evento':'Evento',
+        'pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio',
+        'projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu',
+    }
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Cursos'
+
+    thin  = Side(style='thin', color='CBD5E1')
+    bdr   = Border(left=thin, right=thin, top=thin, bottom=thin)
+    wrap  = Alignment(wrap_text=True, vertical='top')
+    center = Alignment(horizontal='center', vertical='center')
+    hfill = PatternFill('solid', fgColor='6366F1')
+    hfont = Font(bold=True, color='FFFFFF', size=10)
+
+    STATUS_COLORS = {
+        'ativo':'DCFCE7','em_edicao':'FEF9C3','descontinuado':'F1F5F9',
+        'oculto':'EDE9FE','finalizado':'DBEAFE','externo':'FFEDD5',
+    }
+
+    headers = ['Nome do Curso','Tipo','Área','Status','CH','Duração','Valor (R$)',
+               'Insersor','Cupom','Ano','Dono/Professor','Link Venda','Obs']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=col, value=h)
+        c.fill = hfill; c.font = hfont; c.alignment = center; c.border = bdr
+    ws.row_dimensions[1].height = 28
+
+    for i, curso in enumerate(lista, 2):
+        sc = STATUS_COLORS.get(curso.status, 'FFFFFF')
+        row_fill = PatternFill('solid', fgColor=sc)
+        vals = [
+            curso.nome,
+            TIPO_LABELS.get(curso.tipo, curso.tipo),
+            curso.area or '',
+            curso.status.replace('_',' ').title(),
+            curso.horas or '',
+            curso.meses or '',
+            curso.valor or '',
+            curso.insersor or '',
+            curso.cupom or '',
+            curso.ano or '',
+            curso.dono or '',
+            curso.link_venda or '',
+            curso.obs or '',
+        ]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=i, column=col, value=val)
+            cell.border = bdr; cell.alignment = wrap; cell.fill = row_fill
+
+    widths = [55,18,12,14,8,10,10,20,14,6,18,45,30]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = 'A2'
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    from datetime import datetime as dt
+    fname = f'cursos_inova_{dt.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=fname)
+
+@app.route('/cursos/relatorio')
+@login_required
+def cursos_relatorio():
+    tipo     = request.args.get('tipo','')
+    area     = request.args.get('area','')
+    status   = request.args.get('status','')
+    busca    = request.args.get('q','')
+    insersor = request.args.get('insersor','')
+    lista = _build_cursos_query(tipo, area, status, busca, insersor)
+    insersores = [u.username for u in User.query.order_by(User.username).all()]
+    return render_template('cursos_relatorio.html', cursos=lista,
+                           filtro_tipo=tipo, filtro_area=area, filtro_status=status,
+                           filtro_insersor=insersor, busca=busca,
+                           areas=AREAS_VALIDAS, insersores=insersores,
+                           now=datetime.utcnow())
 
 @app.route('/cursos/novo', methods=['GET','POST'])
 @editor_required
@@ -276,9 +527,9 @@ def curso_novo():
             nome=d['nome'], tipo=d['tipo'], area=d.get('area',''),
             horas=d.get('horas',''), meses=d.get('meses',''), valor=d.get('valor',''),
             link_venda=d.get('link_venda',''), descricao=d.get('descricao',''),
-            link_imagem=d.get('link_imagem',''), insersor=session['username'],
+            link_imagem=d.get('link_imagem',''), insersor=','.join(d.getlist('insersores')) or session['username'],
             obs=d.get('obs',''), status=d.get('status','em_edicao'),
-            cupom=d.get('cupom',''), dono=d.get('dono',''),
+            ano=d.get('ano',''), cupom=d.get('cupom',''), dono=d.get('dono',''),
             extra_data=json.dumps(extra, ensure_ascii=False),
             created_by=session['user_id']
         )
@@ -296,8 +547,8 @@ def curso_novo():
         log_action(session['user_id'], session['username'], 'criar', 'course', c.id, c.nome)
         flash('Curso criado com sucesso!', 'success')
         return redirect(url_for('curso_detalhe', id=c.id))
-    tipos = ['pos','profissionalizante','rapido','pacote','terceiros','evento','pratica_conectada','pratica_estagio','projeto_ambiental','ggbr','integra_edu']
-    return render_template('curso_form.html', curso=None, tipos=tipos)
+    usuarios = User.query.order_by(User.username).all()
+    return render_template('curso_form.html', curso=None, tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
 
 @app.route('/cursos/<int:id>')
 @login_required
@@ -320,25 +571,48 @@ def curso_editar(id):
         c.horas=d.get('horas',''); c.meses=d.get('meses',''); c.valor=d.get('valor','')
         c.link_venda=d.get('link_venda',''); c.descricao=d.get('descricao','')
         c.link_imagem=d.get('link_imagem',''); c.obs=d.get('obs','')
-        c.status=d.get('status',c.status); c.cupom=d.get('cupom','')
-        c.dono=d.get('dono',''); c.updated_at=datetime.utcnow()
-        # Update disciplines
+        novo_status = d.get('status', c.status)
+        # Somente admin pode publicar (ativo); colaboradores podem marcar como finalizado no máximo
+        if novo_status == 'ativo' and session.get('role') != 'admin':
+            novo_status = c.status
+        c.status = novo_status
+        c.cupom=d.get('cupom','')
+        c.dono=d.get('dono',''); c.ano=d.get('ano',''); c.updated_at=datetime.utcnow()
+        ins_list = d.getlist('insersores')
+        if ins_list: c.insersor = ','.join(ins_list)
+        # Update disciplines — preserva plataforma_ok/plataforma_em por nome da disciplina
         if d.get('disciplinas_json') is not None:
+            discs_novas = json.loads(d.get('disciplinas_json','[]') or '[]')
+            # Mapa: nome normalizado → disciplina existente (para preservar status da plataforma)
+            existentes = {ex.nome.strip().lower(): ex
+                         for ex in Discipline.query.filter_by(course_id=id).all()}
             Discipline.query.filter_by(course_id=id).delete()
-            discs = json.loads(d.get('disciplinas_json','[]') or '[]')
-            for i, disc in enumerate(discs):
-                dd = Discipline(course_id=id, modulo=disc.get('modulo',''),
-                               ordem=i+1, nome=disc.get('nome',''),
-                               carga=disc.get('carga',''), professor=disc.get('professor',''),
-                               cod_moodle=disc.get('cod_moodle',''), titulacao=disc.get('titulacao',''))
+            for i, disc in enumerate(discs_novas):
+                nome = disc.get('nome','')
+                anterior = existentes.get(nome.strip().lower())
+                dd = Discipline(
+                    course_id=id,
+                    modulo=disc.get('modulo',''),
+                    ordem=i+1,
+                    nome=nome,
+                    carga=disc.get('carga',''),
+                    professor=disc.get('professor',''),
+                    cod_moodle=disc.get('cod_moodle',''),
+                    titulacao=disc.get('titulacao',''),
+                    plataforma_ok=anterior.plataforma_ok if anterior else False,
+                    plataforma_em=anterior.plataforma_em if anterior else None
+                )
                 db.session.add(dd)
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'course', id, f'{old_nome} → {c.nome}')
         flash('Curso atualizado!', 'success')
+        if d.get('from_page') == 'matrizes':
+            return redirect(url_for('matrizes'))
         return redirect(url_for('curso_detalhe', id=id))
     disc = Discipline.query.filter_by(course_id=id).order_by(Discipline.ordem).all()
     tipos = ['pos','profissionalizante','rapido','pacote','terceiros','evento','pratica_conectada','pratica_estagio','projeto_ambiental','ggbr','integra_edu']
-    return render_template('curso_form.html', curso=c, disc=disc, tipos=tipos)
+    usuarios = User.query.order_by(User.username).all()
+    return render_template('curso_form.html', curso=c, disc=disc, tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
 
 @app.route('/cursos/<int:id>/arquivar', methods=['POST'])
 @editor_required
@@ -376,7 +650,7 @@ def api_busca():
 # ─── CUPONS ────────────────────────────────────────────────────────────────────
 
 @app.route('/cupons')
-@login_required
+@perm_check('can_manage_cupons')
 def cupons():
     cupons = Coupon.query.order_by(Coupon.created_at.desc()).all()
     return render_template('cupons.html', cupons=cupons)
@@ -429,10 +703,40 @@ def cupom_editar(id):
 # ─── REEMBOLSOS ────────────────────────────────────────────────────────────────
 
 @app.route('/reembolsos')
-@login_required
+@perm_check('can_manage_reembolsos')
 def reembolsos():
-    items = Refund.query.order_by(Refund.created_at.desc()).all()
-    return render_template('reembolsos.html', items=items)
+    busca      = request.args.get('q', '').strip()
+    f_colab    = request.args.get('colab', '').strip()
+    f_cat      = request.args.get('categoria', '').strip()
+    f_pend     = request.args.get('pendencia', '').strip()
+
+    q = Refund.query
+    if busca:
+        q = q.filter(db.or_(
+            Refund.nome_aluno.ilike(f'%{busca}%'),
+            Refund.nome_curso.ilike(f'%{busca}%')
+        ))
+    if f_colab:
+        q = q.filter(Refund.colab.ilike(f'%{f_colab}%'))
+    if f_cat:
+        q = q.filter(Refund.categoria.ilike(f'%{f_cat}%'))
+
+    items = q.order_by(Refund.created_at.desc()).all()
+
+    # Filtro por pendência (feito em Python pois usa property)
+    if f_pend:
+        items = [r for r in items if r.pendencia[0] == f_pend]
+
+    contagem = {'sem_solic1': 0, 'sem_solic2': 0, 'sem_aprovacao': 0, 'sem_exclusao': 0, 'concluido': 0}
+    for r in Refund.query.all():
+        contagem[r.pendencia[0]] += 1
+
+    colabs = sorted({r.colab for r in Refund.query.all() if r.colab})
+    cats   = sorted({r.categoria for r in Refund.query.all() if r.categoria})
+
+    return render_template('reembolsos.html', items=items, contagem=contagem,
+                           busca=busca, f_colab=f_colab, f_cat=f_cat, f_pend=f_pend,
+                           colabs=colabs, cats=cats)
 
 @app.route('/reembolsos/novo', methods=['GET','POST'])
 @editor_required
@@ -505,10 +809,335 @@ def _refund_from_form(d):
         obs=d.get('obs','')
     )
 
+# ─── MATRIZES CURRICULARES ─────────────────────────────────────────────────────
+
+@app.route('/disciplina/<int:disc_id>/toggle', methods=['POST'])
+@login_required
+def disciplina_toggle(disc_id):
+    d = Discipline.query.get_or_404(disc_id)
+    d.plataforma_ok = not d.plataforma_ok
+    d.plataforma_em = datetime.utcnow() if d.plataforma_ok else None
+    db.session.commit()
+    return jsonify({'ok': d.plataforma_ok, 'disc_id': disc_id})
+
+@app.route('/curso/<int:course_id>/disciplinas/marcar-todas', methods=['POST'])
+@login_required
+def disciplinas_marcar_todas(course_id):
+    marcar = request.json.get('marcar', True)
+    discs = Discipline.query.filter_by(course_id=course_id).all()
+    now = datetime.utcnow()
+    for d in discs:
+        d.plataforma_ok = marcar
+        d.plataforma_em = now if marcar else None
+    db.session.commit()
+    return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
+
+@app.route('/matrizes')
+@login_required
+def matrizes():
+    busca = request.args.get('q', '').strip()
+    filtro_tipo = request.args.get('tipo', '')
+    filtro_insersor = request.args.get('insersor', '').strip()
+    filtro_pendente = request.args.get('pendente', '')
+
+    # Apenas cursos que têm pelo menos uma disciplina
+    from sqlalchemy import exists as sql_exists, or_
+    q = Course.query.filter(
+        sql_exists().where(Discipline.course_id == Course.id)
+    )
+    if filtro_tipo:
+        q = q.filter_by(tipo=filtro_tipo)
+    todos = q.order_by(Course.tipo, Course.nome).all()
+
+    # Filtrar por busca (nome do curso OU nome da disciplina)
+    if busca:
+        busca_low = busca.lower()
+        disc_cids = {r[0] for r in db.session.query(Discipline.course_id)
+                     .filter(Discipline.nome.ilike(f'%{busca}%')).all()}
+        todos = [c for c in todos if busca_low in c.nome.lower() or c.id in disc_cids]
+
+    # Filtrar por insersor (campo pode ser comma-separated)
+    if filtro_insersor:
+        fi_low = filtro_insersor.lower()
+        todos = [c for c in todos if c.insersor and
+                 any(fi_low == p.strip().lower() for p in c.insersor.split(','))]
+
+    def _parse_ch(val):
+        if not val:
+            return 0
+        import re
+        m = re.search(r'\d+', str(val))
+        return int(m.group()) if m else 0
+
+    course_data = []
+    for c in todos:
+        discs = Discipline.query.filter_by(course_id=c.id).order_by(Discipline.ordem).all()
+        if busca and busca.lower() not in c.nome.lower():
+            discs = [d for d in discs if busca.lower() in d.nome.lower()]
+        total_ch = sum(_parse_ch(d.carga) for d in discs)
+        ok_count = sum(1 for d in discs if d.plataforma_ok)
+        course_data.append({'course': c, 'disciplines': discs, 'total_ch': total_ch, 'ok_count': ok_count})
+
+    # Filtrar apenas pendentes (alguma disciplina não concluída)
+    if filtro_pendente == '1':
+        course_data = [item for item in course_data
+                       if item['ok_count'] < len(item['disciplines'])]
+
+    tipos_disponiveis = [r[0] for r in db.session.query(Course.tipo).join(
+        Discipline, Discipline.course_id == Course.id).distinct().all()]
+
+    # Lista de insersores para o filtro (expandindo comma-separated)
+    ins_set = set()
+    for c in Course.query.filter(
+        sql_exists().where(Discipline.course_id == Course.id)
+    ).all():
+        if c.insersor:
+            for p in c.insersor.split(','):
+                p = p.strip()
+                if p:
+                    ins_set.add(p)
+    insersores_disponiveis = sorted(ins_set)
+
+    total_pendentes = sum(1 for item in course_data
+                          if item['ok_count'] < len(item['disciplines']))
+
+    # Pendentes por tipo (apenas cursos com disciplinas, sem filtro atual)
+    todos_para_chips = Course.query.filter(
+        sql_exists().where(Discipline.course_id == Course.id)
+    ).all()
+    pendentes_por_tipo = {}
+    for c in todos_para_chips:
+        discs_c = Discipline.query.filter_by(course_id=c.id).all()
+        ok_c = sum(1 for d in discs_c if d.plataforma_ok)
+        if ok_c < len(discs_c):
+            pendentes_por_tipo[c.tipo] = pendentes_por_tipo.get(c.tipo, 0) + 1
+
+    return render_template('matrizes.html', course_data=course_data, busca=busca,
+                           filtro_tipo=filtro_tipo, tipos_disponiveis=tipos_disponiveis,
+                           filtro_insersor=filtro_insersor, filtro_pendente=filtro_pendente,
+                           insersores_disponiveis=insersores_disponiveis,
+                           total_pendentes=total_pendentes,
+                           pendentes_por_tipo=pendentes_por_tipo)
+
+@app.route('/matrizes/marcar-tudo', methods=['POST'])
+@login_required
+def matrizes_marcar_tudo():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Acesso negado'}), 403
+    data = request.json or {}
+    marcar = data.get('marcar', True)
+    filtro_tipo = data.get('tipo', '')
+    filtro_status = data.get('status', '')
+    filtro_insersor = data.get('insersor', '').strip()
+    now = datetime.utcnow()
+    q = Course.query
+    if filtro_tipo:
+        q = q.filter_by(tipo=filtro_tipo)
+    if filtro_status:
+        q = q.filter_by(status=filtro_status)
+    cursos = q.all()
+    if filtro_insersor:
+        fi_low = filtro_insersor.lower()
+        cursos = [c for c in cursos if c.insersor and
+                  any(fi_low == p.strip().lower() for p in c.insersor.split(','))]
+    course_ids = [c.id for c in cursos]
+    discs = Discipline.query.filter(Discipline.course_id.in_(course_ids)).all()
+    for d in discs:
+        d.plataforma_ok = marcar
+        d.plataforma_em = now if marcar else None
+    db.session.commit()
+    parts = []
+    if filtro_tipo: parts.append(f'tipo={filtro_tipo}')
+    if filtro_status: parts.append(f'status={filtro_status}')
+    if filtro_insersor: parts.append(f'insersor={filtro_insersor}')
+    filtro_desc = ' (' + ', '.join(parts) + ')' if parts else ' (todos)'
+    log_action(session['user_id'], session['username'],
+               'marcar_tudo' if marcar else 'desmarcar_tudo',
+               'discipline', None,
+               f'{"Marcou" if marcar else "Desmarcou"} {len(discs)} disciplinas{filtro_desc}')
+    return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
+
+@app.route('/matrizes/relatorio')
+@login_required
+def matrizes_relatorio():
+    filtro_tipo = request.args.get('tipo', '')
+    filtro_status = request.args.get('status', '')
+    from sqlalchemy import exists as sql_exists
+    import re
+    q = Course.query.filter(sql_exists().where(Discipline.course_id == Course.id))
+    if filtro_tipo:
+        q = q.filter_by(tipo=filtro_tipo)
+    if filtro_status:
+        q = q.filter_by(status=filtro_status)
+    todos = q.order_by(Course.tipo, Course.nome).all()
+
+    def _parse_ch(val):
+        if not val: return 0
+        m = re.search(r'\d+', str(val))
+        return int(m.group()) if m else 0
+
+    course_data = []
+    for c in todos:
+        discs = Discipline.query.filter_by(course_id=c.id).order_by(Discipline.ordem).all()
+        total_ch = sum(_parse_ch(d.carga) for d in discs)
+        course_data.append({'course': c, 'disciplines': discs, 'total_ch': total_ch})
+
+    tipos_disponiveis = [r[0] for r in db.session.query(Course.tipo).join(
+        Discipline, Discipline.course_id == Course.id).distinct().all()]
+    status_list = ['ativo', 'em_edicao', 'finalizado', 'descontinuado', 'oculto']
+
+    return render_template('matrizes_relatorio.html', course_data=course_data,
+                           filtro_tipo=filtro_tipo, filtro_status=filtro_status,
+                           tipos_disponiveis=tipos_disponiveis, status_list=status_list,
+                           now=datetime.utcnow())
+
+@app.route('/matrizes/exportar-excel')
+@login_required
+def matrizes_exportar_excel():
+    import openpyxl, re
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from sqlalchemy import exists as sql_exists
+
+    filtro_tipo   = request.args.get('tipo', '')
+    filtro_status = request.args.get('status', '')
+
+    q = Course.query.filter(sql_exists().where(Discipline.course_id == Course.id))
+    if filtro_tipo:   q = q.filter_by(tipo=filtro_tipo)
+    if filtro_status: q = q.filter_by(status=filtro_status)
+    todos = q.order_by(Course.tipo, Course.nome).all()
+
+    def _parse_ch(val):
+        if not val: return 0
+        m = re.search(r'\d+', str(val))
+        return int(m.group()) if m else 0
+
+    TIPO_LABELS = {
+        'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido',
+        'pacote':'Pacote','terceiros':'Terceiros','evento':'Evento',
+        'pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio',
+        'projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu',
+    }
+
+    wb = openpyxl.Workbook()
+
+    # ── Aba 1: Resumo por curso ─────────────────────────────────────────────
+    ws_res = wb.active
+    ws_res.title = 'Resumo'
+
+    hdr_fill   = PatternFill('solid', fgColor='6366F1')
+    hdr_font   = Font(bold=True, color='FFFFFF', size=10)
+    ok_fill    = PatternFill('solid', fgColor='DCFCE7')
+    pend_fill  = PatternFill('solid', fgColor='FEF9C3')
+    thin       = Side(style='thin', color='CBD5E1')
+    border     = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center     = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    wrap       = Alignment(wrap_text=True, vertical='top')
+
+    res_headers = ['Curso', 'Tipo', 'Área', 'Status', 'CH Total', 'Duração',
+                   'Valor (R$)', 'Insersor', 'Cupom', 'Ano', 'Link de Venda',
+                   'Total Disc.', 'Na Plataforma', 'Pendentes', '% Concluído']
+    for col, h in enumerate(res_headers, 1):
+        c = ws_res.cell(row=1, column=col, value=h)
+        c.fill = hdr_fill; c.font = hdr_font; c.alignment = center; c.border = border
+
+    ws_res.row_dimensions[1].height = 30
+
+    for row_idx, curso in enumerate(todos, 2):
+        discs = Discipline.query.filter_by(course_id=curso.id).order_by(Discipline.ordem).all()
+        total_ch  = sum(_parse_ch(d.carga) for d in discs)
+        ok_count  = sum(1 for d in discs if d.plataforma_ok)
+        pend      = len(discs) - ok_count
+        pct       = round(ok_count / len(discs) * 100) if discs else 0
+        values = [
+            curso.nome,
+            TIPO_LABELS.get(curso.tipo, curso.tipo),
+            curso.area or '',
+            curso.status.replace('_',' ').title(),
+            f'{total_ch}h' if total_ch else (curso.horas or ''),
+            curso.meses or '',
+            curso.valor or '',
+            curso.insersor or '',
+            curso.cupom or '',
+            curso.ano or '',
+            curso.link_venda or '',
+            len(discs), ok_count, pend,
+            f'{pct}%',
+        ]
+        row_fill = ok_fill if pct == 100 else (pend_fill if pct > 0 else None)
+        for col, val in enumerate(values, 1):
+            cell = ws_res.cell(row=row_idx, column=col, value=val)
+            cell.border = border
+            cell.alignment = wrap
+            if row_fill and col <= 11:
+                cell.fill = row_fill
+
+    # Column widths resumo
+    widths = [50, 18, 14, 14, 10, 10, 10, 20, 12, 8, 40, 10, 12, 10, 10]
+    for i, w in enumerate(widths, 1):
+        ws_res.column_dimensions[get_column_letter(i)].width = w
+
+    # Freeze header
+    ws_res.freeze_panes = 'A2'
+
+    # ── Aba 2: Matrizes completas ────────────────────────────────────────────
+    ws_mat = wb.create_sheet('Matrizes')
+
+    mat_headers = ['Curso', 'Tipo', 'Área', 'Status', 'Insersor',
+                   'Módulo', '#', 'Disciplina', 'CH', 'Professor', 'Titulação',
+                   'Plataforma', 'Data Inserção']
+    for col, h in enumerate(mat_headers, 1):
+        c = ws_mat.cell(row=1, column=col, value=h)
+        c.fill = hdr_fill; c.font = hdr_font; c.alignment = center; c.border = border
+    ws_mat.row_dimensions[1].height = 28
+
+    row_idx = 2
+    for curso in todos:
+        discs = Discipline.query.filter_by(course_id=curso.id).order_by(Discipline.ordem).all()
+        for d in discs:
+            values = [
+                curso.nome,
+                TIPO_LABELS.get(curso.tipo, curso.tipo),
+                curso.area or '',
+                curso.status.replace('_',' ').title(),
+                curso.insersor or '',
+                d.modulo or '',
+                d.ordem,
+                d.nome,
+                d.carga or '',
+                d.professor or '',
+                d.titulacao or '',
+                'Sim' if d.plataforma_ok else 'Pendente',
+                d.plataforma_em.strftime('%d/%m/%Y') if d.plataforma_ok and d.plataforma_em else '',
+            ]
+            row_fill = ok_fill if d.plataforma_ok else pend_fill
+            for col, val in enumerate(values, 1):
+                cell = ws_mat.cell(row=row_idx, column=col, value=val)
+                cell.border = border
+                cell.alignment = wrap
+                cell.fill = row_fill
+            row_idx += 1
+
+    # Column widths matrizes
+    mat_widths = [45, 18, 12, 14, 18, 12, 5, 45, 8, 22, 18, 10, 12]
+    for i, w in enumerate(mat_widths, 1):
+        ws_mat.column_dimensions[get_column_letter(i)].width = w
+    ws_mat.freeze_panes = 'A2'
+
+    # ── Salva e envia ────────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import datetime as dt
+    ts = dt.now().strftime('%Y%m%d_%H%M')
+    fname = f'matrizes_inova_{ts}.xlsx'
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=fname)
+
 # ─── HISTÓRICO / AUDIT ─────────────────────────────────────────────────────────
 
 @app.route('/historico')
-@login_required
+@perm_check('can_view_historico')
 def historico():
     page = request.args.get('page', 1, type=int)
     logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=50)
@@ -557,8 +1186,12 @@ def usuario_editar(id):
     return render_template('usuario_form.html', user=u)
 
 def _perms_from_form(d):
-    keys = ['cursos_editar','cursos_excluir','cupons_gerenciar',
-            'reembolsos_gerenciar','usuarios_gerenciar','backup_gerenciar','historico_ver']
+    keys = [
+        'cursos_editar', 'cursos_excluir',
+        'cupons_gerenciar', 'reembolsos_gerenciar',
+        'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
+        'block_cupons', 'block_reembolsos', 'block_historico',
+    ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
 @app.route('/usuarios/<int:id>/excluir', methods=['POST'])

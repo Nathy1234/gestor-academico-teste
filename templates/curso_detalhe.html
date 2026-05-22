@@ -5,7 +5,11 @@
   <div class="page-header">
     <div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <a href="{{ url_for('cursos') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cursos</a>
+        {% if request.args.get('from') == 'matrizes' %}
+        <a href="{{ url_for('matrizes') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Matrizes</a>
+        {% else %}
+        <a href="{{ url_for('cursos', tipo=c.tipo) }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cursos</a>
+        {% endif %}
         <span class="badge badge-{{ c.tipo }}">{{ c.tipo|replace('_',' ')|title }}</span>
         <span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span>
       </div>
@@ -35,6 +39,13 @@
       {% endif %}
     </div>
   </div>
+
+  {% if c.tipo == 'pos' and not disc %}
+  <div style="background:#fef3c7;border:1px solid #fbbf24;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;color:#92400e">
+    <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#f59e0b;stroke-width:2;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span style="font-size:13px"><strong>Matriz curricular não cadastrada.</strong> Este curso de Pós-Graduação ainda não possui disciplinas vinculadas. Clique em <strong>Editar</strong> para adicionar.</span>
+  </div>
+  {% endif %}
 
   <div class="detail-grid">
     <!-- MAIN INFO -->
@@ -94,26 +105,55 @@
 
       <!-- MATRIZ / DISCIPLINAS -->
       {% if disc %}
+      {% set ok_count = disc|selectattr('plataforma_ok','equalto',True)|list|length %}
       <div class="card" style="margin-bottom:20px">
-        <div class="card-header">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
           <div class="card-title">Matriz Curricular — {{ disc|length }} disciplina(s)</div>
+          <div style="display:flex;gap:8px">
+            {% if ok_count < disc|length %}
+            <button type="button" onclick="marcarTodas({{ c.id }}, true)"
+                    class="btn btn-sm btn-secondary" style="color:#22c55e;font-size:12px">
+              ✓ Marcar todas
+            </button>
+            {% endif %}
+            {% if ok_count > 0 %}
+            <button type="button" onclick="marcarTodas({{ c.id }}, false)"
+                    class="btn btn-sm btn-secondary" style="font-size:12px">
+              ○ Desmarcar todas
+            </button>
+            {% endif %}
+          </div>
         </div>
         <div class="card-body" style="padding:0">
           <div class="matrix-wrap" style="border:none;border-radius:0">
             <div class="matrix-row header">
-              <div>Módulo</div><div>#</div><div>Disciplina</div><div>CH</div><div>Professor</div><div>Tit.</div><div></div>
+              <div>Módulo</div><div>#</div><div>Disciplina</div><div>CH</div><div>Professor</div><div>Tit.</div>
+              <div title="Inserida na plataforma de cursos livres">Plataforma</div>
             </div>
             {% for d in disc %}
-            <div class="matrix-row">
+            <div class="matrix-row" id="disc-row-{{ d.id }}"
+                 style="{% if d.plataforma_ok %}background:rgba(34,197,94,.07){% endif %}">
               <div style="font-size:12px;color:var(--text-muted)">{{ d.modulo or '—' }}</div>
               <div style="font-size:12px">{{ d.ordem }}</div>
               <div style="font-weight:500">{{ d.nome }}</div>
               <div style="font-size:12px">{{ d.carga or '—' }}</div>
               <div style="font-size:12px;color:var(--text-muted)">{{ d.professor or '—' }}</div>
               <div style="font-size:11px;color:var(--text-muted)">{{ d.titulacao or '—' }}</div>
-              <div></div>
+              <div style="text-align:center">
+                <button onclick="toggleDisc({{ d.id }}, this)"
+                        title="{{ 'Concluída em ' + d.plataforma_em.strftime('%d/%m/%Y') if d.plataforma_ok and d.plataforma_em else 'Marcar como inserida na plataforma' }}"
+                        style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;
+                               font-size:22px;line-height:1;color:{% if d.plataforma_ok %}#22c55e{% else %}#94a3b8{% endif %};
+                               width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center">
+                  {% if d.plataforma_ok %}&#10003;{% else %}&#9675;{% endif %}
+                </button>
+              </div>
             </div>
             {% endfor %}
+            <div style="padding:8px 12px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)">
+              {{ ok_count }}/{{ disc|length }} inseridas na plataforma
+              {% if ok_count == disc|length and disc %} — <span style="color:#22c55e;font-weight:600">Completo!</span>{% endif %}
+            </div>
           </div>
         </div>
       </div>
@@ -166,4 +206,34 @@
     </div>
   </div>
 </div>
+<script>
+function marcarTodas(courseId, marcar) {
+  fetch(`/curso/${courseId}/disciplinas/marcar-todas`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify({marcar: marcar})
+  })
+  .then(r => r.json())
+  .then(data => { if (data.ok) location.reload(); });
+}
+
+function toggleDisc(discId, btn) {
+  fetch(`/disciplina/${discId}/toggle`, {method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r => r.json())
+    .then(data => {
+      const row = document.getElementById('disc-row-' + discId);
+      if (data.ok) {
+        btn.innerHTML = '&#10003;';
+        btn.style.color = '#22c55e';
+        btn.title = 'Concluída';
+        if (row) row.style.background = 'rgba(34,197,94,.07)';
+      } else {
+        btn.innerHTML = '&#9675;';
+        btn.style.color = '#94a3b8';
+        btn.title = 'Marcar como inserida na plataforma';
+        if (row) row.style.background = '';
+      }
+    });
+}
+</script>
 {% endblock %}

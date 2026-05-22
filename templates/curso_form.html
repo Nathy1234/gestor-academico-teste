@@ -5,7 +5,11 @@
   <div class="page-header">
     <div>
       <div style="margin-bottom:6px">
+        {% if request.args.get('from') == 'matrizes' %}
+        <a href="{{ url_for('matrizes') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Matrizes</a>
+        {% else %}
         <a href="{{ url_for('cursos') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cursos</a>
+        {% endif %}
       </div>
       <div class="page-title">{% if curso %}Editar Curso{% else %}Novo Curso{% endif %}</div>
     </div>
@@ -13,6 +17,7 @@
 
   <form method="POST" id="courseForm">
     <input type="hidden" name="disciplinas_json" id="disciplinas_json" value="">
+    <input type="hidden" name="from_page" value="{{ request.args.get('from', '') }}">
 
     <div class="card" style="margin-bottom:20px">
       <div class="card-header"><div class="card-title">Dados Principais</div></div>
@@ -34,7 +39,12 @@
           </div>
           <div class="form-group">
             <label>Área</label>
-            <input type="text" name="area" value="{{ curso.area if curso else '' }}" placeholder="Ex: NEGÓCIOS, SAÚDE, TECNOLOGIA">
+            <select name="area">
+              <option value="">— Selecione —</option>
+              {% for a in areas %}
+              <option value="{{ a }}" {% if curso and curso.area==a %}selected{% endif %}>{{ a }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="form-group">
             <label>Carga Horária</label>
@@ -51,16 +61,69 @@
           <div class="form-group">
             <label>Status</label>
             <select name="status">
-              {% for s in ['em_edicao','ativo','descontinuado','oculto'] %}
+              {% for s in ['em_edicao','finalizado','descontinuado','oculto'] %}
               <option value="{{ s }}" {% if curso and curso.status==s %}selected{% elif not curso and s=='em_edicao' %}selected{% endif %}>
                 {{ s|replace('_',' ')|title }}
               </option>
               {% endfor %}
+              {% if session.role == 'admin' %}
+              <option value="ativo" {% if curso and curso.status=='ativo' %}selected{% endif %}>Ativo (publicado)</option>
+              <option value="externo" {% if curso and curso.status=='externo' %}selected{% endif %}>Externo / Fora da Plataforma</option>
+              {% else %}
+                {% if curso and curso.status == 'ativo' %}
+                <option value="ativo" selected disabled>Ativo — somente admin pode alterar</option>
+                {% elif curso and curso.status == 'externo' %}
+                <option value="externo" selected disabled>Externo — somente admin pode alterar</option>
+                {% endif %}
+              {% endif %}
             </select>
           </div>
           <div class="form-group full">
             <label>Link da Página de Venda</label>
             <input type="url" name="link_venda" value="{{ curso.link_venda if curso else '' }}" placeholder="https://www.inovacarreira.com.br/...">
+          </div>
+          <div class="form-group">
+            <label>Insersor(es)</label>
+            {% set ins_atuais = (curso.insersor.split(',') if curso and curso.insersor else [session.username])|map('trim')|list %}
+            <!-- Trigger button -->
+            <div style="position:relative">
+              <button type="button" id="insBtn" onclick="toggleInsDropdown()"
+                      style="width:100%;text-align:left;padding:8px 12px;border:1px solid var(--border);
+                             border-radius:8px;background:var(--surface);cursor:pointer;font-size:13px;
+                             color:var(--text);display:flex;align-items:center;justify-content:space-between">
+                <span id="insBtnLabel">{{ ins_atuais|join(', ') if ins_atuais else 'Selecionar insersores...' }}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     style="width:14px;height:14px;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <!-- Dropdown list -->
+              <div id="insDropdown" style="display:none;position:absolute;top:calc(100% + 4px);left:0;
+                   width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;
+                   box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:200;overflow:hidden">
+                {% for u in usuarios %}
+                <label style="display:flex;align-items:center;gap:10px;padding:9px 14px;
+                               cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)"
+                       onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+                  <input type="checkbox" name="insersores" value="{{ u.username }}"
+                         {% if u.username in ins_atuais %}checked{% endif %}
+                         onchange="updateInsLabel()">
+                  {{ u.username }}
+                </label>
+                {% endfor %}
+                {% for leg in ins_atuais %}
+                  {% if leg and leg not in usuarios|map(attribute='username')|list %}
+                  <label style="display:flex;align-items:center;gap:10px;padding:9px 14px;
+                                 cursor:pointer;font-size:13px;background:#fef3c7;color:#92400e">
+                    <input type="checkbox" name="insersores" value="{{ leg }}" checked onchange="updateInsLabel()">
+                    {{ leg }} (legado)
+                  </label>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Ano</label>
+            <input type="text" name="ano" value="{{ curso.ano if curso else '' }}" placeholder="Ex: 2025">
           </div>
           <div class="form-group">
             <label>Cupom</label>
@@ -109,7 +172,7 @@
     </div>
 
     <div style="display:flex;gap:10px;justify-content:flex-end">
-      <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Cancelar</a>
+      <a href="{{ url_for('matrizes') if request.args.get('from') == 'matrizes' else url_for('cursos') }}" class="btn btn-secondary">Cancelar</a>
       <button type="submit" class="btn btn-primary">
         {% if curso %}Salvar Alterações{% else %}Criar Curso{% endif %}
       </button>
@@ -139,5 +202,21 @@ renderMatrix = function() {
   if (empty) empty.style.display = disciplines.length ? 'none' : 'block';
 };
 renderMatrix();
+
+function toggleInsDropdown() {
+  const d = document.getElementById('insDropdown');
+  d.style.display = d.style.display === 'none' ? 'block' : 'none';
+}
+function updateInsLabel() {
+  const checked = [...document.querySelectorAll('[name="insersores"]:checked')].map(c => c.value);
+  document.getElementById('insBtnLabel').textContent = checked.length ? checked.join(', ') : 'Selecionar insersores...';
+}
+document.addEventListener('click', e => {
+  const btn = document.getElementById('insBtn');
+  const dd = document.getElementById('insDropdown');
+  if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) {
+    dd.style.display = 'none';
+  }
+});
 </script>
 {% endblock %}

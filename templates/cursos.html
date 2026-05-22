@@ -7,23 +7,58 @@
       <div class="page-title">Cursos</div>
       <div class="page-subtitle">{{ cursos|length }} curso(s) encontrado(s)</div>
     </div>
-    {% if session.role in ['admin','editor'] %}
-    <a href="{{ url_for('curso_novo') }}" class="btn btn-primary">
-      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Novo Curso
+    <div style="display:flex;gap:8px;align-items:center">
+      <a href="{{ url_for('cursos_relatorio', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor) }}"
+         target="_blank" class="btn btn-secondary" title="Relatório imprimível">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Relatório
+      </a>
+      <a href="{{ url_for('cursos_exportar_excel', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor) }}"
+         class="btn btn-secondary" style="color:#166534" title="Exportar Excel">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Excel
+      </a>
+      {% if session.role in ['admin','editor'] %}
+      <a href="{{ url_for('curso_novo') }}" class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Novo Curso
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- FILTROS RÁPIDOS POR STATUS -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    {% for s,label,cor in [('','Todos os status','#64748b'),('ativo','Ativos','#22c55e'),('em_edicao','Em Edição','#eab308'),('finalizado','Finalizados','#3b82f6'),('descontinuado','Arquivados','#94a3b8'),('externo','Externos','#f97316'),('oculto','Ocultos','#6366f1')] %}
+    {% set sativo = (filtro_status == s) %}
+    <a href="{{ url_for('cursos', tipo=filtro_tipo, area=filtro_area, status=s, q=busca) }}"
+       style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:{% if sativo %}600{% else %}400{% endif %};
+              text-decoration:none;border:1.5px solid {{ cor }};
+              background:{% if sativo %}{{ cor }}{% else %}transparent{% endif %};
+              color:{% if sativo %}#fff{% else %}{{ cor }}{% endif %}">
+      {% if sativo %}&#10003;&nbsp;{% endif %}{{ label }}
     </a>
-    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- FILTROS RÁPIDOS POR TIPO (botões) -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    {% for t in [('','Todos'),('pos','Pós-Graduação'),('profissionalizante','Profissionalizante'),('rapido','Rápido'),('pacote','Pacote'),('terceiros','Terceiros'),('evento','Evento'),('pratica_conectada','Prática Conectada'),('pratica_estagio','Prática Estágio'),('projeto_ambiental','Proj. Ambiental'),('ggbr','GGBR'),('integra_edu','Integra Edu')] %}
+    {% set ativo = (filtro_tipo == t[0]) %}
+    <a href="{{ url_for('cursos', tipo=t[0], area=filtro_area, status=filtro_status, q=busca) }}"
+       style="padding:5px 14px;border-radius:20px;font-size:13px;font-weight:{% if ativo %}600{% else %}400{% endif %};
+              text-decoration:none;border:1.5px solid {% if ativo %}var(--accent){% else %}var(--border){% endif %};
+              background:{% if ativo %}var(--accent){% else %}var(--card-bg){% endif %};
+              color:{% if ativo %}#fff{% else %}var(--text){% endif %}">
+      {% if ativo %}&#10003;&nbsp;{% endif %}{{ t[1] }}
+    </a>
+    {% endfor %}
   </div>
 
   <!-- FILTERS -->
   <form method="GET" class="filters">
-    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar por nome..." class="filter-select" style="width:240px">
-    <select name="tipo" class="filter-select" onchange="this.form.submit()">
-      <option value="">Todos os tipos</option>
-      {% for t in [('pos','Pós-Graduação'),('profissionalizante','Profissionalizante'),('rapido','Rápido'),('pacote','Pacote'),('terceiros','Terceiros'),('evento','Evento'),('pratica_conectada','Prática Conectada'),('pratica_estagio','Prática Estágio'),('projeto_ambiental','Proj. Ambiental'),('ggbr','GGBR'),('integra_edu','Integra Edu')] %}
-      <option value="{{ t[0] }}" {% if filtro_tipo==t[0] %}selected{% endif %}>{{ t[1] }}</option>
-      {% endfor %}
-    </select>
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar por nome..." class="filter-select" style="width:220px">
+    <input type="hidden" name="tipo" value="{{ filtro_tipo }}">
     <select name="area" class="filter-select" onchange="this.form.submit()">
       <option value="">Todas as áreas</option>
       {% for a in areas %}<option value="{{ a }}" {% if filtro_area==a %}selected{% endif %}>{{ a }}</option>{% endfor %}
@@ -32,8 +67,16 @@
       <option value="">Todos os status</option>
       <option value="ativo" {% if filtro_status=='ativo' %}selected{% endif %}>Ativo</option>
       <option value="em_edicao" {% if filtro_status=='em_edicao' %}selected{% endif %}>Em Edição</option>
+      <option value="finalizado" {% if filtro_status=='finalizado' %}selected{% endif %}>Finalizado</option>
       <option value="descontinuado" {% if filtro_status=='descontinuado' %}selected{% endif %}>Descontinuado</option>
+      <option value="externo" {% if filtro_status=='externo' %}selected{% endif %}>Externo / Fora da Plataforma</option>
       <option value="oculto" {% if filtro_status=='oculto' %}selected{% endif %}>Oculto</option>
+    </select>
+    <select name="insersor" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os insersores</option>
+      {% for ins in insersores %}
+      <option value="{{ ins }}" {% if filtro_insersor==ins %}selected{% endif %}>{{ ins }}</option>
+      {% endfor %}
     </select>
     <button type="submit" class="btn btn-secondary">Filtrar</button>
     <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Limpar</a>

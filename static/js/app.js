@@ -1,3 +1,27 @@
+// ── NOTIFICAÇÕES ─────────────────────────────────────────────────
+function toggleNotif(event) {
+  if (event) event.stopPropagation();
+  const d = document.getElementById('notifDropdown');
+  if (!d) return;
+  if (d.style.display === 'none' || !d.style.display) {
+    const btn = document.getElementById('notifBtn');
+    const rect = btn.getBoundingClientRect();
+    d.style.top = (rect.bottom + 8) + 'px';
+    d.style.right = (window.innerWidth - rect.right) + 'px';
+    d.style.left = 'auto';
+    d.style.display = 'block';
+  } else {
+    d.style.display = 'none';
+  }
+}
+document.addEventListener('click', e => {
+  const d = document.getElementById('notifDropdown');
+  const btn = document.getElementById('notifBtn');
+  if (d && btn && !btn.contains(e.target) && !d.contains(e.target)) {
+    d.style.display = 'none';
+  }
+});
+
 // ── THEME ────────────────────────────────────────────────────────
 function toggleTheme() {
   const html = document.documentElement;
@@ -83,9 +107,10 @@ function updateDisc(i, key, val) { disciplines[i][key] = val; updateHidden(); }
 function removeDisc(i) { disciplines.splice(i, 1); renderMatrix(); }
 
 function addDisc() {
-  disciplines.push({ modulo:'', ordem: disciplines.length + 1, nome:'', carga:'', professor:'', titulacao:'' });
+  disciplines.unshift({ modulo:'', ordem: 1, nome:'', carga:'', professor:'', titulacao:'' });
+  disciplines.forEach((d, i) => { if (i > 0) d.ordem = i + 1; });
   renderMatrix();
-  document.getElementById('matrixBody')?.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  document.getElementById('matrixBody')?.firstElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function updateHidden() {
