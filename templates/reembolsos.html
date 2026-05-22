@@ -3,29 +3,70 @@
 {% block content %}
 <div class="page">
   <div class="page-header">
-    <div class="page-title">Reembolsos</div>
+    <div>
+      <div class="page-title">Reembolsos</div>
+      <div class="page-subtitle">{{ items|length }} registro(s)</div>
+    </div>
     {% if session.role in ['admin','editor'] %}
     <a href="{{ url_for('reembolso_novo') }}" class="btn btn-primary">+ Novo Reembolso</a>
     {% endif %}
   </div>
+
   <div class="card">
     <div class="table-wrapper">
-      <table>
-        <thead><tr><th>Colab</th><th>Aluno</th><th>Curso</th><th>Categoria</th><th>Valor</th><th>Estorno</th><th>Motivo</th><th>Dt Aprovação</th></tr></thead>
+      <table style="min-width:1200px">
+        <thead>
+          <tr>
+            <th>Colab</th>
+            <th>Nome do Aluno</th>
+            <th>Nome do Curso</th>
+            <th>Categoria</th>
+            <th>Dt Compra</th>
+            <th>Solic. Aluno</th>
+            <th>Valor</th>
+            <th>Estorno</th>
+            <th>1ª Solic.</th>
+            <th>2ª Solic.</th>
+            <th>Dt Aprovação</th>
+            <th>Motivo</th>
+            <th>Curso Excluído</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
           {% for r in items %}
           <tr>
-            <td>{{ r.colab or '—' }}</td>
-            <td>{{ r.nome_aluno }}</td>
-            <td style="max-width:200px;font-size:12px">{{ r.nome_curso }}</td>
-            <td>{{ r.categoria or '—' }}</td>
-            <td>R$ {{ "%.2f"|format(r.valor) }}</td>
-            <td>R$ {{ "%.2f"|format(r.valor_estorno) }}</td>
-            <td style="font-size:12px;max-width:180px">{{ (r.motivo or '')[:60] }}</td>
-            <td style="font-size:12px">{{ r.data_aprovacao.strftime('%d/%m/%Y') if r.data_aprovacao else '—' }}</td>
+            <td style="white-space:nowrap;font-size:12px">{{ r.colab or '—' }}</td>
+            <td style="white-space:nowrap;font-weight:500;font-size:13px">{{ r.nome_aluno or '—' }}</td>
+            <td style="max-width:180px;font-size:12px">{{ r.nome_curso or '—' }}</td>
+            <td>
+              {% if r.categoria %}
+              <span class="badge badge-{{ r.categoria|lower|replace('-','_')|replace('ó','o')|replace('é','e')|replace('ã','a') }}">{{ r.categoria }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-size:12px;white-space:nowrap">{{ r.data_compra.strftime('%d/%m/%Y') if r.data_compra else '—' }}</td>
+            <td style="font-size:12px;white-space:nowrap">{{ r.data_solicitacao.strftime('%d/%m/%Y') if r.data_solicitacao else '—' }}</td>
+            <td style="white-space:nowrap;font-weight:500">{% if r.valor %}R$ {{ "%.2f"|format(r.valor) }}{% else %}—{% endif %}</td>
+            <td style="white-space:nowrap">{% if r.valor_estorno %}R$ {{ "%.2f"|format(r.valor_estorno) }}{% else %}—{% endif %}</td>
+            <td style="font-size:12px;white-space:nowrap">{{ r.solicitacao_1.strftime('%d/%m/%Y') if r.solicitacao_1 else '—' }}</td>
+            <td style="font-size:12px;white-space:nowrap">{{ r.solicitacao_2.strftime('%d/%m/%Y') if r.solicitacao_2 else '—' }}</td>
+            <td style="font-size:12px;white-space:nowrap">{{ r.data_aprovacao.strftime('%d/%m/%Y') if r.data_aprovacao else '—' }}</td>
+            <td style="font-size:12px;max-width:160px;color:var(--text-muted)">{{ (r.motivo or '')[:50] }}{% if r.motivo and r.motivo|length > 50 %}…{% endif %}</td>
+            <td style="font-size:12px;white-space:nowrap">{{ r.curso_excluido.strftime('%d/%m/%Y') if r.curso_excluido else '—' }}</td>
+            <td style="white-space:nowrap">
+              {% if session.role in ['admin','editor'] %}
+              <a href="{{ url_for('reembolso_editar', id=r.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+              {% endif %}
+              {% if session.role == 'admin' %}
+              <form method="POST" action="{{ url_for('reembolso_excluir', id=r.id) }}" style="display:inline"
+                    onsubmit="return confirm('Excluir reembolso de {{ r.nome_aluno }}?')">
+                <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none">Excluir</button>
+              </form>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum reembolso registrado.</td></tr>
+          <tr><td colspan="14" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum reembolso registrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>

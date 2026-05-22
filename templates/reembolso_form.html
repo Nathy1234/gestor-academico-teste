@@ -1,29 +1,104 @@
 {% extends 'base.html' %}
-{% block title %}Novo Reembolso — INOVA{% endblock %}
+{% block title %}{% if item %}Editar Reembolso{% else %}Novo Reembolso{% endif %} — INOVA{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
     <div>
       <a href="{{ url_for('reembolsos') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Reembolsos</a>
-      <div class="page-title" style="margin-top:6px">Novo Reembolso</div>
+      <div class="page-title" style="margin-top:6px">{% if item %}Editar Reembolso{% else %}Novo Reembolso{% endif %}</div>
     </div>
   </div>
+
   <div class="card"><div class="card-body">
     <form method="POST">
-      <div class="form-grid">
-        <div class="form-group"><label>Colaborador</label><input type="text" name="colab" value="{{ item.colab if item else '' }}"></div>
-        <div class="form-group"><label>Nome do Aluno</label><input type="text" name="nome_aluno" value="{{ item.nome_aluno if item else '' }}" required></div>
-        <div class="form-group"><label>Nome do Curso</label><input type="text" name="nome_curso" value="{{ item.nome_curso if item else '' }}" required></div>
-        <div class="form-group"><label>Categoria</label><input type="text" name="categoria" value="{{ item.categoria if item else '' }}" placeholder="RÁPIDO, PROFISSIONALIZANTE..."></div>
-        <div class="form-group"><label>Data da Compra</label><input type="date" name="data_compra" value="{{ item.data_compra.strftime('%Y-%m-%d') if item and item.data_compra else '' }}"></div>
-        <div class="form-group"><label>Data Solicitação</label><input type="date" name="data_solicitacao" value="{{ item.data_solicitacao.strftime('%Y-%m-%d') if item and item.data_solicitacao else '' }}"></div>
-        <div class="form-group"><label>Valor (R$)</label><input type="number" step="0.01" name="valor" value="{{ item.valor if item else '' }}"></div>
-        <div class="form-group"><label>Valor Estorno (R$)</label><input type="number" step="0.01" name="valor_estorno" value="{{ item.valor_estorno if item else '' }}"></div>
-        <div class="form-group"><label>Data Aprovação</label><input type="date" name="data_aprovacao" value="{{ item.data_aprovacao.strftime('%Y-%m-%d') if item and item.data_aprovacao else '' }}"></div>
-        <div class="form-group full"><label>Motivo</label><textarea name="motivo">{{ item.motivo if item else '' }}</textarea></div>
-        <div class="form-group full"><label>Observações</label><textarea name="obs">{{ item.obs if item else '' }}</textarea></div>
+
+      <!-- BLOCO 1: DADOS DO ALUNO -->
+      <div class="section-label">Dados do Aluno</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label>Colaborador (Colab)</label>
+          <input type="text" name="colab" value="{{ item.colab if item else '' }}" placeholder="Ex: NATÁLIA">
+        </div>
+        <div class="form-group">
+          <label>Nome do Aluno</label>
+          <input type="text" name="nome_aluno" value="{{ item.nome_aluno if item else '' }}" required>
+        </div>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+
+      <!-- BLOCO 2: DADOS DO CURSO -->
+      <div class="section-label">Dados do Curso</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group full">
+          <label>Nome do Curso</label>
+          <input type="text" name="nome_curso" value="{{ item.nome_curso if item else '' }}" required>
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select name="categoria">
+            <option value="">— Selecione —</option>
+            {% for cat in ['RÁPIDO','PROFISSIONALIZANTE','PÓS-GRADUAÇÃO','PACOTE','TERCEIROS','EVENTO','GGBR','INTEGRA EDU'] %}
+            <option value="{{ cat }}" {% if item and item.categoria == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- BLOCO 3: DATAS -->
+      <div class="section-label">Datas</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label>Data da Compra</label>
+          <input type="date" name="data_compra" value="{{ item.data_compra.strftime('%Y-%m-%d') if item and item.data_compra else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Solicitação do Aluno</label>
+          <input type="date" name="data_solicitacao" value="{{ item.data_solicitacao.strftime('%Y-%m-%d') if item and item.data_solicitacao else '' }}">
+        </div>
+        <div class="form-group">
+          <label>1ª Solicitação (Nathy)</label>
+          <input type="date" name="solicitacao_1" value="{{ item.solicitacao_1.strftime('%Y-%m-%d') if item and item.solicitacao_1 else '' }}">
+        </div>
+        <div class="form-group">
+          <label>2ª Solicitação (Jorge)</label>
+          <input type="date" name="solicitacao_2" value="{{ item.solicitacao_2.strftime('%Y-%m-%d') if item and item.solicitacao_2 else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Data de Aprovação</label>
+          <input type="date" name="data_aprovacao" value="{{ item.data_aprovacao.strftime('%Y-%m-%d') if item and item.data_aprovacao else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Curso Excluído em</label>
+          <input type="date" name="curso_excluido" value="{{ item.curso_excluido.strftime('%Y-%m-%d') if item and item.curso_excluido else '' }}">
+        </div>
+      </div>
+
+      <!-- BLOCO 4: VALORES -->
+      <div class="section-label">Valores</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label>Valor Pago (R$)</label>
+          <input type="number" step="0.01" name="valor" value="{{ item.valor if item else '' }}" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Valor Estorno (R$)</label>
+          <input type="number" step="0.01" name="valor_estorno" value="{{ item.valor_estorno if item else '' }}" placeholder="0.00">
+        </div>
+      </div>
+
+      <!-- BLOCO 5: MOTIVO / OBS -->
+      <div class="section-label">Informações Adicionais</div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group full">
+          <label>Motivo do Reembolso</label>
+          <textarea name="motivo" rows="3" placeholder="Ex: Direito de arrependimento (7 dias)">{{ item.motivo if item else '' }}</textarea>
+        </div>
+        <div class="form-group full">
+          <label>Observações</label>
+          <textarea name="obs" rows="2">{{ item.obs if item else '' }}</textarea>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end">
         <a href="{{ url_for('reembolsos') }}" class="btn btn-secondary">Cancelar</a>
         <button type="submit" class="btn btn-primary">Salvar</button>
       </div>

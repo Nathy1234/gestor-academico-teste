@@ -8,23 +8,171 @@
       <div class="page-title" style="margin-top:6px">{% if user %}Editar Usuário{% else %}Novo Usuário{% endif %}</div>
     </div>
   </div>
-  <div class="card" style="max-width:480px"><div class="card-body">
-    <form method="POST">
-      <div class="form-group" style="margin-bottom:16px"><label>Usuário</label>
-        <input type="text" name="username" value="{{ user.username if user else '' }}" {% if user %}readonly{% else %}required{% endif %}></div>
-      <div class="form-group" style="margin-bottom:16px"><label>Senha {% if user %}(deixe em branco para manter){% endif %}</label>
-        <input type="password" name="password" {% if not user %}required{% endif %}></div>
-      <div class="form-group" style="margin-bottom:20px"><label>Perfil</label>
-        <select name="role">
-          <option value="viewer" {% if user and user.role=='viewer' %}selected{% endif %}>Leitor (somente visualização)</option>
-          <option value="editor" {% if user and user.role=='editor' %}selected{% endif %}>Editor (criar e editar)</option>
-          <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>Admin (acesso total)</option>
-        </select></div>
-      <div style="display:flex;gap:10px">
-        <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
-        <button type="submit" class="btn btn-primary">Salvar</button>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:900px">
+
+    <!-- DADOS BASICOS -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">Dados de Acesso</div></div>
+      <div class="card-body">
+        <form method="POST" id="userForm">
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Nome de Usuário</label>
+            <input type="text" name="username"
+              value="{{ user.username if user else '' }}"
+              {% if user %}readonly style="background:var(--surface-2);color:var(--text-muted)"{% else %}required{% endif %}>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Senha {% if user %}(deixe em branco para manter){% endif %}</label>
+            <input type="password" name="password" {% if not user %}required{% endif %}>
+          </div>
+
+          <div class="form-group" style="margin-bottom:24px">
+            <label>Perfil Base</label>
+            <select name="role" id="roleSelect" onchange="applyRoleDefaults()">
+              <option value="viewer" {% if user and user.role=='viewer' %}selected{% endif %}>
+                Leitor — só visualiza
+              </option>
+              <option value="editor" {% if user and user.role=='editor' %}selected{% endif %}>
+                Editor — cria e edita
+              </option>
+              <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>
+                Admin — acesso total
+              </option>
+            </select>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+              O perfil base define o padrão. Use as permissões ao lado para personalizar.
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px">
+            <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
       </div>
-    </form>
-  </div></div>
+    </div>
+
+    <!-- PERMISSOES -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Permissões Específicas</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
+          Admin tem tudo habilitado automaticamente.
+        </div>
+      </div>
+      <div class="card-body" id="permsPanel">
+
+        <div class="perm-section-label">Cursos</div>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_cursos_editar" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('cursos_editar') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Criar e Editar Cursos</div>
+            <div class="perm-desc">Pode criar novos cursos e editar existentes</div>
+          </div>
+        </label>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_cursos_excluir" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('cursos_excluir') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Excluir Cursos</div>
+            <div class="perm-desc">Pode excluir cursos permanentemente</div>
+          </div>
+        </label>
+
+        <div class="perm-section-label" style="margin-top:16px">Gestão</div>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_cupons_gerenciar" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('cupons_gerenciar') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Gerenciar Cupons</div>
+            <div class="perm-desc">Criar e editar cupons de desconto</div>
+          </div>
+        </label>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_reembolsos_gerenciar" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('reembolsos_gerenciar') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Gerenciar Reembolsos</div>
+            <div class="perm-desc">Criar, editar e registrar reembolsos</div>
+          </div>
+        </label>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_historico_ver" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('historico_ver') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Ver Histórico</div>
+            <div class="perm-desc">Acesso ao log de alterações</div>
+          </div>
+        </label>
+
+        <div class="perm-section-label" style="margin-top:16px">Administração</div>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_usuarios_gerenciar" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('usuarios_gerenciar') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Gerenciar Usuários</div>
+            <div class="perm-desc">Criar, editar e excluir usuários</div>
+          </div>
+        </label>
+        <label class="perm-item">
+          <input type="checkbox" name="perm_backup_gerenciar" form="userForm"
+            {% if user and user.role == 'admin' %}checked disabled
+            {% elif user and user.get_perm('backup_gerenciar') %}checked{% endif %}>
+          <div>
+            <div class="perm-name">Acessar Backups</div>
+            <div class="perm-desc">Ver e baixar backups do sistema</div>
+          </div>
+        </label>
+
+      </div>
+    </div>
+  </div>
 </div>
+
+<style>
+.perm-section-label {
+  font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:8px;
+}
+.perm-item {
+  display:flex;align-items:flex-start;gap:10px;padding:10px 0;
+  border-bottom:1px solid var(--border);cursor:pointer;
+}
+.perm-item:last-child { border-bottom:none; }
+.perm-item input[type=checkbox] { margin-top:3px;flex-shrink:0;width:15px;height:15px;cursor:pointer; }
+.perm-item input[type=checkbox]:disabled { cursor:not-allowed;opacity:.5; }
+.perm-name { font-size:13px;font-weight:500; }
+.perm-desc { font-size:12px;color:var(--text-muted);margin-top:2px; }
+</style>
+
+<script>
+function applyRoleDefaults() {
+  const role = document.getElementById('roleSelect').value;
+  const boxes = document.querySelectorAll('#permsPanel input[type=checkbox]');
+  if (role === 'admin') {
+    boxes.forEach(b => { b.checked = true; b.disabled = true; });
+  } else if (role === 'editor') {
+    boxes.forEach(b => { b.disabled = false; });
+    setChecks({ cursos_editar:true, cupons_gerenciar:true, reembolsos_gerenciar:true,
+                historico_ver:true, cursos_excluir:false, usuarios_gerenciar:false, backup_gerenciar:false });
+  } else {
+    boxes.forEach(b => { b.disabled = false; b.checked = false; });
+  }
+}
+function setChecks(map) {
+  Object.entries(map).forEach(([k, v]) => {
+    const el = document.querySelector(`[name="perm_${k}"]`);
+    if (el) el.checked = v;
+  });
+}
+</script>
 {% endblock %}

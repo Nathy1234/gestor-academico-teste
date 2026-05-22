@@ -13,11 +13,40 @@ db = SQLAlchemy(app)
 # ─── MODELS ────────────────────────────────────────────────────────────────────
 
 class User(db.Model):
-    id       = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    role     = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id           = db.Column(db.Integer, primary_key=True)
+    username     = db.Column(db.String(80), unique=True, nullable=False)
+    password     = db.Column(db.String(200), nullable=False)
+    role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
+    permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def get_perm(self, key):
+        """Retorna True se o usuario tem a permissao. Admin tem tudo."""
+        if self.role == 'admin':
+            return True
+        try:
+            p = json.loads(self.permissoes or '{}')
+        except:
+            p = {}
+        return p.get(key, False)
+
+    def can_edit(self):
+        return self.role in ('admin', 'editor') or self.get_perm('cursos_editar')
+
+    def can_delete(self):
+        return self.role == 'admin' or self.get_perm('cursos_excluir')
+
+    def can_manage_cupons(self):
+        return self.role in ('admin', 'editor') or self.get_perm('cupons_gerenciar')
+
+    def can_manage_reembolsos(self):
+        return self.role in ('admin', 'editor') or self.get_perm('reembolsos_gerenciar')
+
+    def can_manage_usuarios(self):
+        return self.role == 'admin' or self.get_perm('usuarios_gerenciar')
+
+    def can_manage_backup(self):
+        return self.role == 'admin' or self.get_perm('backup_gerenciar')
 
 class Course(db.Model):
     id            = db.Column(db.Integer, primary_key=True)
@@ -79,13 +108,16 @@ class Refund(db.Model):
     colab            = db.Column(db.String(100))
     nome_aluno       = db.Column(db.String(200))
     data_compra      = db.Column(db.Date)
-    data_solicitacao = db.Column(db.Date)
+    data_solicitacao = db.Column(db.Date)   # Solicitação do aluno
     valor            = db.Column(db.Float)
     valor_estorno    = db.Column(db.Float)
     nome_curso       = db.Column(db.String(300))
     categoria        = db.Column(db.String(100))
-    motivo           = db.Column(db.Text)
+    solicitacao_1    = db.Column(db.Date)   # 1ª Solicitação (Nathy)
+    solicitacao_2    = db.Column(db.Date)   # 2ª Solicitação (Jorge)
     data_aprovacao   = db.Column(db.Date)
+    motivo           = db.Column(db.Text)
+    curso_excluido   = db.Column(db.Date)   # Data exclusão do curso
     obs              = db.Column(db.Text)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -406,25 +438,72 @@ def reembolsos():
 @editor_required
 def reembolso_novo():
     if request.method == 'POST':
-        d = request.form
-        def pd2(s):
-            try: return datetime.strptime(s, '%Y-%m-%d').date()
-            except: return None
-        r = Refund(colab=d.get('colab',''), nome_aluno=d.get('nome_aluno',''),
-                   data_compra=pd2(d.get('data_compra','')),
-                   data_solicitacao=pd2(d.get('data_solicitacao','')),
-                   valor=float(d.get('valor',0) or 0),
-                   valor_estorno=float(d.get('valor_estorno',0) or 0),
-                   nome_curso=d.get('nome_curso',''), categoria=d.get('categoria',''),
-                   motivo=d.get('motivo',''),
-                   data_aprovacao=pd2(d.get('data_aprovacao','')),
-                   obs=d.get('obs',''))
+        r = _refund_from_form(request.form)
         db.session.add(r)
         db.session.commit()
         log_action(session['user_id'], session['username'], 'criar', 'reembolso', r.id, r.nome_aluno)
         flash('Reembolso registrado!', 'success')
         return redirect(url_for('reembolsos'))
     return render_template('reembolso_form.html', item=None)
+
+@app.route('/reembolsos/<int:id>/editar', methods=['GET','POST'])
+@editor_required
+def reembolso_editar(id):
+    r = Refund.query.get_or_404(id)
+    if request.method == 'POST':
+        d = request.form
+        def pdate(s):
+            try: return datetime.strptime(s, '%Y-%m-%d').date()
+            except: return None
+        r.colab          = d.get('colab','')
+        r.nome_aluno     = d.get('nome_aluno','')
+        r.nome_curso     = d.get('nome_curso','')
+        r.categoria      = d.get('categoria','')
+        r.data_compra    = pdate(d.get('data_compra',''))
+        r.data_solicitacao = pdate(d.get('data_solicitacao',''))
+        r.valor          = float(d.get('valor',0) or 0)
+        r.valor_estorno  = float(d.get('valor_estorno',0) or 0)
+        r.solicitacao_1  = pdate(d.get('solicitacao_1',''))
+        r.solicitacao_2  = pdate(d.get('solicitacao_2',''))
+        r.data_aprovacao = pdate(d.get('data_aprovacao',''))
+        r.motivo         = d.get('motivo','')
+        r.curso_excluido = pdate(d.get('curso_excluido',''))
+        r.obs            = d.get('obs','')
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'reembolso', id, r.nome_aluno)
+        flash('Reembolso atualizado!', 'success')
+        return redirect(url_for('reembolsos'))
+    return render_template('reembolso_form.html', item=r)
+
+@app.route('/reembolsos/<int:id>/excluir', methods=['POST'])
+@admin_required
+def reembolso_excluir(id):
+    r = Refund.query.get_or_404(id)
+    nome = r.nome_aluno
+    db.session.delete(r)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'reembolso', id, nome)
+    flash(f'Reembolso de "{nome}" excluído.', 'success')
+    return redirect(url_for('reembolsos'))
+
+def _refund_from_form(d):
+    def pdate(s):
+        try: return datetime.strptime(s, '%Y-%m-%d').date()
+        except: return None
+    return Refund(
+        colab=d.get('colab',''), nome_aluno=d.get('nome_aluno',''),
+        nome_curso=d.get('nome_curso',''), categoria=d.get('categoria',''),
+        data_compra=pdate(d.get('data_compra','')),
+        data_solicitacao=pdate(d.get('data_solicitacao','')),
+        valor=float(d.get('valor',0) or 0),
+        valor_estorno=float(d.get('valor_estorno',0) or 0),
+        solicitacao_1=pdate(d.get('solicitacao_1','')),
+        solicitacao_2=pdate(d.get('solicitacao_2','')),
+        data_aprovacao=pdate(d.get('data_aprovacao','')),
+        motivo=d.get('motivo',''),
+        curso_excluido=pdate(d.get('curso_excluido','')),
+        obs=d.get('obs','')
+    )
 
 # ─── HISTÓRICO / AUDIT ─────────────────────────────────────────────────────────
 
@@ -451,7 +530,9 @@ def usuario_novo():
         if User.query.filter_by(username=d['username']).first():
             flash('Usuário já existe.', 'danger')
         else:
-            u = User(username=d['username'], password=hash_pw(d['password']), role=d['role'])
+            perms = _perms_from_form(request.form)
+            u = User(username=d['username'], password=hash_pw(d['password']),
+                     role=d['role'], permissoes=json.dumps(perms))
             db.session.add(u)
             db.session.commit()
             log_action(session['user_id'], session['username'], 'criar', 'user', u.id, u.username)
@@ -466,6 +547,7 @@ def usuario_editar(id):
     if request.method == 'POST':
         d = request.form
         u.role = d['role']
+        u.permissoes = json.dumps(_perms_from_form(d))
         if d.get('password'):
             u.password = hash_pw(d['password'])
         db.session.commit()
@@ -473,6 +555,11 @@ def usuario_editar(id):
         flash('Usuário atualizado!', 'success')
         return redirect(url_for('usuarios'))
     return render_template('usuario_form.html', user=u)
+
+def _perms_from_form(d):
+    keys = ['cursos_editar','cursos_excluir','cupons_gerenciar',
+            'reembolsos_gerenciar','usuarios_gerenciar','backup_gerenciar','historico_ver']
+    return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
 @app.route('/usuarios/<int:id>/excluir', methods=['POST'])
 @admin_required

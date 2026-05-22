@@ -356,6 +356,12 @@ textarea { resize: vertical; min-height: 80px; }
 .tipo-label { width: 140px; font-size: 12px; font-weight: 500; }
 .tipo-count { width: 30px; font-size: 12px; color: var(--text-muted); text-align: right; }
 
+/* ── SECTION LABEL ── */
+.section-label {
+  font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;
+  letter-spacing:.06em;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);
+}
+
 /* ── BACKUP ── */
 .backup-auto { color: var(--text-muted); }
 .backup-manual { color: var(--primary); font-weight: 500; }
