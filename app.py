@@ -531,12 +531,13 @@ def seed_data():
     felipe = User(username='felipe', password=hash_pw('inova2024'), role='editor')
     viewer = User(username='visualizador', password=hash_pw('inova2024'), role='viewer')
     db.session.add_all([admin, junior, felipe, viewer])
-    db.session.flush()
+    db.session.commit()
 
     # Import data from excel
     try:
         import openpyxl, json as jsonlib
-        wb = openpyxl.load_workbook('/mnt/user-data/uploads/CURSOS_INOVA_-_LINKS__1_.xlsx')
+        excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
+        wb = openpyxl.load_workbook(excel_path)
 
         def add_course(nome, tipo, area, horas, valor, link, desc, obs, status, insersor, meses='', cupom='', dono=''):
             if not nome or str(nome).strip() == '': return None
