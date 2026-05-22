@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Cupons — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Cupons</div>
+    {% if session.role in ['admin','editor'] %}
+    <a href="{{ url_for('cupom_novo') }}" class="btn btn-primary">+ Novo Cupom</a>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Nome</th><th>Qtd</th><th>Desconto</th><th>Tipo Curso</th><th>Uso Único</th><th>Data Início</th><th>Data Fim</th><th>Obs</th><th></th></tr></thead>
+        <tbody>
+          {% for c in cupons %}
+          <tr>
+            <td><strong>{{ c.nome }}</strong></td>
+            <td>{{ c.quantidade }}</td>
+            <td>{{ (c.desconto * 100)|int }}%</td>
+            <td>{{ c.cursos_tipo or '—' }}</td>
+            <td>{% if c.uso_unico %}<span class="badge badge-ativo">Sim</span>{% else %}<span class="badge badge-oculto">Não</span>{% endif %}</td>
+            <td>{{ c.data_inicial.strftime('%d/%m/%Y') if c.data_inicial else '—' }}</td>
+            <td>{{ c.data_final.strftime('%d/%m/%Y') if c.data_final else '—' }}</td>
+            <td style="font-size:12px;color:var(--text-muted);max-width:200px">{{ (c.obs or '')[:60] }}{% if c.obs and c.obs|length > 60 %}…{% endif %}</td>
+            <td>{% if session.role in ['admin','editor'] %}<a href="{{ url_for('cupom_editar', id=c.id) }}" class="btn btn-sm btn-secondary">Editar</a>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum cupom cadastrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

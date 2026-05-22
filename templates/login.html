@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Login — INOVA{% endblock %}
+{% block content %}
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">IC</div>
+      <div class="login-logo-text">INOVA Carreira<small>Sistema de Gestão de Cursos</small></div>
+    </div>
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="alert alert-{{ cat }}" style="margin:0 0 16px">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    <form method="POST">
+      <div class="form-group"><label>Usuário</label>
+        <input type="text" name="username" required autofocus placeholder="Seu usuário">
+      </div>
+      <div class="form-group"><label>Senha</label>
+        <input type="password" name="password" required placeholder="Sua senha">
+      </div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Dashboard</div>
+      <div class="page-subtitle">Bem-vindo, {{ session.username }} · {{ now().strftime('%d/%m/%Y') if now else '' }}</div>
+    </div>
+    {% if session.role == 'admin' %}
+    <form method="POST" action="{{ url_for('backup_manual') }}">
+      <button type="submit" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Backup Manual
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon purple">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <div><div class="stat-value">{{ total }}</div><div class="stat-label">Total de Cursos</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div><div class="stat-value">{{ ativos }}</div><div class="stat-label">Cursos Ativos</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon orange">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div><div class="stat-value">{{ em_edicao }}</div><div class="stat-label">Em Edição</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon red">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div><div class="stat-value">{{ desc }}</div><div class="stat-label">Descontinuados</div></div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <!-- CURSOS POR TIPO -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">Cursos por Tipo</div></div>
+      <div class="card-body">
+        {% set tipo_labels = {'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido','pacote':'Pacote','terceiros':'Terceiros','evento':'Evento','pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu'} %}
+        <div class="tipo-list">
+          {% for tipo, count in por_tipo %}
+          {% set pct = (count / total * 100)|int if total else 0 %}
+          <div class="tipo-item">
+            <div class="tipo-label">{{ tipo_labels.get(tipo, tipo) }}</div>
+            <div class="tipo-bar-wrap"><div class="tipo-bar" style="width:{{ pct }}%"></div></div>
+            <div class="tipo-count">{{ count }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ATIVIDADE RECENTE -->
+    <div class="card">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+        <div class="card-title">Atividade Recente</div>
+        <a href="{{ url_for('historico') }}" class="btn btn-sm btn-secondary">Ver tudo</a>
+      </div>
+      <div class="card-body" style="padding:12px 20px">
+        {% for log in recentes %}
+        <div class="log-item">
+          <div class="log-dot"></div>
+          <div>
+            <div class="log-action">{{ log.username }} · <strong>{{ log.action }}</strong> {{ log.entity }}{% if log.detail %}: {{ log.detail[:60] }}{% endif %}</div>
+            <div class="log-meta">{{ log.timestamp.strftime('%d/%m/%Y às %H:%M') }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">Nenhuma atividade ainda.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- BACKUP INFO -->
+  {% if ultimo_bk %}
+  <div class="card" style="margin-top:20px">
+    <div class="card-body" style="display:flex;align-items:center;gap:14px">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:var(--success);stroke-width:2"><polyline points="20 6 9 17 4 12"/></svg>
+      <div>
+        <strong>Último backup:</strong> {{ ultimo_bk.filename }} —
+        {{ ultimo_bk.created_at.strftime('%d/%m/%Y %H:%M') }} ({{ ultimo_bk.size_kb }} KB)
+        <span class="badge {% if ultimo_bk.tipo == 'manual' %}badge-ativo{% else %}badge-profissionalizante{% endif %}" style="margin-left:8px">{{ ultimo_bk.tipo }}</span>
+      </div>
+      <div style="margin-left:auto;font-size:12px;color:var(--text-muted)">Backup automático: semanal</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

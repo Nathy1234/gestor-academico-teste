@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}INOVA Sistema{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+{% if session.user_id %}
+<div class="app-layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">IC</div>
+      <span class="logo-text">INOVA<br><small>Carreira</small></span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint=='dashboard' %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </a>
+      <div class="nav-section">CURSOS</div>
+      <a href="{{ url_for('cursos') }}" class="nav-item {% if 'cursos' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        Todos os Cursos
+      </a>
+      <a href="{{ url_for('cursos', tipo='pos') }}" class="nav-item nav-sub">
+        <span class="dot dot-purple"></span> Pós-Graduação
+      </a>
+      <a href="{{ url_for('cursos', tipo='profissionalizante') }}" class="nav-item nav-sub">
+        <span class="dot dot-blue"></span> Profissionalizantes
+      </a>
+      <a href="{{ url_for('cursos', tipo='rapido') }}" class="nav-item nav-sub">
+        <span class="dot dot-green"></span> Rápidos
+      </a>
+      <a href="{{ url_for('cursos', tipo='pacote') }}" class="nav-item nav-sub">
+        <span class="dot dot-orange"></span> Pacotes
+      </a>
+      <a href="{{ url_for('cursos', tipo='terceiros') }}" class="nav-item nav-sub">
+        <span class="dot dot-gray"></span> Terceiros
+      </a>
+      <a href="{{ url_for('cursos', tipo='evento') }}" class="nav-item nav-sub">
+        <span class="dot dot-pink"></span> Eventos
+      </a>
+
+      <div class="nav-section">GESTÃO</div>
+      <a href="{{ url_for('cupons') }}" class="nav-item {% if 'cupom' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M7 7h.01M17 17h.01M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0M7 7l10 10"/></svg>
+        Cupons
+      </a>
+      <a href="{{ url_for('reembolsos') }}" class="nav-item {% if 'reembolso' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M3 12h18M3 12l6-6M3 12l6 6"/></svg>
+        Reembolsos
+      </a>
+      <a href="{{ url_for('historico') }}" class="nav-item {% if request.endpoint=='historico' %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Histórico
+      </a>
+
+      {% if session.role == 'admin' %}
+      <div class="nav-section">ADMIN</div>
+      <a href="{{ url_for('usuarios') }}" class="nav-item {% if 'usuario' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Usuários
+      </a>
+      <a href="{{ url_for('backup_lista') }}" class="nav-item {% if 'backup' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Backups
+      </a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar">{{ session.username[0]|upper }}</div>
+        <div>
+          <div class="user-name">{{ session.username }}</div>
+          <div class="user-role">{{ session.role }}</div>
+        </div>
+      </div>
+      <a href="{{ url_for('logout') }}" class="logout-btn" title="Sair">
+        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <div class="topbar">
+      <div class="search-bar">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="globalSearch" placeholder="Buscar curso..." autocomplete="off">
+        <div id="searchResults" class="search-dropdown"></div>
+      </div>
+      {% if session.role in ['admin','editor'] %}
+      <a href="{{ url_for('curso_novo') }}" class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Novo Curso
+      </a>
+      {% endif %}
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="alert alert-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+  {% block content %}{% endblock %}
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

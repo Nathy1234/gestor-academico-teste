@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Backups — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Backups do Sistema</div>
+      <div class="page-subtitle">Backup automático semanal · Máximo 20 backups armazenados</div>
+    </div>
+    <form method="POST" action="{{ url_for('backup_manual') }}">
+      <button type="submit" class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Fazer Backup Agora
+      </button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Arquivo</th><th>Tipo</th><th>Tamanho</th><th>Data/Hora</th><th></th></tr></thead>
+        <tbody>
+          {% for b in bks %}
+          <tr>
+            <td style="font-size:12px;font-family:monospace">{{ b.filename }}</td>
+            <td>
+              {% if b.tipo == 'manual' %}
+              <span class="badge badge-ativo">Manual</span>
+              {% else %}
+              <span class="badge badge-profissionalizante">Automático</span>
+              {% endif %}
+            </td>
+            <td style="font-size:12px">{{ b.size_kb }} KB</td>
+            <td style="font-size:12px;color:var(--text-muted)">{{ b.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>
+              <a href="{{ url_for('backup_download', id=b.id) }}" class="btn btn-sm btn-secondary">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum backup ainda. Clique em "Fazer Backup Agora".</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

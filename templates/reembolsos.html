@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Reembolsos — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Reembolsos</div>
+    {% if session.role in ['admin','editor'] %}
+    <a href="{{ url_for('reembolso_novo') }}" class="btn btn-primary">+ Novo Reembolso</a>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Colab</th><th>Aluno</th><th>Curso</th><th>Categoria</th><th>Valor</th><th>Estorno</th><th>Motivo</th><th>Dt Aprovação</th></tr></thead>
+        <tbody>
+          {% for r in items %}
+          <tr>
+            <td>{{ r.colab or '—' }}</td>
+            <td>{{ r.nome_aluno }}</td>
+            <td style="max-width:200px;font-size:12px">{{ r.nome_curso }}</td>
+            <td>{{ r.categoria or '—' }}</td>
+            <td>R$ {{ "%.2f"|format(r.valor) }}</td>
+            <td>R$ {{ "%.2f"|format(r.valor_estorno) }}</td>
+            <td style="font-size:12px;max-width:180px">{{ (r.motivo or '')[:60] }}</td>
+            <td style="font-size:12px">{{ r.data_aprovacao.strftime('%d/%m/%Y') if r.data_aprovacao else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum reembolso registrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

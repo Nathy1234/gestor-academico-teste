@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Usuários — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Usuários</div>
+    <a href="{{ url_for('usuario_novo') }}" class="btn btn-primary">+ Novo Usuário</a>
+  </div>
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Usuário</th><th>Perfil</th><th>Criado em</th><th></th></tr></thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td><div class="user-info" style="gap:10px">
+              <div class="user-avatar">{{ u.username[0]|upper }}</div>
+              <strong>{{ u.username }}</strong>
+            </div></td>
+            <td>
+              {% if u.role == 'admin' %}<span class="badge badge-descontinuado">Admin</span>
+              {% elif u.role == 'editor' %}<span class="badge badge-ativo">Editor</span>
+              {% else %}<span class="badge badge-oculto">Leitor</span>{% endif %}
+            </td>
+            <td style="font-size:12px;color:var(--text-muted)">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+            <td><a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-body">
+      <div class="card-title" style="margin-bottom:12px">Guia de Perfis</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:13px">
+        <div><strong style="color:#dc2626">Admin</strong><br>Acesso total. Pode excluir, criar usuários, fazer backup.</div>
+        <div><strong style="color:#065f46">Editor</strong><br>Pode criar e editar cursos, cupons e reembolsos. Não pode excluir.</div>
+        <div><strong style="color:#475569">Leitor</strong><br>Apenas visualização. Não pode criar nem editar.</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

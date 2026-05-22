@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}{% if user %}Editar Usuário{% else %}Novo Usuário{% endif %} — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('usuarios') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Usuários</a>
+      <div class="page-title" style="margin-top:6px">{% if user %}Editar Usuário{% else %}Novo Usuário{% endif %}</div>
+    </div>
+  </div>
+  <div class="card" style="max-width:480px"><div class="card-body">
+    <form method="POST">
+      <div class="form-group" style="margin-bottom:16px"><label>Usuário</label>
+        <input type="text" name="username" value="{{ user.username if user else '' }}" {% if user %}readonly{% else %}required{% endif %}></div>
+      <div class="form-group" style="margin-bottom:16px"><label>Senha {% if user %}(deixe em branco para manter){% endif %}</label>
+        <input type="password" name="password" {% if not user %}required{% endif %}></div>
+      <div class="form-group" style="margin-bottom:20px"><label>Perfil</label>
+        <select name="role">
+          <option value="viewer" {% if user and user.role=='viewer' %}selected{% endif %}>Leitor (somente visualização)</option>
+          <option value="editor" {% if user and user.role=='editor' %}selected{% endif %}>Editor (criar e editar)</option>
+          <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>Admin (acesso total)</option>
+        </select></div>
+      <div style="display:flex;gap:10px">
+        <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}

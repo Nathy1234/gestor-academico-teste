@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}Cursos — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Cursos</div>
+      <div class="page-subtitle">{{ cursos|length }} curso(s) encontrado(s)</div>
+    </div>
+    {% if session.role in ['admin','editor'] %}
+    <a href="{{ url_for('curso_novo') }}" class="btn btn-primary">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Novo Curso
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- FILTERS -->
+  <form method="GET" class="filters">
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar por nome..." class="filter-select" style="width:240px">
+    <select name="tipo" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os tipos</option>
+      {% for t in [('pos','Pós-Graduação'),('profissionalizante','Profissionalizante'),('rapido','Rápido'),('pacote','Pacote'),('terceiros','Terceiros'),('evento','Evento'),('pratica_conectada','Prática Conectada'),('pratica_estagio','Prática Estágio'),('projeto_ambiental','Proj. Ambiental'),('ggbr','GGBR'),('integra_edu','Integra Edu')] %}
+      <option value="{{ t[0] }}" {% if filtro_tipo==t[0] %}selected{% endif %}>{{ t[1] }}</option>
+      {% endfor %}
+    </select>
+    <select name="area" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todas as áreas</option>
+      {% for a in areas %}<option value="{{ a }}" {% if filtro_area==a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <select name="status" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os status</option>
+      <option value="ativo" {% if filtro_status=='ativo' %}selected{% endif %}>Ativo</option>
+      <option value="em_edicao" {% if filtro_status=='em_edicao' %}selected{% endif %}>Em Edição</option>
+      <option value="descontinuado" {% if filtro_status=='descontinuado' %}selected{% endif %}>Descontinuado</option>
+      <option value="oculto" {% if filtro_status=='oculto' %}selected{% endif %}>Oculto</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Limpar</a>
+  </form>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Nome do Curso</th>
+            <th>Tipo</th>
+            <th>Área</th>
+            <th>Horas</th>
+            <th>Valor</th>
+            <th>Status</th>
+            <th>Insersor</th>
+            <th>Link</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cursos %}
+          <tr>
+            <td class="td-name">
+              <a href="{{ url_for('curso_detalhe', id=c.id) }}" style="color:var(--text);text-decoration:none;font-weight:500">
+                {{ c.nome[:70] }}{% if c.nome|length > 70 %}…{% endif %}
+              </a>
+            </td>
+            <td><span class="badge badge-{{ c.tipo }}">{{ c.tipo|replace('_',' ')|title }}</span></td>
+            <td>{{ c.area or '—' }}</td>
+            <td>{{ c.horas or '—' }}</td>
+            <td>{% if c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</td>
+            <td><span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span></td>
+            <td style="font-size:12px;color:var(--text-muted)">{{ c.insersor or '—' }}</td>
+            <td class="td-link">
+              {% if c.link_venda and c.link_venda.startswith('http') %}
+              <a href="{{ c.link_venda }}" target="_blank">🔗 Abrir</a>
+              {% else %}—{% endif %}
+            </td>
+            <td style="white-space:nowrap">
+              <a href="{{ url_for('curso_detalhe', id=c.id) }}" class="btn btn-sm btn-secondary">Ver</a>
+              {% if session.role in ['admin','editor'] %}
+              <a href="{{ url_for('curso_editar', id=c.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

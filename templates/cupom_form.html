@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}{% if cupom %}Editar Cupom{% else %}Novo Cupom{% endif %} — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('cupons') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cupons</a>
+      <div class="page-title" style="margin-top:6px">{% if cupom %}Editar Cupom{% else %}Novo Cupom{% endif %}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <form method="POST">
+        <div class="form-grid">
+          <div class="form-group"><label>Nome do Cupom *</label>
+            <input type="text" name="nome" value="{{ cupom.nome if cupom else '' }}" required></div>
+          <div class="form-group"><label>Quantidade</label>
+            <input type="number" name="quantidade" value="{{ cupom.quantidade if cupom else '' }}"></div>
+          <div class="form-group"><label>Desconto (0 a 1, onde 1 = 100%)</label>
+            <input type="number" name="desconto" step="0.01" min="0" max="1" value="{{ cupom.desconto if cupom else '' }}"></div>
+          <div class="form-group"><label>Tipo de Curso</label>
+            <input type="text" name="cursos_tipo" value="{{ cupom.cursos_tipo if cupom else '' }}" placeholder="RÁPIDO, PÓS-GRADUAÇÃO..."></div>
+          <div class="form-group"><label>Limite por Curso</label>
+            <input type="number" name="limite_curso" value="{{ cupom.limite_curso if cupom else 1 }}"></div>
+          <div class="form-group"><label>Uso Único?</label>
+            <select name="uso_unico">
+              <option value="SIM" {% if cupom and cupom.uso_unico %}selected{% endif %}>Sim</option>
+              <option value="NAO" {% if cupom and not cupom.uso_unico %}selected{% endif %}>Não</option>
+            </select></div>
+          <div class="form-group"><label>Data Inicial</label>
+            <input type="date" name="data_inicial" value="{{ cupom.data_inicial.strftime('%Y-%m-%d') if cupom and cupom.data_inicial else '' }}"></div>
+          <div class="form-group"><label>Data Final</label>
+            <input type="date" name="data_final" value="{{ cupom.data_final.strftime('%Y-%m-%d') if cupom and cupom.data_final else '' }}"></div>
+          <div class="form-group full"><label>Observações</label>
+            <textarea name="obs">{{ cupom.obs if cupom else '' }}</textarea></div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <a href="{{ url_for('cupons') }}" class="btn btn-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

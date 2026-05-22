@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}{% if curso %}Editar{% else %}Novo Curso{% endif %} — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div style="margin-bottom:6px">
+        <a href="{{ url_for('cursos') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cursos</a>
+      </div>
+      <div class="page-title">{% if curso %}Editar Curso{% else %}Novo Curso{% endif %}</div>
+    </div>
+  </div>
+
+  <form method="POST" id="courseForm">
+    <input type="hidden" name="disciplinas_json" id="disciplinas_json" value="">
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><div class="card-title">Dados Principais</div></div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Nome do Curso *</label>
+            <input type="text" name="nome" value="{{ curso.nome if curso else '' }}" required placeholder="Nome completo do curso">
+          </div>
+          <div class="form-group">
+            <label>Tipo *</label>
+            <select name="tipo" required>
+              {% for t in tipos %}
+              <option value="{{ t }}" {% if curso and curso.tipo==t %}selected{% endif %}>
+                {{ t|replace('_',' ')|title }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Área</label>
+            <input type="text" name="area" value="{{ curso.area if curso else '' }}" placeholder="Ex: NEGÓCIOS, SAÚDE, TECNOLOGIA">
+          </div>
+          <div class="form-group">
+            <label>Carga Horária</label>
+            <input type="text" name="horas" value="{{ curso.horas if curso else '' }}" placeholder="Ex: 180, 40h">
+          </div>
+          <div class="form-group">
+            <label>Duração (meses)</label>
+            <input type="text" name="meses" value="{{ curso.meses if curso else '' }}" placeholder="Ex: 3 MESES">
+          </div>
+          <div class="form-group">
+            <label>Valor (R$)</label>
+            <input type="text" name="valor" value="{{ curso.valor if curso else '' }}" placeholder="Ex: 570">
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status">
+              {% for s in ['em_edicao','ativo','descontinuado','oculto'] %}
+              <option value="{{ s }}" {% if curso and curso.status==s %}selected{% elif not curso and s=='em_edicao' %}selected{% endif %}>
+                {{ s|replace('_',' ')|title }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>Link da Página de Venda</label>
+            <input type="url" name="link_venda" value="{{ curso.link_venda if curso else '' }}" placeholder="https://www.inovacarreira.com.br/...">
+          </div>
+          <div class="form-group">
+            <label>Cupom</label>
+            <input type="text" name="cupom" value="{{ curso.cupom if curso else '' }}" placeholder="Código do cupom vinculado">
+          </div>
+          <div class="form-group">
+            <label>Dono / Professor (para terceiros)</label>
+            <input type="text" name="dono" value="{{ curso.dono if curso else '' }}" placeholder="Nome do responsável externo">
+          </div>
+          <div class="form-group full">
+            <label>Link da Imagem/Capa</label>
+            <input type="text" name="link_imagem" value="{{ curso.link_imagem if curso else '' }}" placeholder="URL da imagem ou SharePoint">
+          </div>
+          <div class="form-group full">
+            <label>Descrição da Página de Venda</label>
+            <textarea name="descricao" rows="4" placeholder="Texto da página de venda...">{{ curso.descricao if curso else '' }}</textarea>
+          </div>
+          <div class="form-group full">
+            <label>Observações</label>
+            <textarea name="obs" rows="2" placeholder="Observações internas...">{{ curso.obs if curso else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MATRIX EDITOR -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div class="card-title">Matriz Curricular / Disciplinas</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addDisc()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Adicionar Disciplina
+        </button>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="matrix-wrap" style="border:none;border-radius:0">
+          <div class="matrix-row header">
+            <div>Módulo</div><div>#</div><div>Nome da Disciplina</div><div>CH</div><div>Professor</div><div>Titulação</div><div></div>
+          </div>
+          <div id="matrixBody"></div>
+        </div>
+        <div style="padding:12px 16px;color:var(--text-muted);font-size:12px" id="matrixEmpty">
+          Nenhuma disciplina cadastrada. Clique em "Adicionar Disciplina" para incluir.
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Cancelar</a>
+      <button type="submit" class="btn btn-primary">
+        {% if curso %}Salvar Alterações{% else %}Criar Curso{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+// Initialize matrix with existing data
+const existingDisc = {{ disc|tojson if disc else '[]' }};
+const mapped = existingDisc.map(d => ({
+  modulo: d.modulo || '',
+  ordem: d.ordem || 1,
+  nome: d.nome || '',
+  carga: d.carga || '',
+  professor: d.professor || '',
+  titulacao: d.titulacao || '',
+  cod_moodle: d.cod_moodle || ''
+}));
+initMatrix(mapped);
+
+// Watch matrix changes to show/hide empty message
+const origRender = renderMatrix;
+renderMatrix = function() {
+  origRender();
+  const empty = document.getElementById('matrixEmpty');
+  if (empty) empty.style.display = disciplines.length ? 'none' : 'block';
+};
+renderMatrix();
+</script>
+{% endblock %}
