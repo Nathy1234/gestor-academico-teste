@@ -15,8 +15,12 @@ TIPOS_CURSO = [
     'evento', 'pratica_conectada', 'pratica_estagio',
     'projeto_ambiental', 'ggbr', 'integra_edu',
 ]
-app.config['SECRET_KEY'] = 'inova-carreira-secret-2024'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///inova.db'
+EQUIPE_INSERCAO = ['NATÁLIA', 'PEDRO', 'STÉFANYE', 'LUCAS', 'JUNIOR', 'FELIPE']
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'inova-carreira-secret-2024')
+_db_url = os.environ.get('DATABASE_URL', 'sqlite:///inova.db')
+if _db_url.startswith('postgres://'):
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -271,13 +275,13 @@ def inject_notificacoes():
         .filter(Course.status.notin_(['descontinuado']))\
         .filter(Course.insersor != None, Course.insersor != '')
     if u.role != 'admin':
-        from sqlalchemy import or_ as sql_or
-        un = u.username
+        from sqlalchemy import or_ as sql_or, func as sql_func
+        un = u.username.lower()
         q = q.filter(sql_or(
-            Course.insersor == un,
-            Course.insersor.like(f'{un},%'),
-            Course.insersor.like(f'%,{un}'),
-            Course.insersor.like(f'%,{un},%'),
+            sql_func.lower(Course.insersor) == un,
+            sql_func.lower(Course.insersor).like(f'{un},%'),
+            sql_func.lower(Course.insersor).like(f'%,{un}'),
+            sql_func.lower(Course.insersor).like(f'%,{un},%'),
         ))
     pendentes = q.order_by(Course.nome, Discipline.ordem).all()
 
@@ -339,12 +343,13 @@ def dashboard():
     filtro_ins = request.args.get('insersor', '')
     q_base = Course.query
     if filtro_ins:
-        from sqlalchemy import or_ as sql_or
+        from sqlalchemy import or_ as sql_or, func as sql_func
+        fi = filtro_ins.lower()
         q_base = q_base.filter(sql_or(
-            Course.insersor == filtro_ins,
-            Course.insersor.like(f'{filtro_ins},%'),
-            Course.insersor.like(f'%,{filtro_ins}'),
-            Course.insersor.like(f'%,{filtro_ins},%'),
+            sql_func.lower(Course.insersor) == fi,
+            sql_func.lower(Course.insersor).like(f'{fi},%'),
+            sql_func.lower(Course.insersor).like(f'%,{fi}'),
+            sql_func.lower(Course.insersor).like(f'%,{fi},%'),
         ))
 
     total     = q_base.count()
@@ -360,26 +365,23 @@ def dashboard():
     recentes  = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(10).all()
     ultimo_bk = BackupRecord.query.order_by(BackupRecord.created_at.desc()).first()
 
-    # Pendências de plataforma por insersor — todos os insersores registrados
+    # Pendências de plataforma — apenas equipe de inserção, case-insensitive
     raw_pend = db.session.query(Course.insersor, db.func.count(Discipline.id))\
         .join(Discipline, Discipline.course_id == Course.id)\
         .filter(Discipline.plataforma_ok == False)\
         .filter(Course.insersor != None, Course.insersor != '')\
         .group_by(Course.insersor).all()
-    pend_map = {}
+    pend_map = {nome: 0 for nome in EQUIPE_INSERCAO}
     for ins_field, qtd in raw_pend:
         for nome in ins_field.split(','):
-            nome = nome.strip()
-            if nome:
-                pend_map[nome] = pend_map.get(nome, 0) + qtd
-    # Garante que todos os usuários cadastrados apareçam, mesmo sem pendência
-    all_users = User.query.order_by(User.username).all()
-    for u_obj in all_users:
-        if u_obj.username not in pend_map:
-            pend_map[u_obj.username] = 0
+            nome_up = nome.strip().upper()
+            for canonical in EQUIPE_INSERCAO:
+                if nome_up == canonical.upper():
+                    pend_map[canonical] += qtd
+                    break
     pend_por_ins = sorted(pend_map.items(), key=lambda x: x[1], reverse=True)
 
-    insersores = [u.username for u in User.query.order_by(User.username).all()]
+    insersores = EQUIPE_INSERCAO
 
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
@@ -406,17 +408,18 @@ def cursos():
                            filtro_insersor=insersor, busca=busca)
 
 def _build_cursos_query(tipo, area, status, busca, insersor):
-    from sqlalchemy import or_ as sql_or
+    from sqlalchemy import or_ as sql_or, func as sql_func
     q = Course.query
     if tipo:     q = q.filter_by(tipo=tipo)
     if area:     q = q.filter_by(area=area)
     if status:   q = q.filter_by(status=status)
     if insersor:
+        ins = insersor.lower()
         q = q.filter(sql_or(
-            Course.insersor == insersor,
-            Course.insersor.like(f'{insersor},%'),
-            Course.insersor.like(f'%,{insersor}'),
-            Course.insersor.like(f'%,{insersor},%'),
+            sql_func.lower(Course.insersor) == ins,
+            sql_func.lower(Course.insersor).like(f'{ins},%'),
+            sql_func.lower(Course.insersor).like(f'%,{ins}'),
+            sql_func.lower(Course.insersor).like(f'%,{ins},%'),
         ))
     if busca:    q = q.filter(Course.nome.ilike(f'%{busca}%'))
     return q.order_by(Course.nome).all()
@@ -1376,4 +1379,5 @@ if __name__ == '__main__':
         seed_data()
     t = threading.Thread(target=backup_scheduler, daemon=True)
     t.start()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
