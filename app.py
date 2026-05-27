@@ -22,6 +22,9 @@ if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+if os.environ.get('NETLIFY'):
+    from sqlalchemy.pool import NullPool
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
 db = SQLAlchemy(app)
 
 # ─── MODELS ────────────────────────────────────────────────────────────────────
@@ -1216,6 +1219,9 @@ def usuario_excluir(id):
 @app.route('/backup/manual', methods=['POST'])
 @admin_required
 def backup_manual():
+    if not app.config.get('SQLALCHEMY_DATABASE_URI', '').startswith('sqlite'):
+        flash('Backup de arquivo está disponível apenas no modo local. Os dados no Supabase são gerenciados na nuvem.', 'info')
+        return redirect(url_for('dashboard'))
     with app.app_context():
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         src = os.path.join(app.instance_path, 'inova.db')
@@ -1236,6 +1242,9 @@ def backup_manual():
 def backup_download(id):
     rec = BackupRecord.query.get_or_404(id)
     fpath = os.path.join('backups', rec.filename)
+    if not os.path.exists(fpath):
+        flash('Arquivo de backup não disponível neste ambiente.', 'warning')
+        return redirect(url_for('backup_lista'))
     return send_file(fpath, as_attachment=True, download_name=rec.filename)
 
 @app.route('/backup/lista')
@@ -1373,10 +1382,11 @@ def seed_data():
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
 
+with app.app_context():
+    db.create_all()
+    seed_data()
+
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        seed_data()
     t = threading.Thread(target=backup_scheduler, daemon=True)
     t.start()
     port = int(os.environ.get('PORT', 5000))
