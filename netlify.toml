@@ -1,4 +1,5 @@
 [build]
+  command = "pip install -r requirements.txt -t netlify/functions && cp app.py netlify/functions/ && cp -r templates netlify/functions/ && cp -r static netlify/functions/"
   functions = "netlify/functions"
   publish = "public"
 
