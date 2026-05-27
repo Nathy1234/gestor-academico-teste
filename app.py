@@ -1382,9 +1382,15 @@ def seed_data():
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
 
-with app.app_context():
-    db.create_all()
-    seed_data()
+_db_ready = False
+
+@app.before_request
+def ensure_db():
+    global _db_ready
+    if not _db_ready:
+        db.create_all()
+        seed_data()
+        _db_ready = True
 
 if __name__ == '__main__':
     t = threading.Thread(target=backup_scheduler, daemon=True)
