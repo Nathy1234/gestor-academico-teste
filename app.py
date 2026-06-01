@@ -1451,6 +1451,86 @@ def _import_excel():
                 break
 
         db.session.commit()
+
+        # ── DISCIPLINAS DAS MATRIZES (PÓS) ────────────────────────────────
+        def norm_nome(s):
+            s = _re2.sub(r'\s+', ' ', str(s).upper().strip())
+            s = s.replace('ESP. EM ', 'ESPECIALIZAÇÃO EM ').replace('ESP.EM ', 'ESPECIALIZAÇÃO EM ')
+            return _re2.sub(r'\s+', ' ', s).strip()
+
+        def nome_sim(a, b, n=25):
+            return norm_nome(a)[:n] == norm_nome(b)[:n]
+
+        pos_courses = Course.query.filter_by(tipo='pos').all()
+
+        sheet_m = next((s for s in wb.sheetnames if 'MATRIZES' in s.upper()), None)
+        if sheet_m and pos_courses:
+            ws_m = wb[sheet_m]
+            all_rows = list(ws_m.iter_rows(min_row=3, values_only=True))
+
+            # Encontrar onde terminam as linhas de cursos e começam as matrizes
+            matrix_start = len(all_rows)
+            for i, row in enumerate(all_rows):
+                try: int(str(row[0] or '').strip())
+                except:
+                    matrix_start = i
+                    break
+
+            cur_id = None
+            in_disc = False
+            disc_ordem = 0
+            cur_modulo = None
+
+            for row in all_rows[matrix_start:]:
+                c0 = str(row[0] or '').strip()
+                c1 = str(row[1] or '').strip()
+                c2 = str(row[2] or '').strip()
+                c3 = str(row[3] or '').strip()
+
+                if not c0 and not c1 and not c2 and not c3:
+                    in_disc = False
+                    continue
+
+                if c1.upper() == 'DISCIPLINAS':
+                    in_disc = True
+                    disc_ordem = 0
+                    cur_modulo = None
+                    continue
+
+                if not c0 and not c1 and c2:
+                    continue
+
+                if not c2:
+                    cname = c0 if (c0 and not c1) else c1
+                    if cname and cname.upper() not in ('PROFESSOR', 'PROFESSORES', 'DISCIPLINAS'):
+                        in_disc = False
+                        disc_ordem = 0
+                        cur_modulo = None
+                        cur_id = None
+                        match = next((c for c in pos_courses if nome_sim(c.nome, cname, 25)), None)
+                        if not match:
+                            match = next((c for c in pos_courses if nome_sim(c.nome, cname, 15)), None)
+                        if match:
+                            existing = Discipline.query.filter_by(course_id=match.id).count()
+                            cur_id = match.id if existing == 0 else None
+                    continue
+
+                if in_disc and c1 and c2 and cur_id:
+                    if c0 and not c0.isdigit():
+                        cur_modulo = c0
+                        disc_ordem += 1
+                    elif c0 and c0.isdigit():
+                        disc_ordem = int(c0)
+                    else:
+                        disc_ordem += 1
+                    db.session.add(Discipline(
+                        course_id=cur_id, modulo=cur_modulo,
+                        ordem=disc_ordem, nome=c1, carga=c2 or None,
+                        professor=c3 or None
+                    ))
+
+            db.session.commit()
+
         print("[OK] Dados importados com sucesso!")
     except FileNotFoundError:
         print("[INFO] Arquivo Excel nao encontrado.")
