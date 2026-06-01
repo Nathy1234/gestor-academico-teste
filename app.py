@@ -1575,14 +1575,27 @@ def admin_excel_debug():
     excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
     wb = openpyxl.load_workbook(excel_path)
     linhas = [f"<b>Abas:</b> {', '.join(wb.sheetnames)}<br><br>"]
+
+    # Linhas 40-70 do Profissionalizantes (após os cursos numerados)
     for shname in wb.sheetnames:
         if 'PROFISSIONALIZANTE' in shname.upper():
-            linhas.append(f"<b>Aba: {shname}</b><br>")
+            linhas.append(f"<b>Aba: {shname} (linhas 40-70)</b><br>")
             ws = wb[shname]
-            for i, row in enumerate(ws.iter_rows(min_row=1, max_row=30, values_only=True)):
-                cols = [str(c or '')[:30] for c in row[:8]]
-                linhas.append(f"Linha {i+1}: {' | '.join(cols)}<br>")
+            for i, row in enumerate(ws.iter_rows(min_row=40, max_row=70, values_only=True)):
+                cols = [str(c or '')[:35] for c in row[:6]]
+                linhas.append(f"Linha {i+40}: {' | '.join(cols)}<br>")
             break
+
+    linhas.append("<br>")
+
+    # Aba DISCIPLINAS PÓS
+    if 'DISCIPLINAS PÓS' in wb.sheetnames:
+        linhas.append("<b>Aba: DISCIPLINAS PÓS (primeiras 20 linhas)</b><br>")
+        ws = wb['DISCIPLINAS PÓS']
+        for i, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=True)):
+            cols = [str(c or '')[:35] for c in row[:8]]
+            linhas.append(f"Linha {i+1}: {' | '.join(cols)}<br>")
+
     return ''.join(linhas)
 
 @app.route('/admin/status')
