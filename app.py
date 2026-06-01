@@ -17,6 +17,8 @@ TIPOS_CURSO = [
 ]
 EQUIPE_INSERCAO = ['NATÁLIA', 'PEDRO', 'STÉFANYE', 'LUCAS', 'JUNIOR', 'FELIPE']
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'inova-carreira-secret-2024')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_PERMANENT'] = True
 _db_url = os.environ.get('DATABASE_URL', 'sqlite:///inova.db')
 if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
@@ -322,6 +324,7 @@ def login():
     if request.method == 'POST':
         u = User.query.filter_by(username=request.form['username']).first()
         if u and u.password == hash_pw(request.form['password']):
+            session.permanent = True
             session['user_id'] = u.id
             session['username'] = u.username
             session['role'] = u.role
@@ -1252,19 +1255,11 @@ def backup_lista():
 
 # ─── SEED DATA ─────────────────────────────────────────────────────────────────
 
-def seed_data():
-    if User.query.count() > 0: return
-    # Create admin
-    admin = User(username='admin', password=hash_pw('inova2024'), role='admin')
-    junior = User(username='junior', password=hash_pw('inova2024'), role='editor')
-    felipe = User(username='felipe', password=hash_pw('inova2024'), role='editor')
-    viewer = User(username='visualizador', password=hash_pw('inova2024'), role='viewer')
-    db.session.add_all([admin, junior, felipe, viewer])
-    db.session.commit()
-
-    # Import data from excel
+def _import_excel():
+    admin = User.query.filter_by(username='admin').first()
+    admin_id = admin.id if admin else None
     try:
-        import openpyxl, json as jsonlib
+        import openpyxl
         excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
         wb = openpyxl.load_workbook(excel_path)
 
@@ -1276,7 +1271,7 @@ def seed_data():
                       descricao=str(desc or ''), obs=str(obs or ''),
                       status=status, insersor=str(insersor or '')[:100],
                       cupom=str(cupom or '')[:100], dono=str(dono or ''),
-                      created_by=admin.id)
+                      created_by=admin_id)
             db.session.add(c)
             return c
 
@@ -1376,6 +1371,24 @@ def seed_data():
     except Exception as e:
         print(f"[ERRO] Ao importar Excel: {e}")
         db.session.rollback()
+
+def seed_data():
+    if User.query.count() == 0:
+        admin = User(username='admin', password=hash_pw('inova2024'), role='admin')
+        junior = User(username='junior', password=hash_pw('inova2024'), role='editor')
+        felipe = User(username='felipe', password=hash_pw('inova2024'), role='editor')
+        viewer = User(username='visualizador', password=hash_pw('inova2024'), role='viewer')
+        db.session.add_all([admin, junior, felipe, viewer])
+        db.session.commit()
+    if Course.query.count() == 0:
+        _import_excel()
+
+@app.route('/admin/reimportar', methods=['POST'])
+@admin_required
+def admin_reimportar():
+    _import_excel()
+    flash('Importação do Excel concluída!', 'success')
+    return redirect(url_for('dashboard'))
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
 
