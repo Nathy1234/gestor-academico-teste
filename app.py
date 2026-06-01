@@ -17,19 +17,11 @@ TIPOS_CURSO = [
 ]
 EQUIPE_INSERCAO = ['NATÁLIA', 'PEDRO', 'STÉFANYE', 'LUCAS', 'JUNIOR', 'FELIPE']
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'inova-carreira-secret-2024')
-import re as _re
 _db_url = os.environ.get('DATABASE_URL', 'sqlite:///inova.db')
 if _db_url.startswith('postgres://'):
-    _db_url = _db_url.replace('postgres://', 'postgresql+pg8000://', 1)
-elif _db_url.startswith('postgresql://') and '+' not in _db_url:
-    _db_url = _db_url.replace('postgresql://', 'postgresql+pg8000://', 1)
-_db_url = _re.sub(r'[?&]sslmode=\w+', '', _db_url).rstrip('?')
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-_engine_opts = {}
-if 'pg8000' in _db_url:
-    _engine_opts['connect_args'] = {'ssl_context': True}
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = _engine_opts
 db = SQLAlchemy(app)
 
 # ─── MODELS ────────────────────────────────────────────────────────────────────
