@@ -1385,9 +1385,14 @@ _db_ready = False
 def ensure_db():
     global _db_ready
     if not _db_ready:
-        db.create_all()
-        seed_data()
-        _db_ready = True
+        try:
+            db.create_all()
+            seed_data()
+            _db_ready = True
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return f"<pre>Erro ao inicializar banco:\n{traceback.format_exc()}</pre>", 500
 
 if __name__ == '__main__':
     t = threading.Thread(target=backup_scheduler, daemon=True)
