@@ -1568,6 +1568,23 @@ def admin_reimportar():
     flash('Dados limpos e reimportados com sucesso!', 'success')
     return redirect(url_for('dashboard'))
 
+@app.route('/admin/excel-debug')
+@admin_required
+def admin_excel_debug():
+    import openpyxl, os
+    excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
+    wb = openpyxl.load_workbook(excel_path)
+    linhas = [f"<b>Abas:</b> {', '.join(wb.sheetnames)}<br><br>"]
+    for shname in wb.sheetnames:
+        if 'PROFISSIONALIZANTE' in shname.upper():
+            linhas.append(f"<b>Aba: {shname}</b><br>")
+            ws = wb[shname]
+            for i, row in enumerate(ws.iter_rows(min_row=1, max_row=30, values_only=True)):
+                cols = [str(c or '')[:30] for c in row[:8]]
+                linhas.append(f"Linha {i+1}: {' | '.join(cols)}<br>")
+            break
+    return ''.join(linhas)
+
 @app.route('/admin/status')
 @admin_required
 def admin_status():
