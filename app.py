@@ -1386,8 +1386,13 @@ def seed_data():
 @app.route('/admin/reimportar', methods=['GET', 'POST'])
 @admin_required
 def admin_reimportar():
+    Discipline.query.delete()
+    Course.query.delete()
+    Coupon.query.delete()
+    Refund.query.delete()
+    db.session.commit()
     _import_excel()
-    flash('Importação do Excel concluída!', 'success')
+    flash('Dados limpos e reimportados com sucesso!', 'success')
     return redirect(url_for('dashboard'))
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
