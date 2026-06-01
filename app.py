@@ -1453,13 +1453,21 @@ def _import_excel():
         db.session.commit()
 
         # ── DISCIPLINAS DAS MATRIZES (PÓS) ────────────────────────────────
+        import unicodedata as _ud
+
         def norm_nome(s):
             s = _re2.sub(r'\s+', ' ', str(s).upper().strip())
             s = s.replace('ESP. EM ', 'ESPECIALIZAÇÃO EM ').replace('ESP.EM ', 'ESPECIALIZAÇÃO EM ')
+            # Remove acentos
+            s = ''.join(c for c in _ud.normalize('NFKD', s) if not _ud.combining(c))
             return _re2.sub(r'\s+', ' ', s).strip()
 
-        def nome_sim(a, b, n=25):
-            return norm_nome(a)[:n] == norm_nome(b)[:n]
+        def nome_sim(a, b):
+            na, nb = norm_nome(a), norm_nome(b)
+            for n in [30, 25, 20, 15, 10]:
+                if na[:n] == nb[:n] and len(na) >= n and len(nb) >= n:
+                    return True
+            return False
 
         pos_courses = Course.query.filter_by(tipo='pos').all()
 
@@ -1507,9 +1515,7 @@ def _import_excel():
                         disc_ordem = 0
                         cur_modulo = None
                         cur_id = None
-                        match = next((c for c in pos_courses if nome_sim(c.nome, cname, 25)), None)
-                        if not match:
-                            match = next((c for c in pos_courses if nome_sim(c.nome, cname, 15)), None)
+                        match = next((c for c in pos_courses if nome_sim(c.nome, cname)), None)
                         if match:
                             existing = Discipline.query.filter_by(course_id=match.id).count()
                             cur_id = match.id if existing == 0 else None
