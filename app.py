@@ -1256,117 +1256,204 @@ def backup_lista():
 # ─── SEED DATA ─────────────────────────────────────────────────────────────────
 
 def _import_excel():
+    import re as _re2
+
+    def is_numero(val):
+        try: return int(str(val).strip()) > 0
+        except: return False
+
+    def limpar_horas(val):
+        if val is None: return ''
+        m = _re2.match(r'^(\d+\.?\d*)', str(val).strip())
+        return m.group(1) if m else ''
+
+    def limpar_valor(val):
+        if val is None: return ''
+        s = str(val).strip()
+        return s if s not in ('-', '') else ''
+
+    def pd(v):
+        return v.date() if isinstance(v, datetime) else None
+
     admin = User.query.filter_by(username='admin').first()
     admin_id = admin.id if admin else None
+
+    def ac(nome, tipo, area, horas, valor, link, link_img='', desc='', obs='', status='ativo', insersor='', meses='', cupom='', dono=''):
+        if not nome or str(nome).strip() == '': return None
+        c = Course(nome=str(nome).strip()[:300], tipo=tipo,
+                   area=str(area or '').strip()[:100], horas=str(horas or '').strip()[:20],
+                   meses=str(meses or '').strip()[:20], valor=str(valor or '').strip()[:50],
+                   link_venda=str(link or '').strip(), link_imagem=str(link_img or '').strip(),
+                   descricao=str(desc or '').strip(), obs=str(obs or '').strip(),
+                   status=status, insersor=str(insersor or '').strip()[:100],
+                   cupom=str(cupom or '').strip()[:100], dono=str(dono or '').strip(),
+                   created_by=admin_id)
+        db.session.add(c)
+        return c
+
     try:
         import openpyxl
         excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
         wb = openpyxl.load_workbook(excel_path)
 
-        def add_course(nome, tipo, area, horas, valor, link, desc, obs, status, insersor, meses='', cupom='', dono=''):
-            if not nome or str(nome).strip() == '': return None
-            c = Course(nome=str(nome)[:300], tipo=tipo, area=str(area or '')[:100],
-                      horas=str(horas or '')[:20], meses=str(meses or '')[:20],
-                      valor=str(valor or '')[:50], link_venda=str(link or '')[:500],
-                      descricao=str(desc or ''), obs=str(obs or ''),
-                      status=status, insersor=str(insersor or '')[:100],
-                      cupom=str(cupom or '')[:100], dono=str(dono or ''),
-                      created_by=admin_id)
-            db.session.add(c)
-            return c
-
-        # PÓS MATRIZES
-        ws = wb['PÓS- MATRIZES INOVA']
-        for row in ws.iter_rows(min_row=3, values_only=True):
-            if not row[1]: continue
-            add_course(row[1], 'pos', row[2], row[3], row[5], row[7], '', str(row[8] or ''), 'ativo', row[6], meses=str(row[4] or ''))
+        # PÓS-GRADUAÇÃO — só linhas onde col[0] é número (ignora linhas de disciplinas)
+        for shname in wb.sheetnames:
+            if 'MATRIZES' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=3, values_only=True):
+                    if not is_numero(row[0]): continue
+                    area_val = str(row[2] or '').strip()
+                    if area_val.endswith('h') and area_val[:-1].isdigit(): continue
+                    ac(row[1], 'pos', row[2], limpar_horas(row[3]), limpar_valor(row[5]),
+                       str(row[7] or ''), obs=str(row[8] or ''), insersor=str(row[6] or ''),
+                       meses=str(row[4] or ''))
+                break
 
         # PROFISSIONALIZANTES
-        ws = wb['PROFISSIONALIZANTES INOVA']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1] or str(row[1]).startswith('CURSOS'): continue
-            add_course(row[1], 'profissionalizante', row[2], row[3], '', row[4], str(row[5] or ''), str(row[7] or ''), 'ativo', 'INOVA')
+        for shname in wb.sheetnames:
+            if 'PROFISSIONALIZANTE' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not is_numero(row[0]): continue
+                    ac(row[1], 'profissionalizante', row[2], limpar_horas(row[3]), '',
+                       str(row[4] or ''), link_img=str(row[6] or ''),
+                       desc=str(row[5] or ''), obs=str(row[7] or ''), insersor='INOVA')
+                break
 
         # RÁPIDOS
-        ws = wb['RÁPIDOS INOVA']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]: continue
-            add_course(row[1], 'rapido', row[2], row[3], row[5], row[4], str(row[6] or ''), str(row[8] or ''), 'ativo', 'INOVA')
+        for shname in wb.sheetnames:
+            if 'RÁPIDOS INOVA' in shname or 'RAPIDOS INOVA' in shname:
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not is_numero(row[0]): continue
+                    ac(row[1], 'rapido', row[2], limpar_horas(row[3]), limpar_valor(row[5]),
+                       str(row[4] or ''), link_img=str(row[7] or ''),
+                       desc=str(row[6] or ''), obs=str(row[8] or ''), insersor='INOVA')
+                break
 
         # PACOTES
-        ws = wb['PACOTE CURSOS']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1] or str(row[1]).startswith('Nº'): continue
-            add_course(row[1], 'pacote', row[2], row[3], row[8], row[4], '', str(row[6] or ''), 'ativo', str(row[5] or ''))
+        for shname in wb.sheetnames:
+            if shname.upper() == 'PACOTE CURSOS':
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not is_numero(row[0]): continue
+                    ac(row[1], 'pacote', row[2], limpar_horas(row[3]), limpar_valor(row[8]),
+                       str(row[4] or ''), obs=str(row[6] or ''), insersor=str(row[5] or ''))
+                break
 
         # TERCEIROS
-        ws = wb['CURSOS TERCEIROS INOVA']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]: continue
-            s = 'descontinuado' if str(row[10] or '').upper().find('DESCONTINUADO') >= 0 else 'ativo'
-            add_course(row[1], 'terceiros', row[5], row[3], row[2], row[6], str(row[8] or ''), str(row[10] or ''), s, '', dono=str(row[7] or ''))
+        for shname in wb.sheetnames:
+            if 'TERCEIROS' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not is_numero(row[0]): continue
+                    obs = str(row[10] or '').strip()
+                    s = 'descontinuado' if 'DESCONTINUADO' in obs.upper() else 'ativo'
+                    ac(row[1], 'terceiros', row[5], limpar_horas(row[3]), limpar_valor(row[2]),
+                       str(row[6] or ''), desc=str(row[8] or ''), obs=obs, dono=str(row[7] or ''))
+                break
 
         # EVENTOS
-        ws = wb['EVENTOS']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[2]: continue
-            add_course(row[2], 'evento', 'EVENTO', row[3], row[6], row[4], '', str(row[8] or ''), 'ativo', 'INOVA')
+        for shname in wb.sheetnames:
+            if shname.upper() == 'EVENTOS':
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row[2]: continue
+                    obs_ev = f"Tipo: {row[1] or ''} | Data: {row[5] or ''}" + (f" | {row[8]}" if row[8] else "")
+                    ac(row[2], 'evento', 'EVENTO', limpar_horas(row[3]), limpar_valor(row[6]),
+                       str(row[4] or ''), obs=obs_ev, insersor='INOVA')
+                break
 
         # PRÁTICAS CONECTADAS
-        ws = wb['PRÁTICAS CONECTADAS']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]: continue
-            add_course(row[1], 'pratica_conectada', row[0], '', '', row[3], '', '', 'oculto', 'INOVA', cupom=str(row[2] or ''))
+        for shname in wb.sheetnames:
+            if 'CONECTADA' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row[1]: continue
+                    ac(row[1], 'pratica_conectada', str(row[0] or ''), '', '',
+                       str(row[3] or ''), status='oculto', insersor='INOVA', cupom=str(row[2] or ''))
+                break
 
         # PRÁTICAS ESTÁGIO
-        ws = wb['PRÁTICAS DE ESTÁGIO']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[0]: continue
-            add_course(row[0], 'pratica_estagio', row[1], '', '', str(row[5] or ''), '', '', 'ativo', str(row[3] or ''), cupom=str(row[4] or ''))
+        for shname in wb.sheetnames:
+            if 'ESTAGIO' in shname.upper() or 'ESTÁGIO' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row[0]: continue
+                    ac(row[0], 'pratica_estagio', str(row[1] or ''), '', '',
+                       str(row[5] or ''), insersor=str(row[3] or ''), cupom=str(row[4] or ''))
+                break
 
         # PROJ. AMBIENTES PROF
-        ws = wb['PROJ. AMBIENTES PROF']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]: continue
-            add_course(row[1], 'projeto_ambiental', '', '', '', str(row[3] or ''), '', str(row[4] or ''), 'oculto', 'INOVA', cupom=str(row[2] or ''))
+        for shname in wb.sheetnames:
+            if 'AMBIENTES' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not is_numero(row[0]): continue
+                    ac(row[1], 'projeto_ambiental', '', '', '', str(row[3] or ''),
+                       status='oculto', insersor='INOVA', cupom=str(row[2] or ''), obs=str(row[4] or ''))
+                break
 
-        # GGBR RÁPIDOS
-        ws = wb['GGBR - RÁPIDOS']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]: continue
-            add_course(row[1], 'ggbr', row[2], row[3], row[5], row[4], '', '', 'ativo', 'INOVA')
+        # GGBR
+        for shname in wb.sheetnames:
+            if 'GGBR' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not is_numero(row[0]): continue
+                    ac(row[1], 'ggbr', str(row[2] or ''), limpar_horas(row[3]),
+                       limpar_valor(row[5]), str(row[4] or ''), insersor='INOVA')
+                break
+
+        # INTEGRA EDU
+        for shname in wb.sheetnames:
+            if 'INTEGRA' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row[0]: continue
+                    ac(row[0], 'integra_edu', '', limpar_horas(row[1]), '',
+                       str(row[2] or ''), obs=str(row[3] or ''), insersor='INOVA')
+                break
+
+        db.session.commit()
 
         # CUPONS
-        ws = wb['CUPOM']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[0]: continue
-            def pd(v):
-                if isinstance(v, datetime): return v.date()
-                return None
-            cp = Coupon(nome=str(row[0])[:100], quantidade=int(row[1] or 0),
-                       desconto=float(row[2] or 0), cursos_tipo=str(row[3] or ''),
-                       limite_curso=int(row[4] or 1), uso_unico=(str(row[5] or '').upper()=='SIM'),
-                       data_inicial=pd(row[6]), obs=str(row[8] or ''))
-            db.session.add(cp)
+        for shname in wb.sheetnames:
+            if shname.upper() == 'CUPOM':
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row[0] or str(row[0]).strip() in ('NOME', ''): continue
+                    try:
+                        cp = Coupon(nome=str(row[0]).strip()[:100], quantidade=int(row[1] or 0),
+                                   desconto=float(row[2] or 0), cursos_tipo=str(row[3] or '').strip(),
+                                   limite_curso=int(row[4] or 1), uso_unico=(str(row[5] or '').upper()=='SIM'),
+                                   data_inicial=pd(row[6]), data_final=pd(row[7]) if len(row) > 7 else None,
+                                   obs=str(row[8] or '').strip() if len(row) > 8 else '')
+                        db.session.add(cp)
+                    except: pass
+                break
 
         # REEMBOLSOS
-        ws = wb['REEMBOLSOS']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]: continue
-            def pd2(v):
-                if isinstance(v, datetime): return v.date()
-                return None
-            r = Refund(colab=str(row[0] or ''), nome_aluno=str(row[1] or ''),
-                      data_compra=pd2(row[2]), data_solicitacao=pd2(row[3]),
-                      valor=float(row[4] or 0), valor_estorno=float(row[5] or 0),
-                      nome_curso=str(row[6] or ''), categoria=str(row[7] or ''),
-                      data_aprovacao=pd2(row[10]), motivo=str(row[11] or ''))
-            db.session.add(r)
+        for shname in wb.sheetnames:
+            if 'REEMBOLSO' in shname.upper():
+                ws = wb[shname]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row[1] or str(row[1]).strip() in ('NOME ALUNO', ''): continue
+                    try:
+                        r = Refund(colab=str(row[0] or '').strip(), nome_aluno=str(row[1] or '').strip(),
+                                  data_compra=pd(row[2]), data_solicitacao=pd(row[3]),
+                                  valor=float(str(row[4] or 0).replace(',', '.') or 0),
+                                  valor_estorno=float(str(row[5] or 0).replace(',', '.') or 0),
+                                  nome_curso=str(row[6] or '').strip(), categoria=str(row[7] or '').strip(),
+                                  data_aprovacao=pd(row[10]) if len(row) > 10 else None,
+                                  motivo=str(row[11] or '').strip() if len(row) > 11 else '')
+                        db.session.add(r)
+                    except: pass
+                break
 
         db.session.commit()
         print("[OK] Dados importados com sucesso!")
     except FileNotFoundError:
-        print("[INFO] Arquivo Excel nao encontrado. Iniciando sem dados pre-carregados.")
+        print("[INFO] Arquivo Excel nao encontrado.")
         db.session.rollback()
     except Exception as e:
         print(f"[ERRO] Ao importar Excel: {e}")
