@@ -1576,14 +1576,23 @@ def admin_excel_debug():
     wb = openpyxl.load_workbook(excel_path)
     linhas = [f"<b>Abas:</b> {', '.join(wb.sheetnames)}<br><br>"]
 
-    # Linhas 40-70 do Profissionalizantes (após os cursos numerados)
+    # Todas as linhas não-vazias do Profissionalizantes após linha 43
     for shname in wb.sheetnames:
         if 'PROFISSIONALIZANTE' in shname.upper():
-            linhas.append(f"<b>Aba: {shname} (linhas 40-70)</b><br>")
             ws = wb[shname]
-            for i, row in enumerate(ws.iter_rows(min_row=40, max_row=70, values_only=True)):
-                cols = [str(c or '')[:35] for c in row[:6]]
-                linhas.append(f"Linha {i+40}: {' | '.join(cols)}<br>")
+            total = ws.max_row
+            linhas.append(f"<b>Aba: {shname} — total de linhas: {total}</b><br>")
+            # Mostrar primeiras linhas não-vazias após linha 43
+            count = 0
+            for i, row in enumerate(ws.iter_rows(min_row=44, values_only=True)):
+                if any(c for c in row[:8] if c is not None and str(c).strip()):
+                    cols = [str(c or '')[:40] for c in row[:8]]
+                    linhas.append(f"Linha {i+44}: {' | '.join(cols)}<br>")
+                    count += 1
+                    if count >= 40:
+                        break
+            if count == 0:
+                linhas.append("Nenhuma linha não-vazia encontrada após linha 43.<br>")
             break
 
     linhas.append("<br>")
