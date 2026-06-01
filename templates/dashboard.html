@@ -90,7 +90,7 @@
               <span style="background:#ef444420;color:#ef4444;padding:2px 10px;border-radius:12px;font-weight:600;font-size:13px">{{ qtd }} pendente{{ 's' if qtd > 1 else '' }}</span>
             {% endif %}
           </td>
-          <td><a href="{{ url_for('cursos', insersor=ins) }}" class="btn btn-sm btn-secondary">Ver cursos</a></td>
+          <td><a href="{{ url_for('matrizes', insersor=ins, pendente='1' if qtd > 0 else '') }}" class="btn btn-sm btn-secondary">Ver matrizes</a></td>
         </tr>
         {% endfor %}
         {% if not pend_por_ins %}

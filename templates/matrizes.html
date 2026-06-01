@@ -113,51 +113,82 @@
     {% set expand = busca|length > 0 %}
 
     <!-- LINHA COLAPSÁVEL DO CURSO -->
-    <div class="matrix-accordion-item" style="border-bottom:1px solid var(--border);{% if not is_complete %}background:rgba(251,191,36,.13){% endif %}">
-      <button type="button"
-              onclick="toggleAccordion({{ loop.index0 }})"
-              style="width:100%;background:none;border:none;cursor:pointer;padding:14px 16px;
-                     display:flex;align-items:center;gap:12px;text-align:left;
-                     color:var(--text);font-family:inherit">
-        <!-- chevron -->
-        <svg id="chevron-{{ loop.index0 }}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" style="width:14px;height:14px;flex-shrink:0;transition:transform .2s;
-             {% if expand %}transform:rotate(90deg){% endif %}">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
+    {% set pct = ((ok_count / discs|length) * 100)|int if discs|length > 0 else 0 %}
+    <div class="matrix-accordion-item" style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:stretch;gap:0">
 
-        <!-- nome + badges -->
-        <div style="flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
-          <span style="font-weight:600;font-size:14px">{{ c.nome }}</span>
-          <span class="badge badge-{{ c.tipo }}" style="font-size:10px">{{ tipo_labels.get(c.tipo, c.tipo) }}</span>
-          <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status|replace('_',' ')|title }}</span>
-          {% if total_ch > 0 %}
-          <span style="font-size:11px;color:var(--text-muted);font-weight:500">{{ total_ch }}h</span>
-          {% elif c.horas %}
-          <span style="font-size:11px;color:var(--text-muted);font-weight:500">{{ c.horas }}</span>
-          {% endif %}
-          <span style="font-size:11px;color:var(--text-muted)">· {{ discs|length }} disc.</span>
-          {% if c.insersor %}
-          <span style="font-size:11px;color:var(--text-muted);border-left:1px solid var(--border);padding-left:8px">
-            👤 {{ c.insersor }}
-          </span>
-          {% endif %}
-        </div>
+        <!-- FAIXA COLORIDA LATERAL -->
+        <div style="width:4px;flex-shrink:0;
+                    background:{% if is_complete %}#22c55e{% else %}#f59e0b{% endif %}"></div>
 
-        <!-- progresso + link -->
-        <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
-          <span style="font-size:12px;font-weight:700;
-                       color:{% if is_complete %}#22c55e{% else %}#f59e0b{% endif %}">
-            {{ ok_count }}/{{ discs|length }}{% if is_complete %} ✓{% endif %}
-          </span>
-          {% if session.role in ['admin','editor'] %}
-          <a href="{{ url_for('curso_editar', id=c.id, **{'from': 'matrizes'}) }}"
-             onclick="event.stopPropagation()"
-             class="btn btn-sm btn-secondary" style="padding:3px 8px;font-size:11px">Editar</a>
-          {% endif %}
-          <a href="{{ url_for('curso_detalhe', id=c.id, **{'from': 'matrizes'}) }}"
-             onclick="event.stopPropagation()"
-             style="font-size:11px;color:var(--primary)">Ver curso →</a>
+        <!-- CONTEÚDO PRINCIPAL -->
+        <button type="button"
+                onclick="toggleAccordion({{ loop.index0 }})"
+                style="flex:1;background:none;border:none;cursor:pointer;
+                       padding:16px 20px 16px 16px;
+                       display:grid;grid-template-columns:20px 1fr auto;
+                       gap:12px;align-items:center;text-align:left;
+                       color:var(--text);font-family:inherit;min-width:0">
+
+          <!-- chevron -->
+          <svg id="chevron-{{ loop.index0 }}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" style="width:14px;height:14px;transition:transform .2s;color:var(--text-muted);
+               {% if expand %}transform:rotate(90deg){% endif %}">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+
+          <!-- COLUNA CENTRAL: nome separado das infos -->
+          <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+            <span style="font-weight:700;font-size:14px;line-height:1.3;
+                         overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">
+              {{ c.nome }}
+            </span>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px">
+              <span class="badge badge-{{ c.tipo }}" style="font-size:10px">{{ tipo_labels.get(c.tipo, c.tipo) }}</span>
+              <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status|replace('_',' ')|title }}</span>
+              {% if total_ch > 0 or c.horas %}
+              <span style="font-size:11px;color:var(--text-muted);background:var(--bg);
+                           border:1px solid var(--border);border-radius:4px;padding:1px 6px">
+                {{ total_ch ~ 'h' if total_ch > 0 else c.horas }}
+              </span>
+              {% endif %}
+              <span style="font-size:11px;color:var(--text-muted)">{{ discs|length }} disciplinas</span>
+              {% if c.insersor %}
+              <span style="font-size:11px;color:var(--text-muted);
+                           background:var(--bg);border:1px solid var(--border);
+                           border-radius:4px;padding:1px 6px;display:flex;align-items:center;gap:3px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     style="width:10px;height:10px;flex-shrink:0"><circle cx="12" cy="8" r="4"/>
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                {{ c.insersor }}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- COLUNA DIREITA: progresso + ações -->
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+                      min-width:120px" onclick="event.stopPropagation()">
+            <span style="font-size:15px;font-weight:800;letter-spacing:-0.5px;
+                         color:{% if is_complete %}#22c55e{% else %}#f59e0b{% endif %}">
+              {{ ok_count }}/{{ discs|length }}{% if is_complete %} ✓{% endif %}
+            </span>
+            <div style="width:100px;height:6px;background:var(--border);border-radius:10px;overflow:hidden">
+              <div style="height:100%;width:{{ pct }}%;
+                          background:{% if is_complete %}#22c55e{% else %}#f59e0b{% endif %};
+                          border-radius:10px"></div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
+              {% if session.role in ['admin','editor'] %}
+              <a href="{{ url_for('curso_editar', id=c.id, **{'from': 'matrizes'}) }}"
+                 class="btn btn-sm btn-secondary" style="padding:3px 10px;font-size:11px">Editar</a>
+              {% endif %}
+              <a href="{{ url_for('curso_detalhe', id=c.id) }}"
+                 style="font-size:11px;color:var(--primary)">Ver →</a>
+            </div>
+          </div>
+        </button>
+      </div>
         </div>
       </button>
 
