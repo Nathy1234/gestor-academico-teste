@@ -1562,6 +1562,24 @@ def admin_reimportar():
     flash('Dados limpos e reimportados com sucesso!', 'success')
     return redirect(url_for('dashboard'))
 
+@app.route('/admin/status')
+@admin_required
+def admin_status():
+    from sqlalchemy import func
+    linhas = [f"<b>Status do banco:</b><br>"]
+    linhas.append(f"Cursos: {Course.query.count()}<br>")
+    linhas.append(f"Disciplinas: {Discipline.query.count()}<br>")
+    linhas.append(f"Cupons: {Coupon.query.count()}<br>")
+    linhas.append(f"Reembolsos: {Refund.query.count()}<br><br>")
+    linhas.append("<b>Cursos por tipo:</b><br>")
+    for tipo, qtd in db.session.query(Course.tipo, func.count(Course.id)).group_by(Course.tipo).all():
+        com_disc = db.session.query(func.count(Course.id)).filter(
+            Course.tipo == tipo,
+            db.session.query(Discipline).filter(Discipline.course_id == Course.id).exists()
+        ).scalar()
+        linhas.append(f"{tipo}: {qtd} cursos, {com_disc} com disciplinas<br>")
+    return ''.join(linhas)
+
 # ─── INIT ──────────────────────────────────────────────────────────────────────
 
 _db_ready = False
