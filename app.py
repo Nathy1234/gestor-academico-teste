@@ -1383,7 +1383,7 @@ def seed_data():
     if Course.query.count() == 0:
         _import_excel()
 
-@app.route('/admin/reimportar', methods=['POST'])
+@app.route('/admin/reimportar', methods=['GET', 'POST'])
 @admin_required
 def admin_reimportar():
     _import_excel()
