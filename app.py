@@ -2,7 +2,40 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from functools import wraps
-import hashlib, os, shutil, json, threading, time, io, zipfile
+import hashlib, os, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
+
+def _norm_name(s):
+    """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
+    return ''.join(c for c in _ucd.normalize('NFD', s.upper()) if _ucd.category(c) != 'Mn')
+
+# Mapa de iniciais usadas no campo insersor (ex: 'P,L,S,F') para nome canônico normalizado
+INICIAIS_INSERCAO = {
+    'N': 'NATALIA', 'P': 'PEDRO', 'L': 'LUCAS',
+    'S': 'STEFANYE', 'F': 'FELIPE', 'J': 'JUNIOR',
+}
+
+# Carrega variáveis do .env manualmente para não depender do python-dotenv
+# e sem ativar DATABASE_URL (mantém SQLite local)
+def _load_env_var(key):
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+        with open(env_path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('#') or '=' not in line:
+                    continue
+                k, _, v = line.partition('=')
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+# Carrega apenas a chave da IA do .env se não estiver no ambiente
+if not os.environ.get('ANTHROPIC_API_KEY'):
+    val = _load_env_var('ANTHROPIC_API_KEY')
+    if val and val != 'sua-chave-aqui':
+        os.environ['ANTHROPIC_API_KEY'] = val
 
 app = Flask(__name__)
 
@@ -15,7 +48,7 @@ TIPOS_CURSO = [
     'evento', 'pratica_conectada', 'pratica_estagio',
     'projeto_ambiental', 'ggbr', 'integra_edu',
 ]
-EQUIPE_INSERCAO = ['NATÁLIA', 'PEDRO', 'STÉFANYE', 'LUCAS', 'JUNIOR', 'FELIPE']
+EQUIPE_INSERCAO = ['NATÁLIA', 'PEDRO', 'STEFANYE', 'LUCAS', 'JUNIOR', 'FELIPE']
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'inova-carreira-secret-2024')
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 app.config['SESSION_PERMANENT'] = True
@@ -152,11 +185,18 @@ class Refund(db.Model):
     motivo           = db.Column(db.Text)
     curso_excluido   = db.Column(db.Date)   # Data exclusão do curso
     obs              = db.Column(db.Text)
+    concluido_manual = db.Column(db.Boolean, default=False)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    # Dados para pagamento do reembolso
+    cpf              = db.Column(db.String(20))
+    celular          = db.Column(db.String(30))
+    pix              = db.Column(db.String(200))
+    email_destino    = db.Column(db.String(200))
 
     @property
     def pendencia(self):
-        """Retorna o estágio pendente atual do reembolso."""
+        if self.concluido_manual:
+            return ('concluido', 'Concluído')
         if not self.solicitacao_1:
             return ('sem_solic1', 'Aguarda 1ª Solicitação')
         if not self.solicitacao_2:
@@ -343,55 +383,100 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    filtro_ins = request.args.get('insersor', '')
-    q_base = Course.query
-    if filtro_ins:
-        from sqlalchemy import or_ as sql_or, func as sql_func
-        fi = filtro_ins.lower()
-        q_base = q_base.filter(sql_or(
-            sql_func.lower(Course.insersor) == fi,
-            sql_func.lower(Course.insersor).like(f'{fi},%'),
-            sql_func.lower(Course.insersor).like(f'%,{fi}'),
-            sql_func.lower(Course.insersor).like(f'%,{fi},%'),
-        ))
+    from sqlalchemy import or_ as sql_or, func as sql_func
 
-    total     = q_base.count()
-    ativos    = q_base.filter_by(status='ativo').count()
-    em_edicao = q_base.filter_by(status='em_edicao').count()
-    desc      = q_base.filter_by(status='descontinuado').count()
-    externos  = q_base.filter_by(status='externo').count()
-    ocultos   = q_base.filter_by(status='oculto').count()
+    u = User.query.get(session['user_id'])
+    is_admin = u.role == 'admin'
+    filtro_ins = request.args.get('insersor', '')
+
+    # Para não-admins, aplica filtro automático pelo nome do próprio usuário
+    def _ins_filter(q, nome):
+        n = nome.lower()
+        n_norm = _norm_name(nome)
+        inicial = next((k for k, v in INICIAIS_INSERCAO.items() if v == n_norm), None)
+        conds = [
+            sql_func.lower(Course.insersor) == n,
+            sql_func.lower(Course.insersor).like(f'{n},%'),
+            sql_func.lower(Course.insersor).like(f'%,{n}'),
+            sql_func.lower(Course.insersor).like(f'%,{n},%'),
+        ]
+        if inicial:
+            i = inicial.lower()
+            conds += [
+                sql_func.lower(Course.insersor) == i,
+                sql_func.lower(Course.insersor).like(f'{i},%'),
+                sql_func.lower(Course.insersor).like(f'%,{i}'),
+                sql_func.lower(Course.insersor).like(f'%,{i},%'),
+            ]
+        return q.filter(sql_or(*conds))
+
+    q_base = Course.query
+    if is_admin and filtro_ins:
+        q_base = _ins_filter(q_base, filtro_ins)
+    elif not is_admin:
+        q_base = _ins_filter(q_base, u.username)
+
+    total      = q_base.count()
+    ativos     = q_base.filter_by(status='ativo').count()
+    em_edicao  = q_base.filter_by(status='em_edicao').count()
+    desc       = q_base.filter_by(status='descontinuado').count()
+    ocultos    = q_base.filter_by(status='oculto').count()
     finalizado = q_base.filter_by(status='finalizado').count()
 
-    por_tipo  = db.session.query(Course.tipo, db.func.count(Course.id))\
-                          .group_by(Course.tipo).all()
-    recentes  = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(10).all()
+    por_tipo = db.session.query(Course.tipo, db.func.count(Course.id))\
+                         .group_by(Course.tipo).all()
+
+    if is_admin:
+        recentes = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(10).all()
+    else:
+        recentes = AuditLog.query.filter(
+            sql_func.lower(AuditLog.username) == u.username.lower()
+        ).order_by(AuditLog.timestamp.desc()).limit(10).all()
+
     ultimo_bk = BackupRecord.query.order_by(BackupRecord.created_at.desc()).first()
 
-    # Pendências de plataforma — apenas equipe de inserção, case-insensitive
-    raw_pend = db.session.query(Course.insersor, db.func.count(Discipline.id))\
-        .join(Discipline, Discipline.course_id == Course.id)\
-        .filter(Discipline.plataforma_ok == False)\
-        .filter(Course.insersor != None, Course.insersor != '')\
-        .group_by(Course.insersor).all()
-    pend_map = {nome: 0 for nome in EQUIPE_INSERCAO}
-    for ins_field, qtd in raw_pend:
-        for nome in ins_field.split(','):
-            nome_up = nome.strip().upper()
-            for canonical in EQUIPE_INSERCAO:
-                if nome_up == canonical.upper():
-                    pend_map[canonical] += qtd
-                    break
-    pend_por_ins = sorted(pend_map.items(), key=lambda x: x[1], reverse=True)
+    # Andamento por insersor: pendentes e concluídas por pessoa
+    # Para não-admins: apenas a própria linha
+    equipe = EQUIPE_INSERCAO if is_admin else [u.username.upper()]
 
-    insersores = EQUIPE_INSERCAO
+    stats_map = {nome.upper(): {'pendentes': 0, 'concluidas': 0, 'total': 0} for nome in equipe}
+
+    raw_disc = db.session.query(Course.insersor, Discipline.plataforma_ok, db.func.count(Discipline.id))\
+        .join(Discipline, Discipline.course_id == Course.id)\
+        .filter(Course.insersor != None, Course.insersor != '')\
+        .group_by(Course.insersor, Discipline.plataforma_ok).all()
+
+    for ins_field, ok, qtd in raw_disc:
+        for parte in ins_field.split(','):
+            p = parte.strip()
+            p_norm = _norm_name(p)
+            # Expande inicial única (ex: 'S' → 'STEFANYE')
+            if len(p) == 1:
+                p_norm = INICIAIS_INSERCAO.get(p.upper(), p_norm)
+            for canonical in equipe:
+                if p_norm == _norm_name(canonical):
+                    stats_map[canonical.upper()]['total'] += qtd
+                    if ok:
+                        stats_map[canonical.upper()]['concluidas'] += qtd
+                    else:
+                        stats_map[canonical.upper()]['pendentes'] += qtd
+                    break
+
+    pend_por_ins = sorted(
+        [(nome, v['pendentes'], v['concluidas'], v['total'])
+         for nome, v in stats_map.items() if v['total'] > 0 or is_admin],
+        key=lambda x: x[1], reverse=True
+    )
+
+    insersores = EQUIPE_INSERCAO if is_admin else []
 
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
-        externos=externos, ocultos=ocultos, finalizado=finalizado,
+        ocultos=ocultos, finalizado=finalizado,
         por_tipo=por_tipo, recentes=recentes,
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
-        insersores=insersores, filtro_ins=filtro_ins)
+        insersores=insersores, filtro_ins=filtro_ins,
+        is_admin=is_admin, usuario_atual=u)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -776,9 +861,14 @@ def reembolso_editar(id):
         r.solicitacao_1  = pdate(d.get('solicitacao_1',''))
         r.solicitacao_2  = pdate(d.get('solicitacao_2',''))
         r.data_aprovacao = pdate(d.get('data_aprovacao',''))
-        r.motivo         = d.get('motivo','')
-        r.curso_excluido = pdate(d.get('curso_excluido',''))
-        r.obs            = d.get('obs','')
+        r.motivo           = d.get('motivo','')
+        r.curso_excluido   = pdate(d.get('curso_excluido',''))
+        r.obs              = d.get('obs','')
+        r.concluido_manual = d.get('concluido_manual') == 'on'
+        r.cpf              = d.get('cpf','')
+        r.celular          = d.get('celular','')
+        r.pix              = d.get('pix','')
+        r.email_destino    = d.get('email_destino','')
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'reembolso', id, r.nome_aluno)
         flash('Reembolso atualizado!', 'success')
@@ -794,6 +884,15 @@ def reembolso_excluir(id):
     db.session.commit()
     log_action(session['user_id'], session['username'], 'excluir', 'reembolso', id, nome)
     flash(f'Reembolso de "{nome}" excluído.', 'success')
+    return redirect(url_for('reembolsos'))
+
+@app.route('/reembolsos/marcar-todos-concluidos', methods=['POST'])
+@admin_required
+def reembolsos_marcar_todos_concluidos():
+    total = Refund.query.filter_by(concluido_manual=False).update({'concluido_manual': True})
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'marcar_todos', 'reembolso', None, f'{total} reembolsos')
+    flash(f'{total} reembolso(s) marcado(s) como concluído.', 'success')
     return redirect(url_for('reembolsos'))
 
 def _refund_from_form(d):
@@ -812,7 +911,12 @@ def _refund_from_form(d):
         data_aprovacao=pdate(d.get('data_aprovacao','')),
         motivo=d.get('motivo',''),
         curso_excluido=pdate(d.get('curso_excluido','')),
-        obs=d.get('obs','')
+        obs=d.get('obs',''),
+        concluido_manual=d.get('concluido_manual') == 'on',
+        cpf=d.get('cpf',''),
+        celular=d.get('celular',''),
+        pix=d.get('pix',''),
+        email_destino=d.get('email_destino',''),
     )
 
 # ─── MATRIZES CURRICULARES ─────────────────────────────────────────────────────
@@ -837,6 +941,644 @@ def disciplinas_marcar_todas(course_id):
         d.plataforma_em = now if marcar else None
     db.session.commit()
     return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
+
+@app.route('/banco-disciplinas')
+@login_required
+def banco_disciplinas():
+    busca = request.args.get('q', '').strip()
+
+    import unicodedata, re as _re
+    def _norm(s):
+        s = _re.sub(r'\s+', ' ', s.upper().strip())
+        s = ''.join(c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c))
+        return s
+
+    todas = Discipline.query.order_by(Discipline.nome).all()
+    cursos_map = {c.id: c for c in Course.query.all()}
+
+    grupos = {}
+    for d in todas:
+        chave = _norm(d.nome)
+        if busca and busca.lower() not in d.nome.lower():
+            continue
+        if chave not in grupos:
+            grupos[chave] = {'nome': d.nome, 'cursos': [], 'ocorrencias': []}
+        curso = cursos_map.get(d.course_id)
+        if curso and curso.id not in [c.id for c in grupos[chave]['cursos']]:
+            grupos[chave]['cursos'].append(curso)
+        grupos[chave]['ocorrencias'].append(d)
+
+    disciplinas_unicas = sorted(grupos.values(), key=lambda x: x['nome'])
+    return render_template('banco_disciplinas.html',
+                           disciplinas=disciplinas_unicas, busca=busca,
+                           total_unicas=len(disciplinas_unicas),
+                           total_ocorrencias=len(todas))
+
+
+@app.route('/banco-disciplinas/exportar-excel')
+@login_required
+def banco_disciplinas_exportar_excel():
+    import openpyxl, re as _re, unicodedata
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
+    from openpyxl.utils import get_column_letter
+
+    busca = request.args.get('q', '').strip()
+
+    def _norm(s):
+        s = _re.sub(r'\s+', ' ', s.upper().strip())
+        return ''.join(c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c))
+
+    TIPO_LABEL = {
+        'pos': 'Pós-Graduação', 'profissionalizante': 'Profissionalizante',
+        'rapido': 'Rápido', 'pacote': 'Pacote', 'terceiros': 'Terceiros',
+        'evento': 'Evento', 'pratica_conectada': 'Prática Conectada',
+        'pratica_estagio': 'Prática Estágio', 'projeto_ambiental': 'Proj. Ambiental',
+        'ggbr': 'GGBR', 'integra_edu': 'Integra Edu',
+    }
+
+    todas = Discipline.query.order_by(Discipline.nome).all()
+    cursos_map = {c.id: c for c in Course.query.all()}
+    grupos = {}
+    for d in todas:
+        if busca and busca.lower() not in d.nome.lower():
+            continue
+        chave = _norm(d.nome)
+        if chave not in grupos:
+            grupos[chave] = {'nome': d.nome, 'ocorrencias': []}
+        grupos[chave]['ocorrencias'].append((d, cursos_map.get(d.course_id)))
+
+    wb = openpyxl.Workbook()
+
+    # ── ABA 1: DISCIPLINAS × CURSOS (agrupado) ──────────────────────────────
+    ws1 = wb.active
+    ws1.title = 'Banco de Disciplinas'
+
+    thin = Side(style='thin', color='E8E2DA')
+    med  = Side(style='medium', color='F97316')
+    bdr  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    bdr_disc = Border(left=med, right=thin, top=thin, bottom=thin)
+
+    # Título
+    ws1.merge_cells('A1:H1')
+    title_cell = ws1['A1']
+    title_cell.value = f'INOVA Carreira — Banco de Disciplinas'
+    title_cell.font = Font(bold=True, size=14, color='F97316')
+    title_cell.alignment = Alignment(horizontal='left', vertical='center')
+    title_cell.fill = PatternFill('solid', fgColor='FFF7ED')
+    ws1.row_dimensions[1].height = 30
+
+    ws1.merge_cells('A2:H2')
+    sub_cell = ws1['A2']
+    sub_cell.value = f'Gerado em {datetime.now().strftime("%d/%m/%Y às %H:%M")} · {len(grupos)} disciplinas únicas · {len(todas)} ocorrências'
+    sub_cell.font = Font(size=9, color='78716C', italic=True)
+    sub_cell.alignment = Alignment(horizontal='left', vertical='center')
+    ws1.row_dimensions[2].height = 18
+
+    # Cabeçalho
+    hfill  = PatternFill('solid', fgColor='F97316')
+    hfont  = Font(bold=True, color='FFFFFF', size=10)
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    wrap   = Alignment(wrap_text=True, vertical='top')
+    left   = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+    headers = ['Disciplina', 'CH', 'Módulo', 'Curso', 'Tipo', 'Área', 'Professor', 'Titulação']
+    for col, h in enumerate(headers, 1):
+        c = ws1.cell(row=3, column=col, value=h)
+        c.fill = hfill; c.font = hfont; c.alignment = center; c.border = bdr
+    ws1.row_dimensions[3].height = 24
+    ws1.freeze_panes = 'A4'
+
+    fill_disc  = PatternFill('solid', fgColor='FFF7ED')  # linha de disciplina (laranja suave)
+    fill_curso = PatternFill('solid', fgColor='FFFFFF')   # linha de curso (branco)
+    fill_alt   = PatternFill('solid', fgColor='FAFAF9')   # linha alternada
+
+    row_idx = 4
+    for idx, chave in enumerate(sorted(grupos.keys())):
+        grupo = grupos[chave]
+        ocors = grupo['ocorrencias']
+        n_ocors = len(ocors)
+
+        for i, (d, curso) in enumerate(ocors):
+            is_first = (i == 0)
+            tipo_label = TIPO_LABEL.get(curso.tipo, curso.tipo) if curso else ''
+            fill = fill_disc if is_first else (fill_curso if i % 2 == 0 else fill_alt)
+
+            vals = [
+                grupo['nome'] if is_first else '',
+                d.carga or '',
+                d.modulo or '',
+                curso.nome if curso else '',
+                tipo_label,
+                curso.area or '' if curso else '',
+                d.professor or '',
+                d.titulacao or '',
+            ]
+            for col, val in enumerate(vals, 1):
+                cell = ws1.cell(row=row_idx, column=col, value=val)
+                cell.border = bdr_disc if col == 1 else bdr
+                cell.alignment = wrap
+                cell.fill = fill
+                if col == 1 and is_first:
+                    cell.font = Font(bold=True, size=10)
+            ws1.row_dimensions[row_idx].height = 16
+            row_idx += 1
+
+        # Linha separadora entre disciplinas
+        if idx < len(grupos) - 1:
+            for col in range(1, 9):
+                cell = ws1.cell(row=row_idx, column=col, value='')
+                cell.fill = PatternFill('solid', fgColor='F97316')
+                cell.border = Border(top=Side(style='hair', color='F97316'))
+            ws1.row_dimensions[row_idx].height = 3
+            row_idx += 1
+
+    for i, w in enumerate([44, 6, 16, 52, 18, 14, 24, 16], 1):
+        ws1.column_dimensions[get_column_letter(i)].width = w
+
+    # ── ABA 2: LISTA COMPLETA (uma linha por ocorrência) ────────────────────
+    ws2 = wb.create_sheet('Lista Completa')
+
+    ws2.merge_cells('A1:H1')
+    t2 = ws2['A1']
+    t2.value = 'INOVA Carreira — Lista Completa de Disciplinas'
+    t2.font = Font(bold=True, size=13, color='F97316')
+    t2.alignment = Alignment(horizontal='left', vertical='center')
+    t2.fill = PatternFill('solid', fgColor='FFF7ED')
+    ws2.row_dimensions[1].height = 28
+
+    for col, h in enumerate(headers, 1):
+        c = ws2.cell(row=2, column=col, value=h)
+        c.fill = hfill; c.font = hfont; c.alignment = center; c.border = bdr
+    ws2.row_dimensions[2].height = 22
+    ws2.freeze_panes = 'A3'
+
+    row2 = 3
+    for chave in sorted(grupos.keys()):
+        for d, curso in grupos[chave]['ocorrencias']:
+            tipo_label = TIPO_LABEL.get(curso.tipo, curso.tipo) if curso else ''
+            vals = [
+                grupos[chave]['nome'], d.carga or '', d.modulo or '',
+                curso.nome if curso else '',
+                tipo_label,
+                curso.area or '' if curso else '',
+                d.professor or '', d.titulacao or '',
+            ]
+            fill_row = PatternFill('solid', fgColor='FFFFFF') if row2 % 2 == 1 else PatternFill('solid', fgColor='FAFAF9')
+            for col, val in enumerate(vals, 1):
+                cell = ws2.cell(row=row2, column=col, value=val)
+                cell.border = bdr; cell.alignment = wrap; cell.fill = fill_row
+            ws2.row_dimensions[row2].height = 15
+            row2 += 1
+
+    for i, w in enumerate([44, 6, 16, 52, 18, 14, 24, 16], 1):
+        ws2.column_dimensions[get_column_letter(i)].width = w
+
+    # ── ABA 3: RESUMO ESTATÍSTICO ────────────────────────────────────────────
+    ws3 = wb.create_sheet('Resumo')
+    ws3.merge_cells('A1:C1')
+    t3 = ws3['A1']
+    t3.value = 'INOVA Carreira — Resumo do Banco de Disciplinas'
+    t3.font = Font(bold=True, size=13, color='F97316')
+    t3.alignment = Alignment(horizontal='left', vertical='center')
+    t3.fill = PatternFill('solid', fgColor='FFF7ED')
+    ws3.row_dimensions[1].height = 28
+
+    resumo_dados = [
+        ('Total de disciplinas únicas', len(grupos)),
+        ('Total de ocorrências', len(todas)),
+        ('Média de cursos por disciplina', f'{len(todas)/len(grupos):.1f}' if grupos else '0'),
+        ('', ''),
+        ('Disciplinas com mais ocorrências', ''),
+    ]
+    row3 = 2
+    for label, val in resumo_dados:
+        ws3.cell(row=row3, column=1, value=label).font = Font(bold=True if not val else False, size=10)
+        ws3.cell(row=row3, column=2, value=val).font = Font(bold=True, color='F97316', size=11)
+        row3 += 1
+
+    top_discs = sorted(grupos.values(), key=lambda x: len(x['ocorrencias']), reverse=True)[:10]
+    for item in top_discs:
+        ws3.cell(row=row3, column=1, value=item['nome']).font = Font(size=10)
+        ws3.cell(row=row3, column=2, value=f"{len(item['ocorrencias'])} curso(s)").font = Font(color='F97316')
+        row3 += 1
+
+    ws3.column_dimensions['A'].width = 50
+    ws3.column_dimensions['B'].width = 20
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    suffix = f'_{busca}' if busca else ''
+    fname = f'banco_disciplinas{suffix}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=fname)
+
+
+@app.route('/banco-disciplinas/relatorio')
+@login_required
+def banco_disciplinas_relatorio():
+    busca = request.args.get('q', '').strip()
+
+    import unicodedata, re as _re
+    def _norm(s):
+        s = _re.sub(r'\s+', ' ', s.upper().strip())
+        return ''.join(c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c))
+
+    TIPO_LABEL = {
+        'pos': 'Pós-Graduação', 'profissionalizante': 'Profissionalizante',
+        'rapido': 'Rápido', 'pacote': 'Pacote', 'terceiros': 'Terceiros',
+        'evento': 'Evento', 'pratica_conectada': 'Prática Conectada',
+        'pratica_estagio': 'Prática Estágio', 'projeto_ambiental': 'Proj. Ambiental',
+        'ggbr': 'GGBR', 'integra_edu': 'Integra Edu',
+    }
+
+    todas = Discipline.query.order_by(Discipline.nome).all()
+    cursos_map = {c.id: c for c in Course.query.all()}
+    grupos = {}
+    for d in todas:
+        if busca and busca.lower() not in d.nome.lower():
+            continue
+        chave = _norm(d.nome)
+        if chave not in grupos:
+            grupos[chave] = {'nome': d.nome, 'cursos': [], 'ocorrencias': []}
+        curso = cursos_map.get(d.course_id)
+        if curso and curso.id not in [c.id for c in grupos[chave]['cursos']]:
+            grupos[chave]['cursos'].append(curso)
+        grupos[chave]['ocorrencias'].append((d, curso))
+
+    disciplinas = sorted(grupos.values(), key=lambda x: x['nome'])
+    total_ocors = len(todas)
+    return render_template('banco_disciplinas_relatorio.html',
+                           disciplinas=disciplinas, busca=busca,
+                           total_unicas=len(disciplinas),
+                           total_ocorrencias=total_ocors,
+                           tipo_label=TIPO_LABEL,
+                           gerado_em=datetime.now())
+
+
+@app.route('/ia-assistente')
+@login_required
+def ia_assistente():
+    cursos_amostra = Course.query.filter(Course.status != 'descontinuado').order_by(Course.nome).limit(20).all()
+    return render_template('ia_assistente.html', cursos_amostra=cursos_amostra)
+
+
+@app.route('/api/ia/chat', methods=['POST'])
+@login_required
+def ia_chat():
+    import unicodedata as _ud, re as _re
+
+    data = request.json or {}
+    pergunta = data.get('pergunta', '').strip()
+    if not pergunta:
+        return jsonify({'erro': 'Pergunta vazia'}), 400
+
+    def _norm(s):
+        s = _re.sub(r'\s+', ' ', s.upper().strip())
+        return ''.join(c for c in _ud.normalize('NFKD', s) if not _ud.combining(c))
+
+    def _contem(texto, *palavras):
+        t = _norm(texto)
+        return any(p in t for p in [_norm(w) for w in palavras])
+
+    def _tipo_label(tipo):
+        return {
+            'pos': 'Pós-Graduação', 'profissionalizante': 'Profissionalizante',
+            'rapido': 'Curso Rápido', 'pacote': 'Pacote', 'terceiros': 'Terceiros',
+            'evento': 'Evento', 'pratica_conectada': 'Prática Conectada',
+            'pratica_estagio': 'Prática Estágio', 'projeto_ambiental': 'Projeto Ambiental',
+            'ggbr': 'GGBR', 'integra_edu': 'Integra Edu',
+        }.get(tipo, tipo)
+
+    p = pergunta
+    linhas = []
+
+    # ── ESTATÍSTICAS GERAIS ─────────────────────────────
+    if _contem(p, 'quantos', 'total', 'quantidade', 'estatistica', 'estatística', 'resumo', 'geral'):
+        total = Course.query.count()
+        ativos = Course.query.filter_by(status='ativo').count()
+        em_ed = Course.query.filter_by(status='em_edicao').count()
+        desc = Course.query.filter_by(status='descontinuado').count()
+        n_disc = Discipline.query.count()
+        import unicodedata as _ud2, re as _re2
+        def _n2(s):
+            s = _re2.sub(r'\s+', ' ', s.upper().strip())
+            return ''.join(c for c in _ud2.normalize('NFKD', s) if not _ud2.combining(c))
+        todas_d = Discipline.query.with_entities(Discipline.nome).all()
+        unicas = len({_n2(d.nome) for d in todas_d})
+        linhas = [
+            f"Aqui está o resumo geral do sistema INOVA Carreira:\n",
+            f"**Cursos cadastrados:** {total}",
+            f"  • Ativos: {ativos}",
+            f"  • Em edição: {em_ed}",
+            f"  • Descontinuados: {desc}",
+            f"\n**Banco de Disciplinas:** {unicas} disciplinas únicas ({n_disc} ocorrências no total)",
+        ]
+        por_tipo = db.session.query(Course.tipo, db.func.count(Course.id)).group_by(Course.tipo).order_by(db.func.count(Course.id).desc()).all()
+        linhas.append("\n**Distribuição por tipo:**")
+        for tipo, cnt in por_tipo:
+            linhas.append(f"  • {_tipo_label(tipo)}: {cnt} curso(s)")
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── EVENTOS ─────────────────────────────────────────
+    if _contem(p, 'evento', 'eventos', 'acontecendo', 'acontece', 'agenda', 'programacao', 'programação'):
+        eventos = Course.query.filter_by(tipo='evento').order_by(Course.nome).all()
+        if not eventos:
+            return jsonify({'ok': True, 'resposta': 'Não há nenhum evento cadastrado no sistema no momento.'})
+        linhas = [f"**Eventos cadastrados no sistema ({len(eventos)}):**\n"]
+        for e in eventos:
+            info = f"• **{e.nome}**"
+            if e.area: info += f" — Área: {e.area}"
+            if e.horas: info += f" | {e.horas}"
+            if e.valor and e.valor not in ['-', '', 'None']: info += f" | R$ {e.valor}"
+            if e.status: info += f" | Status: {e.status.replace('_', ' ').title()}"
+            linhas.append(info)
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── PACOTES ─────────────────────────────────────────
+    if _contem(p, 'pacote', 'pacotes', 'combo', 'bundle'):
+        pacotes = Course.query.filter_by(tipo='pacote').order_by(Course.nome).all()
+        if not pacotes:
+            return jsonify({'ok': True, 'resposta': 'Não há pacotes cadastrados no sistema.'})
+        linhas = [f"**Pacotes disponíveis ({len(pacotes)}):**\n"]
+        for pac in pacotes:
+            n_discs = Discipline.query.filter_by(course_id=pac.id).count()
+            info = f"• **{pac.nome}**"
+            if pac.valor and pac.valor not in ['-', '', 'None']: info += f" — R$ {pac.valor}"
+            if n_discs: info += f" | {n_discs} disciplina(s)/curso(s)"
+            if pac.status: info += f" | {pac.status.replace('_', ' ').title()}"
+            linhas.append(info)
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── PÓS-GRADUAÇÃO ────────────────────────────────────
+    if _contem(p, 'pos', 'pós', 'pos-graduacao', 'pós-graduação', 'graduacao', 'graduação', 'mba', 'especializacao', 'especialização'):
+        cursos = Course.query.filter_by(tipo='pos').filter(Course.status != 'descontinuado').order_by(Course.nome).all()
+        if not cursos:
+            return jsonify({'ok': True, 'resposta': 'Não há cursos de pós-graduação ativos cadastrados.'})
+        linhas = [f"**Cursos de Pós-Graduação ({len(cursos)}):**\n"]
+        for c in cursos:
+            info = f"• **{c.nome}**"
+            if c.area: info += f" — {c.area}"
+            if c.horas: info += f" | {c.horas}"
+            linhas.append(info)
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── PROFISSIONALIZANTES ──────────────────────────────
+    if _contem(p, 'profissionalizante', 'profissionalizantes', 'tecnico', 'técnico'):
+        cursos = Course.query.filter_by(tipo='profissionalizante').filter(Course.status != 'descontinuado').order_by(Course.nome).all()
+        if not cursos:
+            return jsonify({'ok': True, 'resposta': 'Não há cursos profissionalizantes ativos.'})
+        linhas = [f"**Cursos Profissionalizantes ({len(cursos)}):**\n"]
+        for c in cursos:
+            info = f"• **{c.nome}**"
+            if c.area: info += f" — {c.area}"
+            if c.horas: info += f" | {c.horas}"
+            linhas.append(info)
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── CURSOS RÁPIDOS ───────────────────────────────────
+    if _contem(p, 'rapido', 'rápido', 'rapidos', 'rápidos', 'curto', 'curta duracao', 'curta duração'):
+        cursos = Course.query.filter_by(tipo='rapido').filter(Course.status != 'descontinuado').order_by(Course.nome).all()
+        linhas = [f"**Cursos Rápidos ({len(cursos)}):**\n"]
+        for c in cursos:
+            info = f"• **{c.nome}**"
+            if c.area: info += f" — {c.area}"
+            if c.horas: info += f" | {c.horas}"
+            linhas.append(info)
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas) if linhas else 'Nenhum curso rápido cadastrado.'})
+
+    # ── BUSCA POR ÁREA ───────────────────────────────────
+    areas_map = {
+        'saude': 'SAÚDE', 'saúde': 'SAÚDE',
+        'negocios': 'NEGÓCIOS', 'negócios': 'NEGÓCIOS', 'negocio': 'NEGÓCIOS',
+        'tecnologia': 'TECNOLOGIA', 'ti': 'TECNOLOGIA', 'informatica': 'TECNOLOGIA',
+        'educacao': 'EDUCAÇÃO', 'educação': 'EDUCAÇÃO', 'pedagogia': 'EDUCAÇÃO',
+        'criatividade': 'CRIATIVIDADE', 'design': 'CRIATIVIDADE', 'arte': 'CRIATIVIDADE',
+        'gastronomia': 'GASTRONOMIA', 'culinaria': 'GASTRONOMIA', 'culinária': 'GASTRONOMIA',
+    }
+    area_encontrada = None
+    p_norm = _norm(p)
+    for chave, area_val in areas_map.items():
+        if _norm(chave) in p_norm:
+            area_encontrada = area_val
+            break
+    if area_encontrada:
+        cursos = Course.query.filter_by(area=area_encontrada).filter(Course.status != 'descontinuado').order_by(Course.nome).all()
+        if not cursos:
+            return jsonify({'ok': True, 'resposta': f'Não encontrei cursos ativos na área de **{area_encontrada}**.'})
+        linhas = [f"**Cursos na área de {area_encontrada} ({len(cursos)}):**\n"]
+        for c in cursos:
+            info = f"• **{c.nome}** ({_tipo_label(c.tipo)})"
+            if c.horas: info += f" | {c.horas}"
+            linhas.append(info)
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── DISCIPLINAS DO BANCO ─────────────────────────────
+    if _contem(p, 'banco de disciplinas', 'disciplinas unicas', 'disciplinas únicas', 'todas as disciplinas', 'quais disciplinas temos', 'disciplinas disponiveis', 'disciplinas disponíveis'):
+        todas = Discipline.query.with_entities(Discipline.nome).all()
+        unicas = sorted({_norm(d.nome): d.nome for d in todas}.values())
+        linhas = [f"**Banco de Disciplinas — {len(unicas)} disciplinas únicas cadastradas:**\n"]
+        for i, nome in enumerate(unicas, 1):
+            linhas.append(f"{i}. {nome}")
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── DISCIPLINAS PARA UM CURSO / SUGESTÃO ─────────────
+    # Detecta padrões: "disciplinas para X", "disciplinas de X", "encaixam para X", "grade de X", "matriz de X"
+    padroes_curso = [
+        r'disciplinas?\s+(?:para|de|do|da)\s+(?:curso\s+(?:de\s+)?)?([\w\s]+)',
+        r'encaixam?\s+(?:para|em|no|na)\s+(?:curso\s+(?:de\s+)?)?([\w\s]+)',
+        r'grade\s+(?:curricular\s+)?(?:do|da|de)?\s+([\w\s]+)',
+        r'matriz\s+(?:do|da|de)?\s+([\w\s]+)',
+        r'sugest[aã]o\s+(?:para|de)?\s+(?:curso\s+(?:de\s+)?)?([\w\s]+)',
+        r'sugira\s+(?:disciplinas?\s+)?(?:para|de)?\s+(?:curso\s+(?:de\s+)?)?([\w\s]+)',
+    ]
+    tema_busca = None
+    for padrao in padroes_curso:
+        m = _re.search(padrao, p, _re.IGNORECASE)
+        if m:
+            tema_busca = m.group(1).strip().rstrip('?.,! ')
+            break
+
+    # Também detecta perguntas sem padrão estruturado, ex: "o que tem no curso de administração"
+    if not tema_busca:
+        m = _re.search(r'curso\s+(?:de\s+|do\s+|da\s+)?([\w\s]{3,40}?)(?:\?|$|,|\.)', p, _re.IGNORECASE)
+        if m:
+            tema_busca = m.group(1).strip()
+
+    if tema_busca:
+        tema_norm = _norm(tema_busca)
+        # 1. Busca curso exato ou similar no banco
+        todos_cursos = Course.query.order_by(Course.nome).all()
+        cursos_match = [c for c in todos_cursos if tema_norm in _norm(c.nome) or _norm(c.nome) in tema_norm]
+
+        if cursos_match:
+            # Encontrou curso(s) correspondente(s) — mostra as disciplinas
+            linhas = []
+            for c in cursos_match[:3]:
+                discs = Discipline.query.filter_by(course_id=c.id).order_by(Discipline.ordem).all()
+                linhas.append(f"**{c.nome}** ({_tipo_label(c.tipo)})")
+                if c.area: linhas.append(f"Área: {c.area}")
+                if discs:
+                    linhas.append(f"Disciplinas da matriz ({len(discs)}):\n")
+                    for d in discs:
+                        item = f"• {d.nome}"
+                        if d.carga: item += f" — {d.carga}"
+                        if d.modulo: item += f" | Módulo: {d.modulo}"
+                        linhas.append(item)
+                else:
+                    linhas.append("_(Este curso ainda não tem matriz cadastrada)_")
+                linhas.append('')
+            return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+        else:
+            # Não achou curso — sugere disciplinas do banco que se relacionam ao tema
+            todas_disc = Discipline.query.order_by(Discipline.nome).all()
+            cursos_map = {c.id: c for c in todos_cursos}
+
+            # Busca disciplinas cujo nome tenha palavras em comum com o tema
+            palavras_tema = set(tema_norm.split())
+            palavras_tema -= {'DE', 'DA', 'DO', 'EM', 'E', 'O', 'A', 'PARA', 'COM'}
+
+            grupos = {}
+            for d in todas_disc:
+                chave = _norm(d.nome)
+                if chave not in grupos:
+                    grupos[chave] = {'nome': d.nome, 'cursos': [], 'relevancia': 0}
+                # Calcula relevância por palavras em comum
+                palavras_disc = set(_norm(d.nome).split())
+                comuns = palavras_tema & palavras_disc
+                grupos[chave]['relevancia'] = max(grupos[chave]['relevancia'], len(comuns))
+                curso = cursos_map.get(d.course_id)
+                if curso and curso.nome not in grupos[chave]['cursos']:
+                    grupos[chave]['cursos'].append(curso.nome)
+
+            relevantes = sorted(
+                [v for v in grupos.values() if v['relevancia'] > 0],
+                key=lambda x: -x['relevancia']
+            )[:15]
+
+            if relevantes:
+                linhas = [
+                    f"Não encontrei um curso com o nome **\"{tema_busca}\"** no sistema.",
+                    f"Mas encontrei **{len(relevantes)} disciplinas** do nosso banco que podem se encaixar:\n"
+                ]
+                for item in relevantes:
+                    linha = f"• **{item['nome']}**"
+                    if item['cursos']:
+                        linha += f" — presente em: {', '.join(item['cursos'][:2])}"
+                        if len(item['cursos']) > 2: linha += f" +{len(item['cursos'])-2}"
+                    linhas.append(linha)
+                linhas.append(f"\n💡 Você pode ver o banco completo em **Banco de Disciplinas** no menu lateral.")
+            else:
+                # Busca mais ampla: qualquer disciplina, lista as mais usadas
+                from sqlalchemy import func as sqlfunc
+                top_discs = db.session.query(
+                    Discipline.nome, sqlfunc.count(Discipline.id).label('cnt')
+                ).group_by(Discipline.nome).order_by(sqlfunc.count(Discipline.id).desc()).limit(20).all()
+
+                linhas = [
+                    f"Não encontrei correspondências diretas para **\"{tema_busca}\"**.",
+                    f"Aqui estão as disciplinas mais utilizadas nos nossos cursos que podem servir de base:\n"
+                ]
+                for nome, cnt in top_discs:
+                    linhas.append(f"• {nome} ({cnt} curso(s))")
+                linhas.append(f"\n💡 Acesse **Banco de Disciplinas** para ver todas as {len(grupos)} disciplinas únicas.")
+
+            return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── BUSCA LIVRE POR NOME DE CURSO ────────────────────
+    palavras = [w for w in _norm(p).split() if len(w) > 3 and w not in {'COMO', 'QUAL', 'QUAIS', 'ONDE', 'QUANDO', 'QUERO', 'TENHO', 'TEMOS', 'ESTA', 'ESTAO', 'SOBRE', 'MOSTRAR', 'LISTAR', 'LISTA', 'PODE', 'EXISTEM', 'EXISTE', 'CADASTRADO', 'SISTEMA'}]
+    if palavras:
+        resultados = []
+        todos = Course.query.filter(Course.status != 'descontinuado').all()
+        for c in todos:
+            cnorm = _norm(c.nome)
+            if any(w in cnorm for w in palavras):
+                resultados.append(c)
+        if resultados:
+            linhas = [f"**Encontrei {len(resultados)} curso(s) relacionado(s):**\n"]
+            for c in resultados[:15]:
+                info = f"• **{c.nome}** ({_tipo_label(c.tipo)})"
+                if c.area: info += f" — {c.area}"
+                if c.horas: info += f" | {c.horas}"
+                if c.status: info += f" | {c.status.replace('_',' ').title()}"
+                linhas.append(info)
+            if len(resultados) > 15:
+                linhas.append(f"\n_...e mais {len(resultados)-15} curso(s). Refine a busca para ver todos._")
+            return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── RESPOSTA PADRÃO ──────────────────────────────────
+    total = Course.query.filter(Course.status != 'descontinuado').count()
+    import unicodedata as _ud3, re as _re3
+    def _n3(s):
+        s = _re3.sub(r'\s+', ' ', s.upper().strip())
+        return ''.join(c for c in _ud3.normalize('NFKD', s) if not _ud3.combining(c))
+    unicas = len({_n3(d.nome) for d in Discipline.query.with_entities(Discipline.nome).all()})
+
+    resposta = (
+        f"Posso te ajudar a encontrar informações no sistema INOVA Carreira. "
+        f"Temos **{total} cursos ativos** e **{unicas} disciplinas** no banco.\n\n"
+        f"Experimente me perguntar:\n"
+        f"• _\"Quais eventos estão cadastrados?\"_\n"
+        f"• _\"Disciplinas para o curso de Administração\"_\n"
+        f"• _\"Liste os cursos de pós-graduação\"_\n"
+        f"• _\"Cursos na área de Saúde\"_\n"
+        f"• _\"Quais pacotes temos?\"_\n"
+        f"• _\"Resumo geral do sistema\"_"
+    )
+    return jsonify({'ok': True, 'resposta': resposta})
+
+
+@app.route('/admin/marcar-tudo-concluido', methods=['POST'])
+@admin_required
+def admin_marcar_concluido():
+    now = datetime.utcnow()
+    total = Discipline.query.filter_by(plataforma_ok=False).update(
+        {'plataforma_ok': True, 'plataforma_em': now}
+    )
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'marcar_tudo', 'discipline', None,
+               f'Marcou {total} disciplinas como concluídas')
+    flash(f'{total} disciplina(s) marcada(s) como concluída(s)!', 'success')
+    return redirect(request.referrer or url_for('matrizes'))
+
+
+@app.route('/pacotes')
+@login_required
+def pacotes():
+    busca = request.args.get('q', '').strip()
+
+    todos = Course.query.filter_by(tipo='pacote').order_by(Course.nome).all()
+
+    if busca:
+        busca_low = busca.lower()
+        disc_cids = {r[0] for r in db.session.query(Discipline.course_id)
+                     .filter(Discipline.nome.ilike(f'%{busca}%')).all()}
+        todos = [c for c in todos if busca_low in c.nome.lower() or c.id in disc_cids]
+
+    pacote_data = []
+    for c in todos:
+        discs = Discipline.query.filter_by(course_id=c.id).order_by(Discipline.ordem).all()
+        if busca and busca.lower() not in c.nome.lower():
+            discs = [d for d in discs if busca.lower() in d.nome.lower()]
+        pacote_data.append({'course': c, 'disciplines': discs})
+
+    return render_template('pacotes.html', pacote_data=pacote_data, busca=busca)
+
+
+@app.route('/admin/migrar-externos-para-pacotes', methods=['POST'])
+@admin_required
+def admin_migrar_externos():
+    externos = Course.query.filter_by(status='externo').all()
+    count = len(externos)
+    for c in externos:
+        c.tipo = 'pacote'
+        c.status = 'ativo'
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'migrar', 'course', None,
+               f'Migrou {count} curso(s) de status=externo para tipo=pacote')
+    flash(f'{count} curso(s) migrado(s) de "Externo" para "Pacote" com sucesso!', 'success')
+    return redirect(url_for('pacotes'))
+
 
 @app.route('/matrizes')
 @login_required
@@ -1154,8 +1896,82 @@ def historico():
 @app.route('/usuarios')
 @admin_required
 def usuarios():
-    users = User.query.all()
-    return render_template('usuarios.html', users=users)
+    users = User.query.order_by(User.username).all()
+    todos_cursos = Course.query.filter(Course.insersor != None, Course.insersor != '').all()
+
+    def _match_ins(insersor_field, username):
+        un_norm = _norm_name(username)
+        inicial = next((k for k, v in INICIAIS_INSERCAO.items() if v == un_norm), None)
+        for parte in insersor_field.split(','):
+            p = parte.strip()
+            if _norm_name(p) == un_norm:
+                return True
+            if inicial and len(p) == 1 and p.upper() == inicial:
+                return True
+        return False
+
+    # todos os cursos, sem exceção de tipo ou status
+    todos_cursos = Course.query.all()
+
+    stats = {}
+    for u in users:
+        meus = [c for c in todos_cursos if c.insersor and _match_ins(c.insersor, u.username)]
+        por_status = {}
+        for c in meus:
+            por_status[c.status] = por_status.get(c.status, 0) + 1
+        por_tipo = {}
+        for c in meus:
+            por_tipo[c.tipo] = por_tipo.get(c.tipo, 0) + 1
+        stats[u.id] = {
+            'total':      len(meus),
+            'ativos':     por_status.get('ativo', 0),
+            'em_edicao':  por_status.get('em_edicao', 0),
+            'finalizado': por_status.get('finalizado', 0),
+            'desc':       por_status.get('descontinuado', 0),
+            'oculto':     por_status.get('oculto', 0),
+            'por_tipo':   por_tipo,
+        }
+
+    TIPO_LABEL = {
+        'pos': 'Pós', 'profissionalizante': 'Profis.', 'rapido': 'Rápido',
+        'pacote': 'Pacote', 'terceiros': 'Terceiros', 'evento': 'Evento',
+        'pratica_conectada': 'Prática', 'pratica_estagio': 'Estágio',
+        'projeto_ambiental': 'Proj. Amb.', 'ggbr': 'GGBR', 'integra_edu': 'Integra',
+    }
+    return render_template('usuarios.html', users=users, stats=stats, tipo_label=TIPO_LABEL)
+
+
+@app.route('/usuarios/<int:id>/cursos')
+@admin_required
+def usuario_cursos(id):
+    u = User.query.get_or_404(id)
+    todos_cursos = Course.query.filter(Course.insersor != None, Course.insersor != '')\
+                               .order_by(Course.nome).all()
+    un_norm = _norm_name(u.username)
+    inicial = next((k for k, v in INICIAIS_INSERCAO.items() if v == un_norm), None)
+    meus = []
+    for c in todos_cursos:
+        for parte in c.insersor.split(','):
+            p = parte.strip()
+            if _norm_name(p) == un_norm or (inicial and len(p) == 1 and p.upper() == inicial):
+                meus.append(c)
+                break
+
+    disc_stats = {}
+    for c in meus:
+        total = Discipline.query.filter_by(course_id=c.id).count()
+        pend  = Discipline.query.filter_by(course_id=c.id, plataforma_ok=False).count()
+        disc_stats[c.id] = {'total': total, 'pend': pend, 'ok': total - pend}
+
+    TIPO_LABEL = {
+        'pos': 'Pós-Graduação', 'profissionalizante': 'Profissionalizante',
+        'rapido': 'Rápido', 'pacote': 'Pacote', 'terceiros': 'Terceiros',
+        'evento': 'Evento', 'pratica_conectada': 'Prática Conectada',
+        'pratica_estagio': 'Prática Estágio', 'projeto_ambiental': 'Proj. Ambiental',
+        'ggbr': 'GGBR', 'integra_edu': 'Integra Edu',
+    }
+    return render_template('usuario_cursos.html', u=u, cursos=meus,
+                           disc_stats=disc_stats, tipo_label=TIPO_LABEL)
 
 @app.route('/usuarios/novo', methods=['GET','POST'])
 @admin_required
@@ -1181,6 +1997,13 @@ def usuario_editar(id):
     u = User.query.get_or_404(id)
     if request.method == 'POST':
         d = request.form
+        novo_username = d.get('username', '').strip()
+        if novo_username and novo_username != u.username:
+            existente = User.query.filter_by(username=novo_username).first()
+            if existente:
+                flash('Já existe um usuário com esse nome.', 'danger')
+                return render_template('usuario_form.html', user=u)
+            u.username = novo_username
         u.role = d['role']
         u.permissoes = json.dumps(_perms_from_form(d))
         if d.get('password'):
@@ -1635,6 +2458,12 @@ def ensure_db():
     if not _db_ready:
         try:
             db.create_all()
+            try:
+                with db.engine.connect() as _conn:
+                    _conn.execute(db.text('ALTER TABLE refund ADD COLUMN concluido_manual BOOLEAN DEFAULT 0'))
+                    _conn.commit()
+            except Exception:
+                pass
             seed_data()
             _db_ready = True
         except Exception as e:

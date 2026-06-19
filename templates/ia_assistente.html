@@ -1,0 +1,293 @@
+{% extends 'base.html' %}
+{% block title %}IA Assistente — INOVA{% endblock %}
+{% block content %}
+<div class="page" style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;height:calc(100vh - 80px)">
+
+  <div class="page-header" style="flex-shrink:0;padding-bottom:12px">
+    <div>
+      <div class="page-title">IA Assistente</div>
+      <div class="page-subtitle">Pergunte qualquer coisa sobre os cursos, disciplinas, eventos e muito mais</div>
+    </div>
+    <button onclick="limparChat()" class="btn btn-secondary" style="font-size:12px">
+      Limpar conversa
+    </button>
+  </div>
+
+  <!-- ÁREA DO CHAT -->
+  <div id="chat-area"
+       style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
+              padding:4px 2px 16px;min-height:0">
+
+    <!-- Mensagem de boas-vindas -->
+    <div id="welcome-msg" style="display:flex;justify-content:flex-start">
+      <div style="display:flex;align-items:flex-start;gap:10px;max-width:80%">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" style="width:16px;height:16px">
+            <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+          </svg>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:0 12px 12px 12px;
+                    padding:12px 16px;font-size:13px;line-height:1.6;color:var(--text)">
+          <p style="margin:0 0 8px;font-weight:600">Olá! Sou a assistente IA da INOVA Carreira.</p>
+          <p style="margin:0 0 8px">Tenho acesso completo ao banco de dados do sistema. Pode me perguntar sobre:</p>
+          <ul style="margin:0 0 8px;padding-left:18px;display:flex;flex-direction:column;gap:3px">
+            <li>Disciplinas que se encaixam em um curso específico</li>
+            <li>Quais eventos estão cadastrados</li>
+            <li>Cursos por área ou tipo</li>
+            <li>Sugestões de disciplinas para novos cursos</li>
+            <li>Quais cursos contêm uma disciplina</li>
+          </ul>
+          <p style="margin:0;color:var(--text-muted);font-size:12px">Como posso te ajudar?</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUGESTÕES RÁPIDAS -->
+  <div id="sugestoes-rapidas" style="flex-shrink:0;display:flex;flex-wrap:wrap;gap:8px;padding:10px 0">
+    <button onclick="usarSugestao(this)" class="btn btn-secondary"
+            style="font-size:12px;padding:5px 12px;border-radius:20px">
+      Quais eventos estão cadastrados?
+    </button>
+    <button onclick="usarSugestao(this)" class="btn btn-secondary"
+            style="font-size:12px;padding:5px 12px;border-radius:20px">
+      Quais disciplinas se encaixam para um curso de Administração?
+    </button>
+    <button onclick="usarSugestao(this)" class="btn btn-secondary"
+            style="font-size:12px;padding:5px 12px;border-radius:20px">
+      Liste os cursos de Pós-Graduação disponíveis
+    </button>
+    <button onclick="usarSugestao(this)" class="btn btn-secondary"
+            style="font-size:12px;padding:5px 12px;border-radius:20px">
+      Quais pacotes temos disponíveis?
+    </button>
+  </div>
+
+  <!-- ÁREA DE ENTRADA -->
+  <div style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px">
+    <div id="erro-api" style="display:none;background:#fef2f2;border:1px solid #fecaca;
+                              border-radius:8px;padding:10px 14px;font-size:13px;color:#dc2626;margin-bottom:10px">
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-end">
+      <div style="flex:1;position:relative">
+        <textarea id="msg-input" rows="1"
+                  placeholder="Pergunte qualquer coisa sobre os cursos, disciplinas, eventos..."
+                  onkeydown="handleKey(event)"
+                  oninput="autoResize(this)"
+                  style="width:100%;resize:none;overflow:hidden;
+                         background:var(--card);border:1.5px solid var(--border);
+                         border-radius:12px;padding:10px 16px;font-size:13px;
+                         color:var(--text);font-family:inherit;line-height:1.5;
+                         outline:none;box-sizing:border-box;transition:border-color .2s"
+                  onfocus="this.style.borderColor='#6366f1'"
+                  onblur="this.style.borderColor='var(--border)'"></textarea>
+      </div>
+      <button id="btn-enviar" onclick="enviarMensagem()"
+              style="width:42px;height:42px;border-radius:50%;border:none;
+                     background:linear-gradient(135deg,#6366f1,#8b5cf6);
+                     cursor:pointer;display:flex;align-items:center;justify-content:center;
+                     flex-shrink:0;transition:opacity .2s;margin-bottom:1px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" style="width:16px;height:16px">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;padding-left:2px">
+      Enter para enviar · Shift+Enter para nova linha
+    </div>
+  </div>
+</div>
+
+<style>
+  #chat-area::-webkit-scrollbar { width: 4px; }
+  #chat-area::-webkit-scrollbar-track { background: transparent; }
+  #chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .msg-ia p { margin: 0 0 6px; }
+  .msg-ia p:last-child { margin-bottom: 0; }
+  .msg-ia ul, .msg-ia ol { margin: 4px 0; padding-left: 18px; }
+  .msg-ia li { margin-bottom: 2px; }
+  .msg-ia strong { color: var(--text); }
+
+  @keyframes pulse-dot {
+    0%, 80%, 100% { transform: scale(0); opacity: 0; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+  .typing-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+    animation: pulse-dot 1.4s infinite ease-in-out both;
+  }
+  .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+  .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+</style>
+
+<script>
+const historico = [];
+let aguardando = false;
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    enviarMensagem();
+  }
+}
+
+function usarSugestao(btn) {
+  const input = document.getElementById('msg-input');
+  input.value = btn.textContent.trim();
+  autoResize(input);
+  document.getElementById('sugestoes-rapidas').style.display = 'none';
+  enviarMensagem();
+}
+
+function limparChat() {
+  historico.length = 0;
+  const area = document.getElementById('chat-area');
+  // mantém só a mensagem de boas-vindas
+  while (area.children.length > 1) area.removeChild(area.lastChild);
+  document.getElementById('sugestoes-rapidas').style.display = 'flex';
+  document.getElementById('welcome-msg').style.display = 'flex';
+  document.getElementById('msg-input').value = '';
+}
+
+function scrollBottom() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+function addBubble(role, content, isTyping) {
+  const area = document.getElementById('chat-area');
+  const isUser = role === 'user';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display:flex;justify-content:${isUser ? 'flex-end' : 'flex-start'}`;
+
+  if (isUser) {
+    wrap.innerHTML = `
+      <div style="max-width:75%;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+                  color:#fff;border-radius:12px 0 12px 12px;
+                  padding:10px 16px;font-size:13px;line-height:1.6;white-space:pre-wrap">
+        ${escHtml(content)}
+      </div>`;
+  } else {
+    const avatarSvg = `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+                       display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" style="width:16px;height:16px">
+        <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+      </svg></div>`;
+
+    if (isTyping) {
+      wrap.id = 'typing-bubble';
+      wrap.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px;max-width:80%">
+        ${avatarSvg}
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:0 12px 12px 12px;
+                    padding:14px 18px;display:flex;align-items:center;gap:5px">
+          <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+        </div></div>`;
+    } else {
+      wrap.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px;max-width:82%">
+        ${avatarSvg}
+        <div class="msg-ia" style="background:var(--card);border:1px solid var(--border);
+             border-radius:0 12px 12px 12px;padding:12px 16px;font-size:13px;line-height:1.6;color:var(--text)">
+          ${formatarMensagem(content)}
+        </div></div>`;
+    }
+  }
+
+  area.appendChild(wrap);
+  scrollBottom();
+  return wrap;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function formatarMensagem(text) {
+  // Markdown básico: bold, listas, parágrafos
+  let html = escHtml(text);
+  // bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // italic
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  // listas - linhas começando com - ou •
+  html = html.replace(/^([•\-]\s+.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>)+/gs, m => '<ul style="margin:6px 0;padding-left:18px">' + m.replace(/<li>([•\-]\s+)/g, '<li>') + '</ul>');
+  // listas numeradas
+  html = html.replace(/^(\d+\.\s+.+)$/gm, '<li>$1</li>');
+  // quebras de linha → parágrafo
+  const parts = html.split(/\n\n+/);
+  if (parts.length > 1) {
+    html = parts.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  } else {
+    html = html.replace(/\n/g, '<br>');
+  }
+  return html;
+}
+
+async function enviarMensagem() {
+  if (aguardando) return;
+  const input = document.getElementById('msg-input');
+  const texto = input.value.trim();
+  if (!texto) return;
+
+  // Esconde sugestões e mensagem de boas-vindas na primeira pergunta
+  document.getElementById('sugestoes-rapidas').style.display = 'none';
+
+  input.value = '';
+  input.style.height = 'auto';
+
+  addBubble('user', texto);
+
+  historico.push({role: 'user', content: texto});
+
+  const typing = addBubble('ia', '', true);
+  aguardando = true;
+
+  const btn = document.getElementById('btn-enviar');
+  btn.style.opacity = '0.5';
+  btn.disabled = true;
+
+  const erroDiv = document.getElementById('erro-api');
+  erroDiv.style.display = 'none';
+
+  try {
+    const resp = await fetch('/api/ia/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pergunta: texto, historico: historico.slice(-10)})
+    });
+    const data = await resp.json();
+
+    typing.remove();
+
+    if (data.erro) {
+      erroDiv.textContent = data.erro;
+      erroDiv.style.display = 'block';
+      historico.pop();
+    } else {
+      addBubble('assistant', data.resposta);
+      historico.push({role: 'assistant', content: data.resposta});
+    }
+  } catch(e) {
+    typing.remove();
+    erroDiv.textContent = 'Erro de conexão com o servidor.';
+    erroDiv.style.display = 'block';
+    historico.pop();
+  } finally {
+    aguardando = false;
+    btn.style.opacity = '1';
+    btn.disabled = false;
+    input.focus();
+  }
+}
+</script>
+{% endblock %}

@@ -29,7 +29,7 @@
 
   <!-- FILTROS RÁPIDOS POR STATUS -->
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-    {% for s,label,cor in [('','Todos os status','#64748b'),('ativo','Ativos','#22c55e'),('em_edicao','Em Edição','#eab308'),('finalizado','Finalizados','#3b82f6'),('descontinuado','Arquivados','#94a3b8'),('externo','Externos','#f97316'),('oculto','Ocultos','#6366f1')] %}
+    {% for s,label,cor in [('','Todos os status','#64748b'),('ativo','Ativos','#22c55e'),('em_edicao','Em Edição','#eab308'),('finalizado','Finalizados','#3b82f6'),('descontinuado','Arquivados','#94a3b8'),('oculto','Ocultos','#6366f1')] %}
     {% set sativo = (filtro_status == s) %}
     <a href="{{ url_for('cursos', tipo=filtro_tipo, area=filtro_area, status=s, q=busca) }}"
        style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:{% if sativo %}600{% else %}400{% endif %};
@@ -69,7 +69,6 @@
       <option value="em_edicao" {% if filtro_status=='em_edicao' %}selected{% endif %}>Em Edição</option>
       <option value="finalizado" {% if filtro_status=='finalizado' %}selected{% endif %}>Finalizado</option>
       <option value="descontinuado" {% if filtro_status=='descontinuado' %}selected{% endif %}>Descontinuado</option>
-      <option value="externo" {% if filtro_status=='externo' %}selected{% endif %}>Externo / Fora da Plataforma</option>
       <option value="oculto" {% if filtro_status=='oculto' %}selected{% endif %}>Oculto</option>
     </select>
     <select name="insersor" class="filter-select" onchange="this.form.submit()">

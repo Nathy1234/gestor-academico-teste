@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% block title %}Banco de Disciplinas — INOVA{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Banco de Disciplinas</div>
+      <div class="page-subtitle">
+        {{ total_unicas }} disciplina(s) única(s) · {{ total_ocorrencias }} ocorrência(s) total
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <a href="{{ url_for('banco_disciplinas_relatorio') }}{% if busca %}?q={{ busca }}{% endif %}"
+         class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+          <polyline points="6 9 6 2 18 2 18 9"/>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+          <rect x="6" y="14" width="12" height="8"/>
+        </svg>
+        Relatório / PDF
+      </a>
+      <a href="{{ url_for('banco_disciplinas_exportar_excel') }}{% if busca %}?q={{ busca }}{% endif %}"
+         class="btn btn-secondary" style="color:#15803d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="17" x2="16" y2="17"/>
+        </svg>
+        Excel
+      </a>
+    </div>
+  </div>
+
+  <!-- BUSCA -->
+  <form method="GET" style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <div class="search-bar" style="flex:1;min-width:260px">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" name="q" value="{{ busca }}" placeholder="Buscar disciplina..." autocomplete="off">
+    </div>
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    {% if busca %}
+    <a href="{{ url_for('banco_disciplinas') }}" class="btn btn-secondary">✕ Limpar</a>
+    {% endif %}
+  </form>
+
+  {% if not disciplinas %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+      Nenhuma disciplina encontrada{% if busca %} para "{{ busca }}"{% endif %}.
+    </div>
+  </div>
+  {% else %}
+
+  <div class="card" style="overflow:hidden">
+    {% for item in disciplinas %}
+    {% set tem_varios_cursos = item.cursos|length > 1 %}
+
+    <div class="matrix-accordion-item" style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:stretch;gap:0">
+
+        <!-- FAIXA LATERAL -->
+        <div style="width:4px;flex-shrink:0;background:#6366f1"></div>
+
+        <button type="button"
+                onclick="toggleDisc({{ loop.index0 }})"
+                style="flex:1;background:none;border:none;cursor:pointer;
+                       padding:10px 16px 10px 14px;
+                       display:grid;grid-template-columns:16px 1fr auto;
+                       gap:10px;align-items:center;text-align:left;
+                       color:var(--text);font-family:inherit;min-width:0;
+                       transition:background .15s"
+                onmouseover="this.style.background='var(--hover,rgba(255,255,255,.03))'"
+                onmouseout="this.style.background='none'">
+
+          <svg id="chevron-d-{{ loop.index0 }}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" style="width:14px;height:14px;transition:transform .2s;color:var(--text-muted);
+               {% if busca %}transform:rotate(90deg){% endif %}">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+
+          <div style="min-width:0">
+            <span style="font-weight:600;font-size:13px">{{ item.nome }}</span>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px">
+              {% for curso in item.cursos[:4] %}
+              <span style="font-size:10px;background:rgba(99,102,241,.12);color:#6366f1;
+                           padding:1px 7px;border-radius:10px;font-weight:500">
+                {{ curso.tipo|replace('_',' ')|title }}
+              </span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div style="text-align:right;flex-shrink:0">
+            <span style="font-size:12px;font-weight:700;color:#6366f1;background:#eef2ff;
+                         padding:2px 10px;border-radius:10px">
+              {{ item.cursos|length }} curso(s)
+            </span>
+          </div>
+        </button>
+      </div>
+
+      <!-- CURSOS QUE CONTÊM ESTA DISCIPLINA -->
+      <div id="disc-{{ loop.index0 }}"
+           style="{% if not busca %}display:none;{% endif %}overflow:hidden">
+        <div style="border-top:1px solid var(--border);padding:12px 16px 12px 34px;
+                    display:flex;flex-direction:column;gap:6px">
+          {% for d in item.ocorrencias %}
+          {% set curso = namespace(obj=none) %}
+          {% for c in item.cursos %}
+          {% if c.id == d.course_id %}{% set curso.obj = c %}{% endif %}
+          {% endfor %}
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;
+                      background:var(--bg);border:1px solid var(--border);
+                      border-radius:8px">
+            <div style="flex:1;min-width:0">
+              {% if curso.obj %}
+              <a href="{{ url_for('curso_detalhe', id=curso.obj.id) }}"
+                 style="font-weight:500;font-size:13px;color:var(--text);text-decoration:none;
+                        display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                 title="{{ curso.obj.nome }}">
+                {{ curso.obj.nome }}
+              </a>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">
+                <span class="badge badge-{{ curso.obj.tipo }}" style="font-size:10px">{{ curso.obj.tipo|replace('_',' ')|title }}</span>
+                {% if curso.obj.area %}<span style="font-size:11px;color:var(--text-muted)">· {{ curso.obj.area }}</span>{% endif %}
+                {% if d.modulo %}<span style="font-size:11px;color:var(--text-muted)">· {{ d.modulo }}</span>{% endif %}
+                {% if d.professor %}<span style="font-size:11px;color:var(--text-muted)">· {{ d.professor }}</span>{% endif %}
+              </div>
+              {% else %}—{% endif %}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              {% if d.carga %}
+              <span style="font-size:11px;font-weight:600;color:#6366f1;background:#eef2ff;
+                           padding:2px 8px;border-radius:8px">{{ d.carga }}</span>
+              {% endif %}
+              {% if curso.obj %}
+              <a href="{{ url_for('curso_detalhe', id=curso.obj.id) }}"
+                 style="font-size:11px;color:var(--primary)">Ver →</a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          <div style="font-size:11px;color:var(--text-muted);padding:2px 4px">
+            {{ item.ocorrencias|length }} curso(s) com esta disciplina
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function toggleDisc(idx) {
+  const body = document.getElementById('disc-' + idx);
+  const chevron = document.getElementById('chevron-d-' + idx);
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  chevron.style.transform = open ? '' : 'rotate(90deg)';
+}
+</script>
+{% endblock %}

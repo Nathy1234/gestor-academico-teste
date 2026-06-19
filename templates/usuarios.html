@@ -3,135 +3,224 @@
 {% block content %}
 <div class="page">
   <div class="page-header">
-    <div class="page-title">Usuários</div>
-    <a href="{{ url_for('usuario_novo') }}" class="btn btn-primary">+ Novo Usuário</a>
+    <div>
+      <div class="page-title">Usuários</div>
+      <div class="page-subtitle">{{ users|length }} usuário(s) cadastrado(s)</div>
+    </div>
+    <a href="{{ url_for('usuario_novo') }}" class="btn btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Novo Usuário
+    </a>
   </div>
 
+  <!-- CARDS DE RESPONSABILIDADE ──────────────────── -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:24px">
+    {% for u in users %}
+    {% set s = stats.get(u.id, {}) %}
+    {% if s.total > 0 %}
+    <div class="card" style="overflow:hidden;transition:all .18s"
+         onmouseover="this.style.borderColor='var(--primary)';this.style.boxShadow='var(--shadow-md)'"
+         onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='var(--shadow)'">
+      <!-- topo colorido -->
+      <div style="height:4px;background:linear-gradient(90deg,var(--primary),#ea580c)"></div>
+      <div style="padding:16px">
+        <!-- identidade -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <div style="width:42px;height:42px;border-radius:50%;flex-shrink:0;
+                      background:linear-gradient(135deg,var(--primary),#ea580c);
+                      color:#fff;font-size:16px;font-weight:700;
+                      display:flex;align-items:center;justify-content:center">
+            {{ u.username[0]|upper }}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px">{{ u.username }}</div>
+            <div style="display:flex;gap:6px;margin-top:3px">
+              {% if u.role == 'admin' %}
+              <span class="badge badge-descontinuado" style="font-size:10px">Admin</span>
+              {% elif u.role == 'editor' %}
+              <span class="badge badge-ativo" style="font-size:10px">Editor</span>
+              {% else %}
+              <span class="badge badge-oculto" style="font-size:10px">Leitor</span>
+              {% endif %}
+              <span style="font-size:11px;color:var(--text-muted)">desde {{ u.created_at.strftime('%m/%Y') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- total em destaque -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:12px;font-weight:600;color:var(--text-muted)">Cursos sob responsabilidade</span>
+          <span style="font-size:22px;font-weight:800;color:var(--primary)">{{ s.total }}</span>
+        </div>
+
+        <!-- barra de status dos cursos -->
+        {% if s.total > 0 %}
+        <div style="margin-bottom:10px">
+          <div style="display:flex;height:8px;border-radius:20px;overflow:hidden;gap:1px">
+            {% if s.ativos > 0 %}
+            <div style="flex:{{ s.ativos }};background:#16a34a" title="{{ s.ativos }} ativos"></div>
+            {% endif %}
+            {% if s.em_edicao > 0 %}
+            <div style="flex:{{ s.em_edicao }};background:#f97316" title="{{ s.em_edicao }} em edição"></div>
+            {% endif %}
+            {% if s.finalizado > 0 %}
+            <div style="flex:{{ s.finalizado }};background:#6366f1" title="{{ s.finalizado }} finalizados"></div>
+            {% endif %}
+            {% if s.desc > 0 %}
+            <div style="flex:{{ s.desc }};background:#dc2626" title="{{ s.desc }} descontinuados"></div>
+            {% endif %}
+            {% if s.oculto > 0 %}
+            <div style="flex:{{ s.oculto }};background:#94a3b8" title="{{ s.oculto }} ocultos"></div>
+            {% endif %}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:7px">
+            {% if s.ativos > 0 %}
+            <span style="font-size:11px;display:flex;align-items:center;gap:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block"></span>
+              <strong>{{ s.ativos }}</strong> ativo{{ 's' if s.ativos != 1 }}
+            </span>
+            {% endif %}
+            {% if s.em_edicao > 0 %}
+            <span style="font-size:11px;display:flex;align-items:center;gap:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#f97316;display:inline-block"></span>
+              <strong>{{ s.em_edicao }}</strong> em edição
+            </span>
+            {% endif %}
+            {% if s.finalizado > 0 %}
+            <span style="font-size:11px;display:flex;align-items:center;gap:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#6366f1;display:inline-block"></span>
+              <strong>{{ s.finalizado }}</strong> finalizado{{ 's' if s.finalizado != 1 }}
+            </span>
+            {% endif %}
+            {% if s.desc > 0 %}
+            <span style="font-size:11px;display:flex;align-items:center;gap:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block"></span>
+              <strong>{{ s.desc }}</strong> descontinuado{{ 's' if s.desc != 1 }}
+            </span>
+            {% endif %}
+            {% if s.oculto > 0 %}
+            <span style="font-size:11px;display:flex;align-items:center;gap:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block"></span>
+              <strong>{{ s.oculto }}</strong> oculto{{ 's' if s.oculto != 1 }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- tipos de curso -->
+        {% if s.por_tipo %}
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+          {% for tipo, qtd in s.por_tipo.items()|sort(attribute='1', reverse=true) %}
+          <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;
+                       background:var(--bg);border:1px solid var(--border);color:var(--text-muted)">
+            {{ tipo_label.get(tipo, tipo) }}: {{ qtd }}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <!-- ações -->
+        <div style="display:flex;gap:6px">
+          <a href="{{ url_for('usuario_cursos', id=u.id) }}" class="btn btn-primary" style="flex:1;justify-content:center;font-size:12px;padding:7px 12px">
+            Ver cursos ({{ s.total }})
+          </a>
+          <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">
+            Editar
+          </a>
+          {% if u.id != session.user_id %}
+          <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
+                onsubmit="return confirm('Excluir {{ u.username }}?')">
+            <button type="submit" class="btn btn-danger" style="font-size:12px;padding:7px 12px">✕</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- USUÁRIOS SEM CURSOS VINCULADOS ─────────────── -->
+  {% set sem_cursos = users | selectattr('id', 'in', stats.keys()) | list %}
+  {% set tem_sem = namespace(v=false) %}
+  {% for u in users %}{% if stats.get(u.id, {}).get('total', 0) == 0 %}{% set tem_sem.v = true %}{% endif %}{% endfor %}
+  {% if tem_sem.v %}
   <div class="card">
-    <div class="table-wrapper">
-      <table>
+    <div class="card-header">
+      <div class="card-title" style="color:var(--text-muted)">Usuários sem cursos vinculados</div>
+    </div>
+    <div style="overflow:hidden">
+      <table style="width:100%">
         <thead>
           <tr>
-            <th>Usuário</th>
+            <th style="padding-left:16px">Usuário</th>
             <th>Perfil</th>
-            <th>Acesso</th>
-            <th>Restrições</th>
-            <th style="color:var(--text-muted);font-weight:500">Criado em</th>
+            <th>Cadastrado</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {% for u in users %}
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:10px">
-                <div class="user-avatar">{{ u.username[0]|upper }}</div>
-                <strong>{{ u.username }}</strong>
+        {% for u in users %}
+        {% if stats.get(u.id, {}).get('total', 0) == 0 %}
+        <tr>
+          <td style="padding-left:16px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:30px;height:30px;border-radius:50%;background:var(--bg);border:2px solid var(--border);
+                          color:var(--text-muted);font-size:11px;font-weight:700;
+                          display:flex;align-items:center;justify-content:center">
+                {{ u.username[0]|upper }}
               </div>
-            </td>
-            <td>
-              {% if u.role == 'admin' %}
-                <span class="badge badge-descontinuado">Admin</span>
-              {% elif u.role == 'editor' %}
-                <span class="badge badge-ativo">Editor</span>
-              {% else %}
-                <span class="badge badge-oculto">Leitor</span>
+              <span style="font-weight:500">{{ u.username }}</span>
+            </div>
+          </td>
+          <td>
+            {% if u.role == 'admin' %}<span class="badge badge-descontinuado">Admin</span>
+            {% elif u.role == 'editor' %}<span class="badge badge-ativo">Editor</span>
+            {% else %}<span class="badge badge-oculto">Leitor</span>{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--text-muted)">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+          <td style="padding-right:16px">
+            <div style="display:flex;gap:6px;justify-content:flex-end">
+              <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+              {% if u.id != session.user_id %}
+              <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
+                    onsubmit="return confirm('Excluir {{ u.username }}?')">
+                <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+              </form>
               {% endif %}
-            </td>
-            <td>
-              {% if u.role == 'admin' %}
-                <span style="font-size:12px;color:var(--text-muted)">Acesso total</span>
-              {% else %}
-                {% set p = u._p() %}
-                <div style="display:flex;flex-wrap:wrap;gap:4px">
-                  {% if u.can_manage_cupons() %}
-                    <span class="perm-tag">Cupons</span>
-                  {% endif %}
-                  {% if u.can_manage_reembolsos() %}
-                    <span class="perm-tag">Reembolsos</span>
-                  {% endif %}
-                  {% if u.can_view_historico() %}
-                    <span class="perm-tag">Histórico</span>
-                  {% endif %}
-                  {% if u.can_edit() %}
-                    <span class="perm-tag perm-tag-edit">Editar cursos</span>
-                  {% endif %}
-                  {% if u.can_delete() %}
-                    <span class="perm-tag perm-tag-danger">Excluir cursos</span>
-                  {% endif %}
-                  {% if u.can_manage_usuarios() %}
-                    <span class="perm-tag perm-tag-edit">Usuários</span>
-                  {% endif %}
-                  {% if not u.can_manage_cupons() and not u.can_manage_reembolsos() and not u.can_view_historico() and not u.can_edit() %}
-                    <span style="font-size:12px;color:var(--text-muted)">Só visualização</span>
-                  {% endif %}
-                </div>
-              {% endif %}
-            </td>
-            <td>
-              {% if u.role != 'admin' %}
-                {% set p = u._p() %}
-                <div style="display:flex;flex-wrap:wrap;gap:4px">
-                  {% if p.get('block_cupons') %}<span class="perm-tag perm-tag-block">− Cupons</span>{% endif %}
-                  {% if p.get('block_reembolsos') %}<span class="perm-tag perm-tag-block">− Reembolsos</span>{% endif %}
-                  {% if p.get('block_historico') %}<span class="perm-tag perm-tag-block">− Histórico</span>{% endif %}
-                  {% if not p.get('block_cupons') and not p.get('block_reembolsos') and not p.get('block_historico') %}
-                    <span style="font-size:12px;color:var(--text-muted)">—</span>
-                  {% endif %}
-                </div>
-              {% else %}
-                <span style="font-size:12px;color:var(--text-muted)">—</span>
-              {% endif %}
-            </td>
-            <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
-            <td style="white-space:nowrap">
-              <div style="display:flex;gap:6px;align-items:center">
-                <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-                {% if u.id != session.user_id %}
-                <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
-                      onsubmit="return confirm('Excluir o usuário {{ u.username }}? Não pode ser desfeito.')">
-                  <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none">Excluir</button>
-                </form>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
+  {% endif %}
 
   <!-- GUIA DE PERFIS -->
   <div class="card" style="margin-top:16px">
     <div class="card-body">
-      <div class="card-title" style="margin-bottom:14px">Guia de Perfis</div>
+      <div class="card-title" style="margin-bottom:12px">Perfis de Acesso</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:13px">
-        <div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px">
           <div style="font-weight:600;color:#dc2626;margin-bottom:4px">Admin</div>
-          Acesso total. Pode excluir cursos, gerenciar usuários, fazer backup e publicar cursos.
+          Acesso total. Gerencia usuários, backups, publicação e todas as configurações.
         </div>
-        <div>
-          <div style="font-weight:600;color:#065f46;margin-bottom:4px">Editor</div>
-          Cria e edita cursos, acessa cupons e reembolsos por padrão. Pode ter módulos bloqueados individualmente.
+        <div style="background:var(--bg);border-radius:8px;padding:12px">
+          <div style="font-weight:600;color:#15803d;margin-bottom:4px">Editor</div>
+          Cria e edita cursos. Acessa cupons e reembolsos. Permissões ajustáveis.
         </div>
-        <div>
-          <div style="font-weight:600;color:#475569;margin-bottom:4px">Leitor</div>
-          Apenas visualiza cursos. Acesso a outros módulos deve ser concedido explicitamente.
+        <div style="background:var(--bg);border-radius:8px;padding:12px">
+          <div style="font-weight:600;color:#57534e;margin-bottom:4px">Leitor</div>
+          Apenas visualiza. Acesso a módulos deve ser concedido explicitamente.
         </div>
       </div>
     </div>
   </div>
 </div>
-
-<style>
-.perm-tag {
-  font-size: 11px; font-weight: 500;
-  padding: 2px 7px; border-radius: 10px;
-  background: var(--surface-2); color: var(--text-muted);
-}
-.perm-tag-edit { background: #d1fae520; color: #065f46; }
-.perm-tag-danger { background: #fee2e2; color: #dc2626; }
-.perm-tag-block { background: #fef2f2; color: #dc2626; }
-</style>
 {% endblock %}

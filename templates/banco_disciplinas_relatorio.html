@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório — Banco de Disciplinas — INOVA Carreira</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      color: #1a110a;
+      background: #fff;
+      line-height: 1.5;
+    }
+
+    /* ── TOOLBAR (só na tela, some ao imprimir) ── */
+    .toolbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: #1a110a; color: #fff;
+      padding: 10px 24px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .toolbar-title { font-size: 13px; font-weight: 600; flex: 1; }
+    .toolbar-btn {
+      padding: 7px 16px; border-radius: 7px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; font-family: inherit;
+      transition: all .15s; display: flex; align-items: center; gap: 6px;
+    }
+    .toolbar-btn.primary { background: #f97316; color: #fff; }
+    .toolbar-btn.primary:hover { background: #ea580c; }
+    .toolbar-btn.secondary {
+      background: rgba(255,255,255,.12); color: #fff;
+      border: 1px solid rgba(255,255,255,.2);
+    }
+    .toolbar-btn.secondary:hover { background: rgba(255,255,255,.2); }
+
+    /* ── PÁGINA ── */
+    .page-wrap {
+      max-width: 960px;
+      margin: 70px auto 40px;
+      padding: 0 24px;
+    }
+
+    /* ── CABEÇALHO DO RELATÓRIO ── */
+    .report-header {
+      border-bottom: 3px solid #f97316;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .report-logo {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+    }
+    .report-logo-icon {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .report-logo-icon svg { width: 20px; height: 20px; }
+    .report-logo-name { font-size: 18px; font-weight: 700; }
+    .report-logo-sub { font-size: 11px; color: #78716c; }
+    .report-title { font-size: 22px; font-weight: 700; color: #1a110a; margin-bottom: 4px; }
+    .report-meta {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      font-size: 12px; color: #78716c;
+    }
+    .report-meta span { display: flex; align-items: center; gap: 4px; }
+    .report-meta strong { color: #f97316; }
+
+    /* ── SUMÁRIO ── */
+    .summary-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+      margin-bottom: 28px;
+    }
+    .summary-card {
+      background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .summary-card .num { font-size: 28px; font-weight: 700; color: #f97316; line-height: 1; }
+    .summary-card .lbl { font-size: 11px; color: #78716c; margin-top: 4px; }
+
+    /* ── TABELA PRINCIPAL ── */
+    .disc-block {
+      margin-bottom: 16px;
+      border: 1px solid #e8e2da;
+      border-radius: 10px;
+      overflow: hidden;
+      break-inside: avoid;
+    }
+    .disc-header {
+      background: #fff7ed;
+      border-left: 4px solid #f97316;
+      padding: 10px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .disc-name { font-weight: 700; font-size: 13px; color: #1a110a; }
+    .disc-count {
+      font-size: 11px; font-weight: 600;
+      background: #f97316; color: #fff;
+      padding: 2px 9px; border-radius: 20px;
+    }
+
+    table.cursos-table {
+      width: 100%; border-collapse: collapse;
+    }
+    table.cursos-table thead th {
+      background: #f7f5f2;
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+      color: #78716c; padding: 6px 12px; text-align: left;
+      border-bottom: 1px solid #e8e2da;
+    }
+    table.cursos-table tbody tr { border-bottom: 1px solid #f0ebe4; }
+    table.cursos-table tbody tr:last-child { border-bottom: none; }
+    table.cursos-table tbody tr:nth-child(even) { background: #fafaf9; }
+    table.cursos-table td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
+    table.cursos-table td.nome-disc { font-weight: 500; max-width: 320px; }
+
+    .tipo-badge {
+      display: inline-block; font-size: 10px; font-weight: 500;
+      padding: 1px 7px; border-radius: 10px;
+      background: #f3e8ff; color: #7e22ce;
+    }
+    .tipo-badge.profissionalizante { background: #dbeafe; color: #1e40af; }
+    .tipo-badge.rapido            { background: #dcfce7; color: #15803d; }
+    .tipo-badge.pacote            { background: #fff7ed; color: #c2410c; }
+    .tipo-badge.evento            { background: #fce7f3; color: #9d174d; }
+    .tipo-badge.terceiros         { background: #f5f5f4; color: #57534e; }
+
+    /* ── RODAPÉ ── */
+    .report-footer {
+      margin-top: 32px; padding-top: 16px;
+      border-top: 1px solid #e8e2da;
+      font-size: 11px; color: #78716c;
+      display: flex; justify-content: space-between;
+    }
+
+    /* ── PRINT ── */
+    @media print {
+      .toolbar { display: none !important; }
+      .page-wrap { margin-top: 0; }
+      body { font-size: 11px; }
+      .disc-block { break-inside: avoid; margin-bottom: 12px; }
+      .summary-grid { grid-template-columns: repeat(3, 1fr); }
+      @page {
+        size: A4; margin: 15mm 12mm 12mm;
+      }
+      .report-header { border-bottom-color: #f97316; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOOLBAR (tela) -->
+<div class="toolbar">
+  <span class="toolbar-title">Relatório — Banco de Disciplinas</span>
+  <a href="{{ url_for('banco_disciplinas') }}{% if busca %}?q={{ busca }}{% endif %}"
+     class="toolbar-btn secondary">
+    ← Voltar
+  </a>
+  <a href="{{ url_for('banco_disciplinas_exportar_excel') }}{% if busca %}?q={{ busca }}{% endif %}"
+     class="toolbar-btn secondary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+    </svg>
+    Baixar Excel
+  </a>
+  <button onclick="window.print()" class="toolbar-btn primary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir / PDF
+  </button>
+</div>
+
+<div class="page-wrap">
+
+  <!-- CABEÇALHO -->
+  <div class="report-header">
+    <div class="report-logo">
+      <div class="report-logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="report-logo-name">INOVA Carreira</div>
+        <div class="report-logo-sub">Sistema de Gestão de Cursos</div>
+      </div>
+    </div>
+    <div class="report-title">Relatório — Banco de Disciplinas</div>
+    <div class="report-meta">
+      <span>Gerado em <strong>{{ gerado_em.strftime('%d/%m/%Y às %H:%M') }}</strong></span>
+      {% if busca %}<span>Filtro: <strong>"{{ busca }}"</strong></span>{% endif %}
+    </div>
+  </div>
+
+  <!-- SUMÁRIO -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="num">{{ total_unicas }}</div>
+      <div class="lbl">Disciplinas únicas</div>
+    </div>
+    <div class="summary-card">
+      <div class="num">{{ total_ocorrencias }}</div>
+      <div class="lbl">Ocorrências totais</div>
+    </div>
+    <div class="summary-card">
+      <div class="num">
+        {% if total_unicas > 0 %}{{ (total_ocorrencias / total_unicas)|round(1) }}{% else %}0{% endif %}
+      </div>
+      <div class="lbl">Média de cursos por disciplina</div>
+    </div>
+  </div>
+
+  <!-- LISTAGEM POR DISCIPLINA -->
+  {% for item in disciplinas %}
+  <div class="disc-block">
+    <div class="disc-header">
+      <div class="disc-name">{{ item.nome }}</div>
+      <div class="disc-count">{{ item.ocorrencias|length }} curso(s)</div>
+    </div>
+    <table class="cursos-table">
+      <thead>
+        <tr>
+          <th style="width:38%">Curso</th>
+          <th style="width:16%">Tipo</th>
+          <th style="width:13%">Área</th>
+          <th style="width:8%">CH</th>
+          <th style="width:14%">Módulo</th>
+          <th style="width:11%">Professor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d, curso in item.ocorrencias %}
+        <tr>
+          <td class="nome-disc">{{ curso.nome if curso else '—' }}</td>
+          <td>
+            {% if curso %}
+            <span class="tipo-badge {{ curso.tipo }}">
+              {{ tipo_label.get(curso.tipo, curso.tipo) }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="color:#78716c;font-size:11px">{{ curso.area if curso and curso.area else '—' }}</td>
+          <td style="font-weight:600;color:#f97316">{{ d.carga or '—' }}</td>
+          <td style="color:#78716c;font-size:11px">{{ d.modulo or '—' }}</td>
+          <td style="color:#78716c;font-size:11px">{{ d.professor or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  {% if not disciplinas %}
+  <div style="text-align:center;padding:48px;color:#78716c;font-size:14px">
+    Nenhuma disciplina encontrada{% if busca %} para "{{ busca }}"{% endif %}.
+  </div>
+  {% endif %}
+
+  <!-- RODAPÉ -->
+  <div class="report-footer">
+    <span>INOVA Carreira — Sistema de Gestão de Cursos</span>
+    <span>{{ gerado_em.strftime('%d/%m/%Y %H:%M') }} · {{ total_unicas }} disciplinas</span>
+  </div>
+
+</div>
+</body>
+</html>

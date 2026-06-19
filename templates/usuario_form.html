@@ -20,7 +20,12 @@
             <label>Nome de Usuário</label>
             <input type="text" name="username"
               value="{{ user.username if user else '' }}"
-              {% if user %}readonly style="background:var(--surface-2);color:var(--text-muted)"{% else %}required{% endif %}>
+              required placeholder="Ex: NATÁLIA">
+            {% if user %}
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+              Alterar o nome atualiza apenas o login. Os cursos vinculados ao nome antigo precisam ser atualizados manualmente.
+            </div>
+            {% endif %}
           </div>
           <div class="form-group" style="margin-bottom:16px">
             <label>Senha{% if user %} <span style="color:var(--text-muted);font-weight:400">(vazio = manter)</span>{% endif %}</label>

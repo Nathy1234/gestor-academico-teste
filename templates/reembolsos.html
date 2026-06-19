@@ -7,9 +7,19 @@
       <div class="page-title">Reembolsos</div>
       <div class="page-subtitle">{{ items|length }} registro(s)</div>
     </div>
-    {% if session.role in ['admin','editor'] %}
-    <a href="{{ url_for('reembolso_novo') }}" class="btn btn-primary">+ Novo Reembolso</a>
-    {% endif %}
+    <div style="display:flex;gap:8px">
+      {% if session.role == 'admin' %}
+      <form method="POST" action="{{ url_for('reembolsos_marcar_todos_concluidos') }}"
+            onsubmit="return confirm('Marcar TODOS os reembolsos pendentes como concluídos?')">
+        <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0">
+          ✓ Marcar todos concluídos
+        </button>
+      </form>
+      {% endif %}
+      {% if session.role in ['admin','editor'] %}
+      <a href="{{ url_for('reembolso_novo') }}" class="btn btn-primary">+ Novo Reembolso</a>
+      {% endif %}
+    </div>
   </div>
 
   <!-- FILTROS -->
@@ -111,15 +121,38 @@
             <td style="font-size:12px;max-width:160px;color:var(--text-muted)">{{ (r.motivo or '')[:50] }}{% if r.motivo and r.motivo|length > 50 %}…{% endif %}</td>
             <td style="font-size:12px;white-space:nowrap">{{ r.curso_excluido.strftime('%d/%m/%Y') if r.curso_excluido else '—' }}</td>
             <td style="white-space:nowrap">
-              {% if session.role in ['admin','editor'] %}
-              <a href="{{ url_for('reembolso_editar', id=r.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-              {% endif %}
-              {% if session.role == 'admin' %}
-              <form method="POST" action="{{ url_for('reembolso_excluir', id=r.id) }}" style="display:inline"
-                    onsubmit="return confirm('Excluir reembolso de {{ r.nome_aluno }}?')">
-                <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none">Excluir</button>
-              </form>
-              {% endif %}
+              <div style="display:flex;gap:5px;align-items:center">
+                <!-- BOTÃO EMAIL -->
+                <button type="button"
+                        onclick="abrirEmail({{ r.id }},
+                          {{ r.nome_aluno|tojson }},
+                          {{ r.nome_curso|tojson }},
+                          {{ (r.motivo or '')|tojson }},
+                          {{ r.valor|tojson if r.valor else 'null' }},
+                          {{ r.valor_estorno|tojson if r.valor_estorno else 'null' }},
+                          {{ (r.cpf or '')|tojson }},
+                          {{ (r.celular or '')|tojson }},
+                          {{ (r.pix or '')|tojson }},
+                          {{ (r.email_destino or '')|tojson }})"
+                        class="btn btn-sm"
+                        style="background:#fff7ed;color:#f97316;border:1px solid #fed7aa;padding:4px 8px"
+                        title="Gerar e-mail de reembolso">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                  Email
+                </button>
+                {% if session.role in ['admin','editor'] %}
+                <a href="{{ url_for('reembolso_editar', id=r.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+                {% endif %}
+                {% if session.role == 'admin' %}
+                <form method="POST" action="{{ url_for('reembolso_excluir', id=r.id) }}" style="display:inline"
+                      onsubmit="return confirm('Excluir reembolso de {{ r.nome_aluno }}?')">
+                  <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% else %}
@@ -130,4 +163,45 @@
     </div>
   </div>
 </div>
+
+<script>
+function abrirEmail(id, nomeAluno, nomeCurso, motivo, valor, estorno, cpf, celular, pix, emailDest) {
+  function fmt(v) {
+    return v != null ? 'R$ ' + v.toFixed(2).replace('.', ',') : 'R$ —';
+  }
+
+  var assunto = 'SOLICITAÇÃO DE REEMBOLSO INOVA CARREIRA - ' + (nomeAluno || '');
+
+  var linhas = [
+    'Prezado(a)s,',
+    '',
+    'Por favor, solicito o pagamento de reembolso para o(a) seguinte aluno(a) matriculado(a) no curso ' +
+      (nomeCurso || '[NOME DO CURSO]') + ', ' +
+      (motivo || '[MOTIVO DO REEMBOLSO]') + ', encaminhado em anexo comprovantes de pagamento do aluno e do sistema da plataforma.',
+    '',
+    'Valor Pago = ' + fmt(valor),
+    'Valor a receber: ' + fmt(estorno != null ? estorno : valor),
+    '',
+    'Dados para pagamento:',
+    '',
+    'Nome: ' + (nomeAluno || '[NOME]'),
+    'CPF : ' + (cpf || '[CPF]'),
+    'Celular: ' + (celular || '[CELULAR]'),
+    '',
+    'PIX: ' + (pix || '[PIX]'),
+    '',
+    '',
+    'Atenciosamente,',
+    'INOVA Carreira',
+  ];
+
+  var corpo = linhas.join('\n');
+  var dest = emailDest || '';
+  var mailto = 'mailto:' + dest +
+    '?subject=' + encodeURIComponent(assunto) +
+    '&body=' + encodeURIComponent(corpo);
+
+  window.location.href = mailto;
+}
+</script>
 {% endblock %}

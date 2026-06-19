@@ -44,33 +44,73 @@
       </div>
 
       <!-- BLOCO 3: DATAS -->
-      <div class="section-label">Datas</div>
-      <div class="form-grid" style="margin-bottom:20px">
+      <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Datas</span>
+        <label id="concluir-toggle" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text-muted);user-select:none">
+          <input type="checkbox" name="concluido_manual" id="concluido_manual"
+                 {% if item and item.concluido_manual %}checked{% endif %}
+                 onchange="toggleConcluido(this)"
+                 style="width:16px;height:16px;cursor:pointer;accent-color:#22c55e">
+          <span id="concluir-label">{% if item and item.concluido_manual %}Concluído manualmente{% else %}Concluir sem preencher todas as datas{% endif %}</span>
+        </label>
+      </div>
+
+      <div id="datas-aviso" style="display:{% if item and item.concluido_manual %}flex{% else %}none{% endif %};align-items:center;gap:10px;background:#22c55e15;border:1px solid #22c55e40;border-radius:8px;padding:10px 14px;margin-bottom:12px">
+        <span style="color:#22c55e;font-size:18px">✓</span>
+        <span style="font-size:13px;color:#22c55e;font-weight:500">Este reembolso será marcado como <strong>Concluído</strong> independente das datas preenchidas.</span>
+      </div>
+
+      <div id="datas-pendentes-aviso" style="display:{% if not (item and item.concluido_manual) %}flex{% else %}none{% endif %};align-items:center;gap:10px;background:#f9731615;border:1px solid #f9731640;border-radius:8px;padding:10px 14px;margin-bottom:12px">
+        <span style="color:#f97316;font-size:15px">⚠</span>
+        <span style="font-size:12px;color:var(--text-muted)">Preencha <strong>todas as datas</strong> para que o reembolso seja concluído automaticamente, ou marque a opção acima.</span>
+      </div>
+
+      <div class="form-grid" id="bloco-datas" style="margin-bottom:20px;opacity:{% if item and item.concluido_manual %}0.5{% else %}1{% endif %}">
         <div class="form-group">
           <label>Data da Compra</label>
-          <input type="date" name="data_compra" value="{{ item.data_compra.strftime('%Y-%m-%d') if item and item.data_compra else '' }}">
+          <input type="date" name="data_compra" id="data_compra" value="{{ item.data_compra.strftime('%Y-%m-%d') if item and item.data_compra else '' }}">
         </div>
         <div class="form-group">
           <label>Solicitação do Aluno</label>
-          <input type="date" name="data_solicitacao" value="{{ item.data_solicitacao.strftime('%Y-%m-%d') if item and item.data_solicitacao else '' }}">
+          <input type="date" name="data_solicitacao" id="data_solicitacao" value="{{ item.data_solicitacao.strftime('%Y-%m-%d') if item and item.data_solicitacao else '' }}">
         </div>
         <div class="form-group">
           <label>1ª Solicitação (Nathy)</label>
-          <input type="date" name="solicitacao_1" value="{{ item.solicitacao_1.strftime('%Y-%m-%d') if item and item.solicitacao_1 else '' }}">
+          <input type="date" name="solicitacao_1" id="solicitacao_1" value="{{ item.solicitacao_1.strftime('%Y-%m-%d') if item and item.solicitacao_1 else '' }}">
         </div>
         <div class="form-group">
           <label>2ª Solicitação (Jorge)</label>
-          <input type="date" name="solicitacao_2" value="{{ item.solicitacao_2.strftime('%Y-%m-%d') if item and item.solicitacao_2 else '' }}">
+          <input type="date" name="solicitacao_2" id="solicitacao_2" value="{{ item.solicitacao_2.strftime('%Y-%m-%d') if item and item.solicitacao_2 else '' }}">
         </div>
         <div class="form-group">
           <label>Data de Aprovação</label>
-          <input type="date" name="data_aprovacao" value="{{ item.data_aprovacao.strftime('%Y-%m-%d') if item and item.data_aprovacao else '' }}">
+          <input type="date" name="data_aprovacao" id="data_aprovacao" value="{{ item.data_aprovacao.strftime('%Y-%m-%d') if item and item.data_aprovacao else '' }}">
         </div>
         <div class="form-group">
           <label>Curso Excluído em</label>
-          <input type="date" name="curso_excluido" value="{{ item.curso_excluido.strftime('%Y-%m-%d') if item and item.curso_excluido else '' }}">
+          <input type="date" name="curso_excluido" id="curso_excluido" value="{{ item.curso_excluido.strftime('%Y-%m-%d') if item and item.curso_excluido else '' }}">
         </div>
       </div>
+
+      <script>
+      function toggleConcluido(cb) {
+        var bloco = document.getElementById('bloco-datas');
+        var aviso = document.getElementById('datas-aviso');
+        var avisoPend = document.getElementById('datas-pendentes-aviso');
+        var label = document.getElementById('concluir-label');
+        if (cb.checked) {
+          bloco.style.opacity = '0.5';
+          aviso.style.display = 'flex';
+          avisoPend.style.display = 'none';
+          label.textContent = 'Concluído manualmente';
+        } else {
+          bloco.style.opacity = '1';
+          aviso.style.display = 'none';
+          avisoPend.style.display = 'flex';
+          label.textContent = 'Concluir sem preencher todas as datas';
+        }
+      }
+      </script>
 
       <!-- BLOCO 4: VALORES -->
       <div class="section-label">Valores</div>
@@ -85,7 +125,33 @@
         </div>
       </div>
 
-      <!-- BLOCO 5: MOTIVO / OBS -->
+      <!-- BLOCO 5: DADOS PARA PAGAMENTO -->
+      <div class="section-label" style="display:flex;align-items:center;gap:8px">
+        <span>Dados para Pagamento / E-mail</span>
+        <span style="font-size:11px;font-weight:400;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px">
+          Usados no botão Email automático
+        </span>
+      </div>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label>CPF do Aluno</label>
+          <input type="text" name="cpf" value="{{ item.cpf if item else '' }}" placeholder="000.000.000-00">
+        </div>
+        <div class="form-group">
+          <label>Celular</label>
+          <input type="text" name="celular" value="{{ item.celular if item else '' }}" placeholder="(00) 00000-0000">
+        </div>
+        <div class="form-group">
+          <label>PIX (chave ou conta)</label>
+          <input type="text" name="pix" value="{{ item.pix if item else '' }}" placeholder="CPF, e-mail, telefone ou chave aleatória">
+        </div>
+        <div class="form-group">
+          <label>E-mail de Destino</label>
+          <input type="email" name="email_destino" value="{{ item.email_destino if item else '' }}" placeholder="destinatario@empresa.com.br">
+        </div>
+      </div>
+
+      <!-- BLOCO 6: MOTIVO / OBS -->
       <div class="section-label">Informações Adicionais</div>
       <div class="form-grid" style="margin-bottom:20px">
         <div class="form-group full">
@@ -98,6 +164,42 @@
         </div>
       </div>
 
+      <!-- BOTÃO GERAR E-MAIL -->
+      {% if item %}
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:600;font-size:13px;color:#c2410c;margin-bottom:4px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:4px">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              E-mail automático de reembolso
+            </div>
+            <div style="font-size:12px;color:var(--text-muted)">
+              Clique para abrir o Outlook pré-preenchido com os dados deste reembolso.
+              Os campos do formulário são usados diretamente — salve antes para garantir as informações mais recentes.
+            </div>
+          </div>
+          <button type="button" onclick="gerarEmailForm()"
+                  style="white-space:nowrap;background:#f97316;color:#fff;border:none;border-radius:8px;
+                         padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;
+                         display:flex;align-items:center;gap:8px;
+                         box-shadow:0 2px 8px rgba(249,115,22,.3);transition:all .15s"
+                  onmouseover="this.style.background='#ea580c';this.style.transform='translateY(-1px)'"
+                  onmouseout="this.style.background='#f97316';this.style.transform=''">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 style="width:15px;height:15px">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            Gerar E-mail no Outlook
+          </button>
+        </div>
+      </div>
+      {% endif %}
+
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <a href="{{ url_for('reembolsos') }}" class="btn btn-secondary">Cancelar</a>
         <button type="submit" class="btn btn-primary">Salvar</button>
@@ -105,4 +207,59 @@
     </form>
   </div></div>
 </div>
+
+<script>
+function gerarEmailForm() {
+  var f = document.querySelector('form');
+  function val(name) {
+    var el = f.querySelector('[name="' + name + '"]');
+    return el ? el.value.trim() : '';
+  }
+  function fmtValor(v) {
+    var n = parseFloat(v);
+    return (!isNaN(n) && n > 0) ? 'R$ ' + n.toFixed(2).replace('.', ',') : 'R$ —';
+  }
+
+  var nomeAluno  = val('nome_aluno')   || '[NOME DO ALUNO]';
+  var nomeCurso  = val('nome_curso')   || '[NOME DO CURSO]';
+  var motivo     = val('motivo')       || '[MOTIVO DO REEMBOLSO]';
+  var valorPago  = fmtValor(val('valor'));
+  var valorRec   = fmtValor(val('valor_estorno') || val('valor'));
+  var cpf        = val('cpf')          || '[CPF]';
+  var celular    = val('celular')      || '[CELULAR]';
+  var pix        = val('pix')          || '[PIX]';
+  var emailDest  = val('email_destino') || '';
+
+  var assunto = 'SOLICITAÇÃO DE REEMBOLSO INOVA CARREIRA - ' + nomeAluno;
+
+  var corpo = [
+    'Prezado(a)s,',
+    '',
+    'Por favor, solicito o pagamento de reembolso para o(a) seguinte aluno(a) matriculado(a) no curso ' +
+      nomeCurso + ', ' + motivo +
+      ', encaminhado em anexo comprovantes de pagamento do aluno e do sistema da plataforma.',
+    '',
+    'Valor Pago = ' + valorPago,
+    'Valor a receber: ' + valorRec,
+    '',
+    'Dados para pagamento:',
+    '',
+    'Nome: ' + nomeAluno,
+    'CPF : ' + cpf,
+    'Celular: ' + celular,
+    '',
+    'PIX: ' + pix,
+    '',
+    '',
+    'Atenciosamente,',
+    'INOVA Carreira',
+  ].join('\n');
+
+  var mailto = 'mailto:' + emailDest +
+    '?subject=' + encodeURIComponent(assunto) +
+    '&body='    + encodeURIComponent(corpo);
+
+  window.location.href = mailto;
+}
+</script>
 {% endblock %}

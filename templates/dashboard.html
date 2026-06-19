@@ -2,159 +2,390 @@
 {% block title %}Dashboard — INOVA{% endblock %}
 {% block content %}
 <div class="page">
+
+  <!-- HEADER ─────────────────────────────────── -->
   <div class="page-header">
     <div>
-      <div class="page-title">Dashboard</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-        <div class="page-subtitle">Bem-vindo, {{ session.username }} · {{ now().strftime('%d/%m/%Y') if now else '' }}</div>
-        <form method="GET" style="display:flex;gap:6px;align-items:center">
-          <select name="insersor" class="filter-select" style="font-size:12px;padding:3px 8px" onchange="this.form.submit()">
-            <option value="">Todos os insersores</option>
-            {% for ins in insersores %}
-            <option value="{{ ins }}" {% if filtro_ins==ins %}selected{% endif %}>{{ ins }}</option>
-            {% endfor %}
-          </select>
-          {% if filtro_ins %}<a href="{{ url_for('dashboard') }}" class="btn btn-secondary" style="padding:3px 8px;font-size:12px">✕ Limpar</a>{% endif %}
-        </form>
-      </div>
-    </div>
-    {% if session.role == 'admin' %}
-    <form method="POST" action="{{ url_for('backup_manual') }}">
-      <button type="submit" class="btn btn-secondary">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Backup Manual
-      </button>
-    </form>
-    {% endif %}
-  </div>
-
-  <!-- STATS -->
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-icon purple">
-        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-      </div>
-      <div><div class="stat-value">{{ total }}</div><div class="stat-label">Total de Cursos</div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon green">
-        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <div><div class="stat-value">{{ ativos }}</div><div class="stat-label">Cursos Ativos</div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon orange">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      </div>
-      <div><div class="stat-value">{{ em_edicao }}</div><div class="stat-label">Em Edição</div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon red">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-      </div>
-      <div><div class="stat-value">{{ desc }}</div><div class="stat-label">Descontinuados</div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:#f9731620">
-        <svg viewBox="0 0 24 24" style="stroke:#f97316"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-      </div>
-      <div><div class="stat-value">{{ externos }}</div><div class="stat-label">Externos</div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:#64748b20">
-        <svg viewBox="0 0 24 24" style="stroke:#64748b"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-      </div>
-      <div><div class="stat-value">{{ ocultos }}</div><div class="stat-label">Ocultos</div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:#6366f120">
-        <svg viewBox="0 0 24 24" style="stroke:#6366f1"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      </div>
-      <div><div class="stat-value">{{ finalizado }}</div><div class="stat-label">Finalizados</div></div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header"><div class="card-title">Andamento da Plataforma — por Insersor</div></div>
-    <div class="card-body" style="padding:0">
-      <table>
-        <thead><tr><th>Insersor</th><th style="text-align:right">Disciplinas pendentes</th><th></th></tr></thead>
-        <tbody>
-        {% for ins, qtd in pend_por_ins %}
-        <tr>
-          <td style="font-weight:500">{{ ins }}</td>
-          <td style="text-align:right">
-            {% if qtd == 0 %}
-              <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:12px;font-weight:600;font-size:13px">✓ Em dia</span>
-            {% else %}
-              <span style="background:#ef444420;color:#ef4444;padding:2px 10px;border-radius:12px;font-weight:600;font-size:13px">{{ qtd }} pendente{{ 's' if qtd > 1 else '' }}</span>
-            {% endif %}
-          </td>
-          <td><a href="{{ url_for('matrizes', insersor=ins, pendente='1' if qtd > 0 else '') }}" class="btn btn-sm btn-secondary">Ver matrizes</a></td>
-        </tr>
-        {% endfor %}
-        {% if not pend_por_ins %}
-        <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px;font-size:13px">Nenhum insersor cadastrado ainda.</td></tr>
+      <div class="page-title">Olá, {{ session.username.split()[0] }} 👋</div>
+      <div class="page-subtitle">
+        {{ now().strftime('%d/%m/%Y') if now else '' }}
+        {% if is_admin %} · Visão geral do sistema (Admin)
+        {% else %} · Seus cursos e disciplinas
         {% endif %}
-        </tbody>
-      </table>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      {% if is_admin %}
+      <!-- FILTRO INSERSOR (só admin vê) -->
+      <form method="GET" style="display:flex;gap:6px;align-items:center">
+        <select name="insersor" class="filter-select" style="font-size:12px;padding:6px 10px"
+                onchange="this.form.submit()">
+          <option value="">Todos os insersores</option>
+          {% for ins in insersores %}
+          <option value="{{ ins }}" {% if filtro_ins==ins %}selected{% endif %}>{{ ins }}</option>
+          {% endfor %}
+        </select>
+        {% if filtro_ins %}
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" style="padding:5px 10px;font-size:12px">✕</a>
+        {% endif %}
+      </form>
+      <form method="POST" action="{{ url_for('admin_marcar_concluido') }}"
+            onsubmit="return confirm('Marcar TODAS as disciplinas como concluídas na plataforma?')">
+        <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+               style="width:13px;height:13px"><polyline points="20 6 9 17 4 12"/></svg>
+          Marcar tudo concluído
+        </button>
+      </form>
+      <form method="POST" action="{{ url_for('backup_manual') }}">
+        <button type="submit" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Backup
+        </button>
+      </form>
+      {% endif %}
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+  <!-- KPI CARDS ──────────────────────────────── -->
+  <div class="stats-grid">
+    <a href="{{ url_for('cursos') }}" style="text-decoration:none">
+      <div class="stat-card" style="cursor:pointer">
+        <div class="stat-icon orange">
+          <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">{{ total }}</div>
+          <div class="stat-label">Total de Cursos</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="{{ url_for('cursos', status='ativo') }}" style="text-decoration:none">
+      <div class="stat-card" style="cursor:pointer">
+        <div class="stat-icon green">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">{{ ativos }}</div>
+          <div class="stat-label">Cursos Ativos</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="{{ url_for('cursos', status='em_edicao') }}" style="text-decoration:none">
+      <div class="stat-card" style="cursor:pointer">
+        <div class="stat-icon yellow">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">{{ em_edicao }}</div>
+          <div class="stat-label">Em Edição</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="{{ url_for('cursos', status='descontinuado') }}" style="text-decoration:none">
+      <div class="stat-card" style="cursor:pointer">
+        <div class="stat-icon red">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">{{ desc }}</div>
+          <div class="stat-label">Descontinuados</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="{{ url_for('cursos', status='oculto') }}" style="text-decoration:none">
+      <div class="stat-card" style="cursor:pointer">
+        <div class="stat-icon slate">
+          <svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">{{ ocultos }}</div>
+          <div class="stat-label">Ocultos</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="{{ url_for('cursos', status='finalizado') }}" style="text-decoration:none">
+      <div class="stat-card" style="cursor:pointer">
+        <div class="stat-icon indigo">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">{{ finalizado }}</div>
+          <div class="stat-label">Finalizados</div>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <!-- LINHA 2: ANDAMENTO + TIPOS ──────────────── -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+    <!-- ANDAMENTO DA PLATAFORMA -->
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div class="card-title">
+          {% if is_admin %}Andamento — Plataforma (Equipe){% else %}Meu Andamento — Plataforma{% endif %}
+        </div>
+        <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
+      </div>
+      <div style="overflow:hidden">
+        <table style="width:100%">
+          <thead>
+            <tr>
+              <th style="padding-left:16px">Insersor</th>
+              <th style="text-align:center">Concluídas</th>
+              <th style="text-align:center">Pendentes</th>
+              <th style="text-align:center">Total</th>
+              <th style="padding-right:16px"></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for ins, pendentes, concluidas, total_disc in pend_por_ins %}
+          <tr>
+            <td style="font-weight:500;padding-left:16px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:30px;height:30px;border-radius:50%;
+                            background:linear-gradient(135deg,var(--primary),#ea580c);
+                            color:#fff;font-size:11px;font-weight:700;
+                            display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  {{ ins[0]|upper if ins else '?' }}
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:600">{{ ins|title }}</div>
+                  {% if total_disc > 0 %}
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:1px">
+                    {{ ((concluidas / total_disc) * 100)|int }}% concluído
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center">
+              <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;
+                           padding:3px 10px;border-radius:20px;font-weight:600;font-size:12px">
+                ✓ {{ concluidas }}
+              </span>
+            </td>
+            <td style="text-align:center">
+              {% if pendentes == 0 %}
+              <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;
+                           padding:3px 10px;border-radius:20px;font-weight:600;font-size:12px">
+                Em dia
+              </span>
+              {% else %}
+              <span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;
+                           padding:3px 10px;border-radius:20px;font-weight:600;font-size:12px">
+                {{ pendentes }} pend.
+              </span>
+              {% endif %}
+            </td>
+            <td style="text-align:center;font-size:12px;color:var(--text-muted);font-weight:500">
+              {{ total_disc }}
+            </td>
+            <td style="text-align:right;padding-right:16px">
+              <a href="{{ url_for('matrizes', insersor=ins, pendente='1' if pendentes > 0 else '') }}"
+                 class="btn btn-sm btn-secondary">Ver</a>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not pend_por_ins %}
+          <tr>
+            <td colspan="5" style="text-align:center;color:var(--text-muted);padding:28px 16px;font-size:13px">
+              Nenhuma disciplina cadastrada ainda.
+            </td>
+          </tr>
+          {% endif %}
+          </tbody>
+        </table>
+        {% if pend_por_ins %}
+        <div style="padding:10px 16px;border-top:1px solid var(--border);
+                    display:flex;gap:20px;font-size:12px;color:var(--text-muted)">
+          {% set total_pend = pend_por_ins | sum(attribute=1) %}
+          {% set total_conc = pend_por_ins | sum(attribute=2) %}
+          {% set total_geral = pend_por_ins | sum(attribute=3) %}
+          <span>Total: <strong style="color:var(--text)">{{ total_geral }}</strong> disciplinas</span>
+          <span>Concluídas: <strong style="color:#15803d">{{ total_conc }}</strong></span>
+          {% if total_pend > 0 %}
+          <span>Pendentes: <strong style="color:#c2410c">{{ total_pend }}</strong></span>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
     <!-- CURSOS POR TIPO -->
     <div class="card">
-      <div class="card-header"><div class="card-title">Cursos por Tipo</div></div>
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div class="card-title">Distribuição por Tipo</div>
+        <span style="font-size:11px;color:var(--text-muted)">{{ total }} cursos</span>
+      </div>
       <div class="card-body">
-        {% set tipo_labels = {'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido','pacote':'Pacote','terceiros':'Terceiros','evento':'Evento','pratica_conectada':'Prática Conectada','pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental','ggbr':'GGBR','integra_edu':'Integra Edu'} %}
+        {% set tipo_labels = {
+          'pos':'Pós-Graduação','profissionalizante':'Profissionalizante',
+          'rapido':'Rápido','pacote':'Pacote','terceiros':'Terceiros',
+          'evento':'Evento','pratica_conectada':'Prática Conectada',
+          'pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental',
+          'ggbr':'GGBR','integra_edu':'Integra Edu'
+        } %}
         <div class="tipo-list">
           {% for tipo, count in por_tipo %}
           {% set pct = (count / total * 100)|int if total else 0 %}
           <div class="tipo-item">
-            <div class="tipo-label">{{ tipo_labels.get(tipo, tipo) }}</div>
-            <div class="tipo-bar-wrap"><div class="tipo-bar" style="width:{{ pct }}%"></div></div>
+            <a href="{{ url_for('cursos', tipo=tipo) }}"
+               class="tipo-label" style="text-decoration:none;color:var(--text);transition:color .14s"
+               onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text)'">
+              {{ tipo_labels.get(tipo, tipo) }}
+            </a>
+            <div class="tipo-bar-wrap">
+              <div class="tipo-bar" style="width:{{ pct }}%"></div>
+            </div>
             <div class="tipo-count">{{ count }}</div>
           </div>
           {% endfor %}
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- LINHA 3: ATIVIDADE + ATALHOS ─────────────── -->
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:16px">
 
     <!-- ATIVIDADE RECENTE -->
     <div class="card">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
         <div class="card-title">Atividade Recente</div>
-        <a href="{{ url_for('historico') }}" class="btn btn-sm btn-secondary">Ver tudo</a>
+        <a href="{{ url_for('historico') }}" class="btn btn-sm btn-secondary">Ver histórico →</a>
       </div>
-      <div class="card-body" style="padding:12px 20px;max-height:260px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
+      <div style="padding:4px 0;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
         {% for log in recentes %}
-        <div class="log-item">
-          <div class="log-dot"></div>
-          <div>
-            <div class="log-action">{{ log.username }} · <strong>{{ log.action }}</strong> {{ log.entity }}{% if log.detail %}: {{ log.detail[:60] }}{% endif %}</div>
-            <div class="log-meta">{{ log.timestamp.strftime('%d/%m/%Y às %H:%M') }}</div>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 20px;
+                    border-bottom:1px solid var(--border);transition:background .12s"
+             onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--primary);
+                      flex-shrink:0;margin-top:5px"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;color:var(--text)">
+              <span style="color:var(--primary)">{{ log.username }}</span>
+              · {{ log.action }} {{ log.entity }}
+              {% if log.detail %}<span style="color:var(--text-muted)">: {{ log.detail[:55] }}</span>{% endif %}
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+              {{ log.timestamp.strftime('%d/%m/%Y às %H:%M') }}
+            </div>
           </div>
         </div>
         {% else %}
-        <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">Nenhuma atividade ainda.</div>
+        <div style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">
+          Nenhuma atividade ainda.
+        </div>
         {% endfor %}
       </div>
     </div>
-  </div>
 
-  <!-- BACKUP INFO -->
-  {% if ultimo_bk %}
-  <div class="card" style="margin-top:20px">
-    <div class="card-body" style="display:flex;align-items:center;gap:14px">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:var(--success);stroke-width:2"><polyline points="20 6 9 17 4 12"/></svg>
-      <div>
-        <strong>Último backup:</strong> {{ ultimo_bk.filename }} —
-        {{ ultimo_bk.created_at.strftime('%d/%m/%Y %H:%M') }} ({{ ultimo_bk.size_kb }} KB)
-        <span class="badge {% if ultimo_bk.tipo == 'manual' %}badge-ativo{% else %}badge-profissionalizante{% endif %}" style="margin-left:8px">{{ ultimo_bk.tipo }}</span>
+    <!-- ATALHOS RÁPIDOS -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- ACESSO RÁPIDO -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">Acesso Rápido</div></div>
+        <div class="card-body" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+          <a href="{{ url_for('cursos', tipo='pos') }}"
+             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+                    text-decoration:none;color:var(--text);background:var(--surface-2);
+                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+             onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
+            <span style="width:28px;height:28px;background:#f3e8ff;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#7e22ce" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </span>
+            Pós-Graduação
+          </a>
+          <a href="{{ url_for('cursos', tipo='profissionalizante') }}"
+             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+                    text-decoration:none;color:var(--text);background:var(--surface-2);
+                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+             onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
+            <span style="width:28px;height:28px;background:#dbeafe;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </span>
+            Profissionalizantes
+          </a>
+          <a href="{{ url_for('cursos', tipo='evento') }}"
+             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+                    text-decoration:none;color:var(--text);background:var(--surface-2);
+                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+             onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
+            <span style="width:28px;height:28px;background:#fce7f3;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#9d174d" stroke-width="2" style="width:14px;height:14px"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </span>
+            Eventos
+          </a>
+          <a href="{{ url_for('banco_disciplinas') }}"
+             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+                    text-decoration:none;color:var(--text);background:var(--surface-2);
+                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+             onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
+            <span style="width:28px;height:28px;background:#fff1e6;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:14px;height:14px"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </span>
+            Banco de Disciplinas
+          </a>
+          <a href="{{ url_for('ia_assistente') }}"
+             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+                    text-decoration:none;color:var(--text);background:var(--surface-2);
+                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+             onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
+            <span style="width:28px;height:28px;background:#fff1e6;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:14px;height:14px"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
+            </span>
+            IA Assistente
+          </a>
+        </div>
       </div>
-      <div style="margin-left:auto;font-size:12px;color:var(--text-muted)">Backup automático: semanal</div>
+
+      <!-- BACKUP INFO -->
+      {% if ultimo_bk %}
+      <div class="card">
+        <div class="card-body" style="padding:14px 16px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+                      color:var(--text-muted);margin-bottom:8px">Último Backup</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:34px;height:34px;background:#f0fdf4;border-radius:8px;
+                        display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:#16a34a;stroke-width:2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                {{ ultimo_bk.filename }}
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+                {{ ultimo_bk.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ ultimo_bk.size_kb }} KB
+              </div>
+            </div>
+            <span class="badge {% if ultimo_bk.tipo == 'manual' %}badge-ativo{% else %}badge-profissionalizante{% endif %}" style="flex-shrink:0">
+              {{ ultimo_bk.tipo }}
+            </span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+            Backup automático: semanal
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
     </div>
   </div>
-  {% endif %}
+
 </div>
 {% endblock %}
