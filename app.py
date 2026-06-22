@@ -96,19 +96,16 @@ class User(db.Model):
         return self.role == 'admin' or self.get_perm('cursos_excluir')
 
     def can_manage_cupons(self):
-        if self.role == 'admin': return True
         if self._p().get('block_cupons'): return False
-        return self.role == 'editor' or self._p().get('cupons_gerenciar', False)
+        return True  # todos os usuários logados têm acesso por padrão
 
     def can_manage_reembolsos(self):
-        if self.role == 'admin': return True
         if self._p().get('block_reembolsos'): return False
-        return self.role == 'editor' or self._p().get('reembolsos_gerenciar', False)
+        return True  # todos os usuários logados têm acesso por padrão
 
     def can_view_historico(self):
-        if self.role == 'admin': return True
         if self._p().get('block_historico'): return False
-        return self.role == 'editor' or self._p().get('historico_ver', False)
+        return True  # todos os usuários logados têm acesso por padrão
 
     def can_manage_usuarios(self):
         return self.role == 'admin' or self.get_perm('usuarios_gerenciar')
@@ -2244,39 +2241,41 @@ def _import_excel():
 
         db.session.commit()
 
-        # CUPONS
-        for shname in wb.sheetnames:
-            if shname.upper() == 'CUPOM':
-                ws = wb[shname]
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row[0] or str(row[0]).strip() in ('NOME', ''): continue
-                    try:
-                        cp = Coupon(nome=str(row[0]).strip()[:100], quantidade=int(row[1] or 0),
-                                   desconto=float(row[2] or 0), cursos_tipo=str(row[3] or '').strip(),
-                                   limite_curso=int(row[4] or 1), uso_unico=(str(row[5] or '').upper()=='SIM'),
-                                   data_inicial=pd(row[6]), data_final=pd(row[7]) if len(row) > 7 else None,
-                                   obs=str(row[8] or '').strip() if len(row) > 8 else '')
-                        db.session.add(cp)
-                    except: pass
-                break
+        # CUPONS — só importa se não há cupons ainda
+        if Coupon.query.count() == 0:
+            for shname in wb.sheetnames:
+                if shname.upper() == 'CUPOM':
+                    ws = wb[shname]
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        if not row[0] or str(row[0]).strip() in ('NOME', ''): continue
+                        try:
+                            cp = Coupon(nome=str(row[0]).strip()[:100], quantidade=int(row[1] or 0),
+                                       desconto=float(row[2] or 0), cursos_tipo=str(row[3] or '').strip(),
+                                       limite_curso=int(row[4] or 1), uso_unico=(str(row[5] or '').upper()=='SIM'),
+                                       data_inicial=pd(row[6]), data_final=pd(row[7]) if len(row) > 7 else None,
+                                       obs=str(row[8] or '').strip() if len(row) > 8 else '')
+                            db.session.add(cp)
+                        except: pass
+                    break
 
-        # REEMBOLSOS
-        for shname in wb.sheetnames:
-            if 'REEMBOLSO' in shname.upper():
-                ws = wb[shname]
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row[1] or str(row[1]).strip() in ('NOME ALUNO', ''): continue
-                    try:
-                        r = Refund(colab=str(row[0] or '').strip(), nome_aluno=str(row[1] or '').strip(),
-                                  data_compra=pd(row[2]), data_solicitacao=pd(row[3]),
-                                  valor=float(str(row[4] or 0).replace(',', '.') or 0),
-                                  valor_estorno=float(str(row[5] or 0).replace(',', '.') or 0),
-                                  nome_curso=str(row[6] or '').strip(), categoria=str(row[7] or '').strip(),
-                                  data_aprovacao=pd(row[10]) if len(row) > 10 else None,
-                                  motivo=str(row[11] or '').strip() if len(row) > 11 else '')
-                        db.session.add(r)
-                    except: pass
-                break
+        # REEMBOLSOS — só importa se não há reembolsos ainda
+        if Refund.query.count() == 0:
+            for shname in wb.sheetnames:
+                if 'REEMBOLSO' in shname.upper():
+                    ws = wb[shname]
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        if not row[1] or str(row[1]).strip() in ('NOME ALUNO', ''): continue
+                        try:
+                            r = Refund(colab=str(row[0] or '').strip(), nome_aluno=str(row[1] or '').strip(),
+                                      data_compra=pd(row[2]), data_solicitacao=pd(row[3]),
+                                      valor=float(str(row[4] or 0).replace(',', '.') or 0),
+                                      valor_estorno=float(str(row[5] or 0).replace(',', '.') or 0),
+                                      nome_curso=str(row[6] or '').strip(), categoria=str(row[7] or '').strip(),
+                                      data_aprovacao=pd(row[10]) if len(row) > 10 else None,
+                                      motivo=str(row[11] or '').strip() if len(row) > 11 else '')
+                            db.session.add(r)
+                        except: pass
+                    break
 
         db.session.commit()
 
@@ -2489,14 +2488,126 @@ def seed_data():
 @app.route('/admin/reimportar', methods=['GET', 'POST'])
 @admin_required
 def admin_reimportar():
+    # Remove apenas cursos, disciplinas e cupons — preserva reembolsos (dados reais)
     Discipline.query.delete()
     Course.query.delete()
     Coupon.query.delete()
-    Refund.query.delete()
     db.session.commit()
     _import_excel()
-    flash('Dados limpos e reimportados com sucesso!', 'success')
+    flash('Dados limpos e reimportados com sucesso! Reembolsos foram preservados.', 'success')
     return redirect(url_for('dashboard'))
+
+@app.route('/admin/importar-disciplinas', methods=['POST'])
+@admin_required
+def admin_importar_disciplinas():
+    """Importa apenas disciplinas do Excel sem apagar dados existentes."""
+    try:
+        total = _importar_so_disciplinas()
+        flash(f'{total} disciplina(s) importada(s) com sucesso!', 'success')
+    except Exception as e:
+        flash(f'Erro ao importar disciplinas: {e}', 'danger')
+    return redirect(url_for('dashboard'))
+
+def _importar_so_disciplinas():
+    import re as _re2, unicodedata as _ud2, openpyxl as _opx
+    excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
+    if not os.path.exists(excel_path):
+        raise FileNotFoundError('Arquivo Excel não encontrado.')
+    wb = _opx.load_workbook(excel_path)
+
+    def _norm(s):
+        s = _re2.sub(r'\s+', ' ', str(s).upper().strip())
+        return _re2.sub(r'\s+', ' ',
+               ''.join(c for c in _ud2.normalize('NFKD', s) if not _ud2.combining(c))).strip()
+    def _nc(s): return _re2.sub(r'\s+', '', _norm(s))
+    def _sim(a, b):
+        na, nb = _norm(a), _norm(b)
+        if na == nb: return True
+        ca, cb = _nc(a), _nc(b)
+        if ca == cb: return True
+        for n in [55, 50, 45, 40]:
+            if len(ca) >= n and len(cb) >= n and ca[:n] == cb[:n]: return True
+        for n in [45, 40, 35]:
+            if len(na) >= n and len(nb) >= n and na[:n] == nb[:n]: return True
+        return False
+    def _cell(row, idx): return str(row[idx] or '').strip() if row and idx < len(row) else ''
+
+    tit_lookup = {}
+    if 'TITULAÇÕES PÓS' in wb.sheetnames:
+        for row in wb['TITULAÇÕES PÓS'].iter_rows(min_row=2, values_only=True):
+            if row[0] and len(row) > 4 and row[4]:
+                tit_lookup[str(row[0]).strip().upper()] = str(row[4]).strip()
+
+    total = 0
+
+    # PÓS
+    pos_courses = Course.query.filter_by(tipo='pos').all()
+    sheet_m = next((s for s in wb.sheetnames if 'MATRIZES' in s.upper()), None)
+    if sheet_m and pos_courses:
+        ws = wb[sheet_m]
+        all_rows = list(ws.iter_rows(min_row=3, values_only=True))
+        mstart = next((i for i, r in enumerate(all_rows)
+                       if not str(r[0] or '').strip().isdigit() and str(r[0] or '').strip()), len(all_rows))
+        cur_id = None; in_disc = False; disc_ordem = 0; cur_mod = None
+        for row in all_rows[mstart:]:
+            c0,c1,c2,c3 = (_cell(row,i) for i in range(4))
+            if not c0 and not c1 and not c2: in_disc = False; continue
+            if c1.upper() == 'DISCIPLINAS': in_disc=True; disc_ordem=0; cur_mod=None; continue
+            if not c0 and not c1 and c2: continue
+            if not c2:
+                cn = c0 if (c0 and not c1) else c1
+                if cn and cn.upper() not in ('PROFESSOR','PROFESSORES','DISCIPLINAS'):
+                    in_disc=False; disc_ordem=0; cur_mod=None; cur_id=None
+                    m = next((c for c in pos_courses if _sim(c.nome, cn)), None)
+                    if m and Discipline.query.filter_by(course_id=m.id).count()==0:
+                        cur_id = m.id
+                continue
+            if in_disc and c1 and c2 and cur_id:
+                if c0 and not c0.isdigit(): cur_mod=c0; disc_ordem+=1
+                elif c0 and c0.isdigit(): disc_ordem=int(c0)
+                else: disc_ordem+=1
+                db.session.add(Discipline(course_id=cur_id, modulo=cur_mod,
+                    ordem=disc_ordem, nome=c1, carga=c2 or None, professor=c3 or None,
+                    titulacao=tit_lookup.get(c1.upper().strip(), '') or None))
+                total += 1
+        db.session.commit()
+
+    # PROFISSIONALIZANTES
+    prof_courses = Course.query.filter_by(tipo='profissionalizante').all()
+    prof_map = {_norm(c.nome): c for c in prof_courses}
+    prof_cmap = {_nc(c.nome): c for c in prof_courses}
+    def _mp(n):
+        if not n: return None
+        if _norm(n) in prof_map: return prof_map[_norm(n)]
+        if _nc(n) in prof_cmap: return prof_cmap[_nc(n)]
+        for sz in [40,35,30,25,20]:
+            for k,c in prof_cmap.items():
+                if len(_nc(n))>=sz and len(k)>=sz and _nc(n)[:sz]==k[:sz]: return c
+        return None
+    sheet_p = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
+    if sheet_p and prof_courses:
+        rows_p = list(wb[sheet_p].iter_rows(min_row=1, values_only=True))
+        prev = None; c1id=c2id=None; m1=m2=None
+        for row in rows_p:
+            c11,c16 = _cell(row,11), _cell(row,16)
+            if c11.upper()=='DISCIPLINAS' or c16.upper()=='DISCIPLINAS':
+                if prev:
+                    r1=_mp(_cell(prev,9)); r2=_mp(_cell(prev,14))
+                    c1id = r1.id if r1 and Discipline.query.filter_by(course_id=r1.id).count()==0 else None
+                    c2id = r2.id if r2 and Discipline.query.filter_by(course_id=r2.id).count()==0 else None
+                m1=m2=None; prev=row; continue
+            c9,c10,c12 = _cell(row,9),_cell(row,10),_cell(row,12)
+            if c9.startswith('Mód'): m1=c9
+            if c10.isdigit() and c11 and c11.upper() not in ('DISCIPLINAS','CH') and c1id:
+                db.session.add(Discipline(course_id=c1id,modulo=m1,ordem=int(c10),nome=c11,carga=c12 or None)); total+=1
+            c14,c15,c17 = _cell(row,14),_cell(row,15),_cell(row,17)
+            if c14.startswith('Mód'): m2=c14
+            if c15.isdigit() and c16 and c16.upper() not in ('DISCIPLINAS','CH') and c2id:
+                db.session.add(Discipline(course_id=c2id,modulo=m2,ordem=int(c15),nome=c16,carga=c17 or None)); total+=1
+            prev=row
+        db.session.commit()
+
+    return total
 
 @app.route('/admin/excel-debug')
 @admin_required
@@ -2559,18 +2670,61 @@ def admin_status():
 
 _db_ready = False
 
+def _run_migrations():
+    """Adiciona colunas que podem estar faltando em bancos mais antigos."""
+    is_pg = _db_url.startswith('postgresql://')
+    # Para PostgreSQL usa IF NOT EXISTS; para SQLite captura exceção
+    migrations = [
+        ("refund",     "concluido_manual", "BOOLEAN DEFAULT false"),
+        ("refund",     "cpf",              "VARCHAR(20)"),
+        ("refund",     "celular",          "VARCHAR(30)"),
+        ("refund",     "pix",              "VARCHAR(200)"),
+        ("refund",     "email_destino",    "VARCHAR(200)"),
+        ("course",     "dono",             "TEXT"),
+        ("course",     "ano",              "VARCHAR(10)"),
+        ("course",     "extra_data",       "TEXT"),
+        ("discipline", "cod_moodle",       "VARCHAR(50)"),
+        ("discipline", "titulacao",        "VARCHAR(50)"),
+        ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),
+        ("discipline", "plataforma_em",    "TIMESTAMP"),
+    ]
+    with db.engine.connect() as conn:
+        for table, col, dtype in migrations:
+            try:
+                if is_pg:
+                    sql = f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {dtype}'
+                else:
+                    sql = f'ALTER TABLE {table} ADD COLUMN {col} {dtype}'
+                conn.execute(db.text(sql))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        # user.permissoes precisa de aspas pois user é palavra reservada em alguns DBs
+        for col, dtype in [("permissoes", "TEXT DEFAULT '{}' ")]:
+            try:
+                tbl = '"user"' if is_pg else 'user'
+                sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
+                if is_pg:
+                    sql = f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {col} {dtype}'
+                conn.execute(db.text(sql))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+
 @app.before_request
 def ensure_db():
     global _db_ready
     if not _db_ready:
         try:
             db.create_all()
-            try:
-                with db.engine.connect() as _conn:
-                    _conn.execute(db.text('ALTER TABLE refund ADD COLUMN concluido_manual BOOLEAN DEFAULT 0'))
-                    _conn.commit()
-            except Exception:
-                pass
+            _run_migrations()
             seed_data()
             _db_ready = True
         except Exception as e:
