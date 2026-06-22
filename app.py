@@ -1650,25 +1650,11 @@ def matrizes():
         m = re.search(r'\d+', str(val))
         return int(m.group()) if m else 0
 
-    # Carrega todas as disciplinas dos cursos filtrados em UMA query (evita N+1)
-    from collections import defaultdict
-    todos_ids = [c.id for c in todos]
-    if todos_ids:
-        batch_discs = Discipline.query.filter(
-            Discipline.course_id.in_(todos_ids)
-        ).order_by(Discipline.ordem).all()
-    else:
-        batch_discs = []
-    discs_map = defaultdict(list)
-    for d in batch_discs:
-        discs_map[d.course_id].append(d)
-
-    busca_low = busca.lower() if busca else ''
     course_data = []
     for c in todos:
-        discs = discs_map[c.id]
-        if busca_low and busca_low not in c.nome.lower():
-            discs = [d for d in discs if busca_low in d.nome.lower()]
+        discs = Discipline.query.filter_by(course_id=c.id).order_by(Discipline.ordem).all()
+        if busca and busca.lower() not in c.nome.lower():
+            discs = [d for d in discs if busca.lower() in d.nome.lower()]
         total_ch = sum(_parse_ch(d.carga) for d in discs)
         ok_count = sum(1 for d in discs if d.plataforma_ok)
         course_data.append({'course': c, 'disciplines': discs, 'total_ch': total_ch, 'ok_count': ok_count})
@@ -1681,12 +1667,11 @@ def matrizes():
     tipos_disponiveis = [r[0] for r in db.session.query(Course.tipo).join(
         Discipline, Discipline.course_id == Course.id).distinct().all()]
 
-    # Lista de insersores para o filtro — carrega todos cursos em uma query só
-    todos_para_chips = Course.query.filter(
-        sql_exists().where(Discipline.course_id == Course.id)
-    ).all()
+    # Lista de insersores para o filtro (expandindo comma-separated)
     ins_set = set()
-    for c in todos_para_chips:
+    for c in Course.query.filter(
+        sql_exists().where(Discipline.course_id == Course.id)
+    ).all():
         if c.insersor:
             for p in c.insersor.split(','):
                 p = p.strip()
@@ -1697,23 +1682,15 @@ def matrizes():
     total_pendentes = sum(1 for item in course_data
                           if item['ok_count'] < len(item['disciplines']))
 
-    # Pendentes por tipo — carrega disciplinas de todos cursos em UMA query (evita N+1)
-    chips_ids = [c.id for c in todos_para_chips]
-    if chips_ids:
-        chips_discs = db.session.query(
-            Discipline.course_id, Discipline.plataforma_ok
-        ).filter(Discipline.course_id.in_(chips_ids)).all()
-    else:
-        chips_discs = []
-    ok_by_course = defaultdict(int)
-    total_by_course = defaultdict(int)
-    for course_id, plat_ok in chips_discs:
-        total_by_course[course_id] += 1
-        if plat_ok:
-            ok_by_course[course_id] += 1
+    # Pendentes por tipo (apenas cursos com disciplinas, sem filtro atual)
+    todos_para_chips = Course.query.filter(
+        sql_exists().where(Discipline.course_id == Course.id)
+    ).all()
     pendentes_por_tipo = {}
     for c in todos_para_chips:
-        if ok_by_course[c.id] < total_by_course[c.id]:
+        discs_c = Discipline.query.filter_by(course_id=c.id).all()
+        ok_c = sum(1 for d in discs_c if d.plataforma_ok)
+        if ok_c < len(discs_c):
             pendentes_por_tipo[c.tipo] = pendentes_por_tipo.get(c.tipo, 0) + 1
 
     return render_template('matrizes.html', course_data=course_data, busca=busca,
