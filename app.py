@@ -62,7 +62,6 @@ if _db_url.startswith('postgresql://'):
         'connect_args': {
             'sslmode': 'require',
             'connect_timeout': 10,
-            'options': '-c statement_timeout=30000',
         },
         'pool_pre_ping': True,
         'pool_size': 1,
