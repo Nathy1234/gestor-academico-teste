@@ -479,13 +479,37 @@ def dashboard():
 
     insersores = EQUIPE_INSERCAO if is_admin else []
 
+    # Card: cursos por responsável (insersor)
+    cursos_ins_stats = []
+    nomes_ins = EQUIPE_INSERCAO if is_admin else [u.username]
+    for ins_nome in nomes_ins:
+        q_ins = _ins_filter(Course.query, ins_nome)
+        total_ins = q_ins.count()
+        if not is_admin and total_ins == 0:
+            continue
+        ativos_ins   = q_ins.filter_by(status='ativo').count()
+        em_ed_ins    = q_ins.filter_by(status='em_edicao').count()
+        ids_ins = [r[0] for r in q_ins.with_entities(Course.id).all()]
+        pend_disc_ins = Discipline.query.filter(
+            Discipline.course_id.in_(ids_ins),
+            Discipline.plataforma_ok == False
+        ).count() if ids_ins else 0
+        cursos_ins_stats.append({
+            'nome': ins_nome,
+            'total': total_ins,
+            'ativos': ativos_ins,
+            'em_edicao': em_ed_ins,
+            'pend_disc': pend_disc_ins,
+        })
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
         por_tipo=por_tipo, recentes=recentes,
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
-        is_admin=is_admin, usuario_atual=u)
+        is_admin=is_admin, usuario_atual=u,
+        cursos_ins_stats=cursos_ins_stats)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
