@@ -59,8 +59,16 @@ app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 if _db_url.startswith('postgresql://'):
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'connect_args': {'sslmode': 'require'},
+        'connect_args': {
+            'sslmode': 'require',
+            'connect_timeout': 10,
+            'options': '-c statement_timeout=30000',
+        },
         'pool_pre_ping': True,
+        'pool_size': 1,
+        'max_overflow': 0,
+        'pool_timeout': 20,
+        'pool_recycle': 300,
     }
 db = SQLAlchemy(app)
 
