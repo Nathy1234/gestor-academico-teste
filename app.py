@@ -2285,15 +2285,27 @@ def _import_excel():
 
         def norm_nome(s):
             s = _re2.sub(r'\s+', ' ', str(s).upper().strip())
-            s = s.replace('ESP. EM ', 'ESPECIALIZAÇÃO EM ').replace('ESP.EM ', 'ESPECIALIZAÇÃO EM ')
-            # Remove acentos
             s = ''.join(c for c in _ud.normalize('NFKD', s) if not _ud.combining(c))
             return _re2.sub(r'\s+', ' ', s).strip()
 
+        def norm_compact(s):
+            return _re2.sub(r'\s+', '', norm_nome(s))
+
         def nome_sim(a, b):
             na, nb = norm_nome(a), norm_nome(b)
-            for n in [30, 25, 20, 15, 10]:
-                if na[:n] == nb[:n] and len(na) >= n and len(nb) >= n:
+            if na == nb:
+                return True
+            # Compara sem espaços (resolve \xa0 embutido)
+            ca, cb = norm_compact(a), norm_compact(b)
+            if ca == cb:
+                return True
+            # Prefixo longo (evita colisão entre "EDUCACAO DO FUTURO" e "EDUCACAO INTEGRADA...")
+            for n in [55, 50, 45, 40]:
+                if len(ca) >= n and len(cb) >= n and ca[:n] == cb[:n]:
+                    return True
+            # Prefixo com espaços (normalizado) — só acima de 35 chars
+            for n in [45, 40, 35]:
+                if len(na) >= n and len(nb) >= n and na[:n] == nb[:n]:
                     return True
             return False
 
@@ -2362,6 +2374,96 @@ def _import_excel():
                         ordem=disc_ordem, nome=c1, carga=c2 or None,
                         professor=c3 or None
                     ))
+
+            db.session.commit()
+
+        # ── DISCIPLINAS DOS PROFISSIONALIZANTES ───────────────────────────
+        # Layout: 2 matrizes lado a lado por bloco de linhas
+        # Bloco 1: C9=modulo, C10=ordem, C11=nome, C12=ch
+        # Bloco 2: C14=modulo, C15=ordem, C16=nome, C17=ch
+        # O nome do curso fica na linha ANTES do cabeçalho "DISCIPLINAS"
+        prof_courses = Course.query.filter_by(tipo='profissionalizante').all()
+        sheet_prof = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
+        if sheet_prof and prof_courses:
+            prof_map = {}
+            prof_map_compact = {}
+            for c in prof_courses:
+                prof_map[norm_nome(c.nome)] = c
+                prof_map_compact[norm_compact(c.nome)] = c
+
+            def _match_prof(nome_excel):
+                key = norm_nome(nome_excel)
+                if key in prof_map:
+                    return prof_map[key]
+                ck = norm_compact(nome_excel)
+                if ck in prof_map_compact:
+                    return prof_map_compact[ck]
+                for n in [40, 35, 30, 25, 20]:
+                    for k, c in prof_map_compact.items():
+                        if len(ck) >= n and len(k) >= n and ck[:n] == k[:n]:
+                            return c
+                return None
+
+            ws_p = wb[sheet_prof]
+            rows_p = list(ws_p.iter_rows(min_row=1, values_only=True))
+            prev_row = None
+            cur1_id = None
+            cur2_id = None
+            mod1 = None
+            mod2 = None
+
+            def _cell(row, idx):
+                return str(row[idx] or '').strip() if row and idx < len(row) else ''
+
+            for row in rows_p:
+                c11 = _cell(row, 11)
+                c16 = _cell(row, 16)
+
+                # Linha de cabeçalho: detecta "DISCIPLINAS" em C11 ou C16
+                if c11.upper() == 'DISCIPLINAS' or c16.upper() == 'DISCIPLINAS':
+                    if prev_row is not None:
+                        nome1 = _cell(prev_row, 9)
+                        nome2 = _cell(prev_row, 14)
+                        m1 = _match_prof(nome1) if nome1 else None
+                        m2 = _match_prof(nome2) if nome2 else None
+                        if m1 and Discipline.query.filter_by(course_id=m1.id).count() == 0:
+                            cur1_id = m1.id
+                        else:
+                            cur1_id = None
+                        if m2 and Discipline.query.filter_by(course_id=m2.id).count() == 0:
+                            cur2_id = m2.id
+                        else:
+                            cur2_id = None
+                    mod1 = None
+                    mod2 = None
+                    prev_row = row
+                    continue
+
+                # Bloco 1: C10=ordem (número), C11=nome disciplina, C12=carga
+                c9  = _cell(row, 9)
+                c10 = _cell(row, 10)
+                c12 = _cell(row, 12)
+                if c9.startswith('Mód'):
+                    mod1 = c9
+                if c10.isdigit() and c11 and c11.upper() not in ('DISCIPLINAS', 'CH') and cur1_id:
+                    db.session.add(Discipline(
+                        course_id=cur1_id, modulo=mod1,
+                        ordem=int(c10), nome=c11, carga=c12 or None
+                    ))
+
+                # Bloco 2: C15=ordem (número), C16=nome disciplina, C17=carga
+                c14 = _cell(row, 14)
+                c15 = _cell(row, 15)
+                c17 = _cell(row, 17)
+                if c14.startswith('Mód'):
+                    mod2 = c14
+                if c15.isdigit() and c16 and c16.upper() not in ('DISCIPLINAS', 'CH') and cur2_id:
+                    db.session.add(Discipline(
+                        course_id=cur2_id, modulo=mod2,
+                        ordem=int(c15), nome=c16, carga=c17 or None
+                    ))
+
+                prev_row = row
 
             db.session.commit()
 
