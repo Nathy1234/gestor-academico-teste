@@ -469,6 +469,49 @@ def backup_scheduler():
         time.sleep(7 * 24 * 3600)  # semanal
         make_backup(tipo='auto')
 
+def _desserializar_valor(valor, coluna):
+    if valor is None:
+        return None
+    try:
+        py_type = coluna.type.python_type
+    except NotImplementedError:
+        return valor
+    if py_type is datetime:
+        return datetime.fromisoformat(valor)
+    if py_type is date:
+        return date.fromisoformat(valor)
+    return valor
+
+# Ordem que respeita as chaves estrangeiras: Discipline depende de Course,
+# Course e AuditLog dependem de User — então apaga nessa ordem e insere ao contrário.
+RESTORE_ORDEM_APAGAR   = [Discipline, Course, AuditLog, Coupon, Refund, User]
+RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund]
+
+def restaurar_backup(dados):
+    """Substitui TODOS os dados atuais pelos do backup (mesmo formato gerado
+    por _dump_dados_json). Roda dentro de uma única transação: se der erro no
+    meio, nada fica pela metade — a chamadora decide se faz commit ou rollback."""
+    for modelo in RESTORE_ORDEM_APAGAR:
+        modelo.query.delete()
+    db.session.flush()
+
+    for modelo in RESTORE_ORDEM_INSERIR:
+        linhas = dados.get(modelo.__tablename__, [])
+        colunas = {c.name: c for c in modelo.__table__.columns}
+        for linha in linhas:
+            valores = {k: _desserializar_valor(v, colunas[k]) for k, v in linha.items() if k in colunas}
+            db.session.add(modelo(**valores))
+        db.session.flush()
+
+    # Reajusta os contadores de auto-incremento do Postgres, senão o próximo
+    # INSERT normal (sem ID explícito) pode colidir com um ID restaurado.
+    if _db_url.startswith('postgresql://'):
+        for modelo in RESTORE_ORDEM_INSERIR:
+            db.session.execute(db.text(
+                f"SELECT setval(pg_get_serial_sequence('{modelo.__tablename__}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {modelo.__tablename__}), 1))"
+            ))
+
 @app.context_processor
 def inject_now():
     return {'now': datetime.now}
@@ -2375,6 +2418,76 @@ def backup_download(id):
 def backup_lista():
     bks = BackupRecord.query.order_by(BackupRecord.created_at.desc()).all()
     return render_template('backups.html', bks=bks)
+
+def _executar_restauracao(dados):
+    """Cria um backup de segurança do estado atual, depois restaura `dados`.
+    Se algo der errado na restauração, desfaz tudo (o backup de segurança já
+    ficou salvo antes, então nada se perde de qualquer forma)."""
+    seguranca = make_backup(tipo='pre-restore')
+    try:
+        restaurar_backup(dados)
+        db.session.commit()
+        return seguranca, None
+    except Exception as e:
+        db.session.rollback()
+        return seguranca, str(e)
+
+@app.route('/backup/<int:id>/restaurar', methods=['GET', 'POST'])
+@admin_required
+def backup_restaurar(id):
+    rec = BackupRecord.query.get_or_404(id)
+    if request.method == 'POST':
+        if request.form.get('confirmacao', '').strip().upper() != 'RESTAURAR':
+            flash('Digite exatamente "RESTAURAR" (em maiúsculas) para confirmar.', 'danger')
+            return redirect(url_for('backup_restaurar', id=id))
+        if not rec.conteudo:
+            flash('Esse backup não tem mais o arquivo disponível.', 'danger')
+            return redirect(url_for('backup_lista'))
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(rec.conteudo))
+            dados = json.loads(zf.read('dados.json'))
+        except Exception as e:
+            flash(f'Backup corrompido ou inválido: {e}', 'danger')
+            return redirect(url_for('backup_lista'))
+        seguranca, erro = _executar_restauracao(dados)
+        if erro:
+            flash(f'Erro ao restaurar — nada foi alterado. Detalhe: {erro}', 'danger')
+            return redirect(url_for('backup_lista'))
+        log_action(session['user_id'], session['username'], 'restaurar_backup', 'backup', rec.id,
+                   f'Restaurado a partir do backup #{rec.id}; backup de segurança criado: #{seguranca.id}')
+        flash(f'Dados restaurados a partir do backup de {rec.created_at.strftime("%d/%m/%Y %H:%M")}! '
+              f'(o estado anterior foi salvo no backup #{seguranca.id}, caso precise desfazer)', 'success')
+        return redirect(url_for('dashboard'))
+    return render_template('backup_restaurar.html', rec=rec, upload=False)
+
+@app.route('/backup/restaurar-upload', methods=['GET', 'POST'])
+@admin_required
+def backup_restaurar_upload():
+    if request.method == 'POST':
+        if request.form.get('confirmacao', '').strip().upper() != 'RESTAURAR':
+            flash('Digite exatamente "RESTAURAR" (em maiúsculas) para confirmar.', 'danger')
+            return redirect(url_for('backup_restaurar_upload'))
+        arquivo = request.files.get('arquivo')
+        if not arquivo or not arquivo.filename:
+            flash('Selecione um arquivo de backup (.zip) para enviar.', 'danger')
+            return redirect(url_for('backup_restaurar_upload'))
+        try:
+            conteudo = arquivo.read()
+            zf = zipfile.ZipFile(io.BytesIO(conteudo))
+            dados = json.loads(zf.read('dados.json'))
+        except Exception as e:
+            flash(f'Arquivo inválido — precisa ser um .zip gerado por este sistema. Detalhe: {e}', 'danger')
+            return redirect(url_for('backup_restaurar_upload'))
+        seguranca, erro = _executar_restauracao(dados)
+        if erro:
+            flash(f'Erro ao restaurar — nada foi alterado. Detalhe: {erro}', 'danger')
+            return redirect(url_for('backup_restaurar_upload'))
+        log_action(session['user_id'], session['username'], 'restaurar_backup_upload', 'backup', None,
+                   f'Restaurado a partir de arquivo enviado; backup de segurança criado: #{seguranca.id}')
+        flash(f'Dados restaurados a partir do arquivo enviado! '
+              f'(o estado anterior foi salvo no backup #{seguranca.id}, caso precise desfazer)', 'success')
+        return redirect(url_for('dashboard'))
+    return render_template('backup_restaurar.html', rec=None, upload=True)
 
 def arquivar_logs_antigos():
     """Arquiva por e-mail e remove da tabela ativa os logs de auditoria com mais

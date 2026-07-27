@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Restaurar Backup — Gestor{% endblock %}
+{% block content %}
+<div class="page" style="max-width:560px">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('backup_lista') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Backups</a>
+      <div class="page-title" style="margin-top:6px">Restaurar Backup</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin-bottom:20px">
+        <div style="font-weight:600;font-size:13px;color:#dc2626;margin-bottom:6px">⚠️ Isso substitui TODOS os dados atuais</div>
+        <div style="font-size:12px;color:#7f1d1d;line-height:1.6">
+          Cursos, disciplinas, cupons, reembolsos, usuários e histórico serão apagados e trocados
+          pelos dados {% if upload %}do arquivo enviado{% else %}do backup selecionado{% endif %}.
+          Antes de começar, o sistema cria automaticamente um backup do estado atual — se algo der
+          errado ou você mudar de ideia, dá pra restaurar esse backup de segurança depois.
+        </div>
+      </div>
+
+      {% if not upload %}
+      <div style="font-size:13px;margin-bottom:20px">
+        <strong>Backup selecionado:</strong> {{ rec.filename }}<br>
+        <span style="color:var(--text-muted)">Criado em {{ rec.created_at.strftime('%d/%m/%Y %H:%M') }} — {{ rec.size_kb }} KB</span>
+      </div>
+      {% endif %}
+
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% if upload %}
+        <div class="form-group" style="margin-bottom:16px">
+          <label>Arquivo de backup (.zip)</label>
+          <input type="file" name="arquivo" accept=".zip" required>
+        </div>
+        {% endif %}
+
+        <div class="form-group" style="margin-bottom:20px">
+          <label>Para confirmar, digite <strong>RESTAURAR</strong> abaixo</label>
+          <input type="text" name="confirmacao" required placeholder="RESTAURAR" autocomplete="off">
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <a href="{{ url_for('backup_lista') }}" class="btn btn-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-danger">Restaurar dados</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
