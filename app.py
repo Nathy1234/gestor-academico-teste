@@ -5,7 +5,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
 
@@ -134,6 +134,40 @@ def enviar_email(destinatario, assunto, texto):
         msg['From'] = f'Gestor Acadêmico <{EMAIL_SMTP_USER}>'
         msg['To'] = destinatario
         with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as server:
+            server.starttls()
+            server.login(EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD)
+            server.sendmail(EMAIL_SMTP_USER, [destinatario], msg.as_string())
+        return True
+    except Exception as e:
+        print(f'[ERRO EMAIL] {e}')
+        return False
+
+def enviar_email_com_anexo(destinatario, assunto, texto, anexo_bytes, anexo_nome):
+    """Igual a enviar_email, mas com um arquivo anexado (usado pelos backups)."""
+    if not destinatario:
+        return False
+    if not (EMAIL_SMTP_USER and EMAIL_SMTP_PASSWORD):
+        print(f'[EMAIL SIMULADO — EMAIL_SMTP_USER/PASSWORD não configurados]\n'
+              f'Para: {destinatario}\nAssunto: {assunto}\nAnexo: {anexo_nome} '
+              f'({len(anexo_bytes)} bytes)\n\n{texto}\n')
+        return True
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.base import MIMEBase
+        from email import encoders
+        msg = MIMEMultipart()
+        msg['Subject'] = assunto
+        msg['From'] = f'Gestor Acadêmico <{EMAIL_SMTP_USER}>'
+        msg['To'] = destinatario
+        msg.attach(MIMEText(texto, 'plain', 'utf-8'))
+        parte = MIMEBase('application', 'zip')
+        parte.set_payload(anexo_bytes)
+        encoders.encode_base64(parte)
+        parte.add_header('Content-Disposition', f'attachment; filename="{anexo_nome}"')
+        msg.attach(parte)
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as server:
             server.starttls()
             server.login(EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD)
             server.sendmail(EMAIL_SMTP_USER, [destinatario], msg.as_string())
@@ -303,6 +337,7 @@ class BackupRecord(db.Model):
     size_kb    = db.Column(db.Float)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     tipo       = db.Column(db.String(20), default='auto')  # auto, manual
+    conteudo   = db.Column(db.LargeBinary)  # o .zip do backup, guardado no próprio banco
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -368,33 +403,71 @@ def log_action(user_id, username, action, entity, entity_id, detail=''):
     db.session.add(entry)
     db.session.commit()
 
-def make_backup():
+BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund]
+
+def _serializar_valor(v):
+    if isinstance(v, (datetime, date)):
+        return v.isoformat()
+    return v
+
+def _dump_dados_json():
+    """Exporta todas as tabelas de dados (menos os backups em si) para um
+    dicionário serializável em JSON. Usa os modelos do SQLAlchemy em vez de
+    copiar um arquivo — por isso funciona igual em SQLite e em Postgres."""
+    dados = {}
+    for modelo in BACKUP_MODELOS:
+        linhas = []
+        for obj in modelo.query.all():
+            linha = {col.name: _serializar_valor(getattr(obj, col.name))
+                      for col in modelo.__table__.columns}
+            linhas.append(linha)
+        dados[modelo.__tablename__] = linhas
+    return dados
+
+def make_backup(tipo='auto'):
     with app.app_context():
+        dados = _dump_dados_json()
+        json_bytes = json.dumps(dados, ensure_ascii=False, default=str).encode('utf-8')
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        src = os.path.join(app.instance_path, 'inova.db')
-        if not os.path.exists(src): return
-        fname = f'backup_{ts}.zip'
-        fpath = os.path.join('backups', fname)
-        os.makedirs('backups', exist_ok=True)
-        with zipfile.ZipFile(fpath, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.write(src, 'inova.db')
-        size_kb = os.path.getsize(fpath) / 1024
-        rec = BackupRecord(filename=fname, size_kb=round(size_kb, 2), tipo='auto')
+        fname = f'backup_{tipo}_{ts}.zip'
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('dados.json', json_bytes)
+        conteudo = buf.getvalue()
+        size_kb = len(conteudo) / 1024
+
+        rec = BackupRecord(filename=fname, size_kb=round(size_kb, 2), tipo=tipo, conteudo=conteudo)
         db.session.add(rec)
         db.session.commit()
-        # Keep only last 20 backups
+
+        # Mantém só os últimos 20 backups guardados no banco
         bks = BackupRecord.query.order_by(BackupRecord.created_at.asc()).all()
         if len(bks) > 20:
             for old in bks[:-20]:
-                try: os.remove(os.path.join('backups', old.filename))
-                except: pass
                 db.session.delete(old)
             db.session.commit()
 
+        # Envia uma cópia por e-mail — independente do banco de produção,
+        # então continua existindo mesmo se o banco for perdido de vez.
+        destino = os.environ.get('EMAIL_BACKUP_DESTINO', EMAIL_SMTP_USER)
+        if destino:
+            enviar_email_com_anexo(
+                destino,
+                f'Backup ({tipo}) — Gestor Acadêmico — {ts}',
+                f'Backup gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}.\n'
+                f'Tamanho: {round(size_kb, 1)} KB.\n\n'
+                'O anexo contém todos os dados do sistema em formato JSON, dentro de um .zip.',
+                conteudo, fname,
+            )
+        return rec
+
 def backup_scheduler():
+    """Só roda se o processo 'python app.py' ficar ligado continuamente
+    (ambiente local). Em produção (Vercel), o agendamento é feito pelo
+    Vercel Cron chamando a rota /cron/backup."""
     while True:
-        time.sleep(7 * 24 * 3600)  # weekly
-        make_backup()
+        time.sleep(7 * 24 * 3600)  # semanal
+        make_backup(tipo='auto')
 
 @app.context_processor
 def inject_now():
@@ -2283,39 +2356,72 @@ def usuario_excluir(id):
 @app.route('/backup/manual', methods=['POST'])
 @admin_required
 def backup_manual():
-    if not app.config.get('SQLALCHEMY_DATABASE_URI', '').startswith('sqlite'):
-        flash('Backup de arquivo está disponível apenas no modo local. Os dados no Supabase são gerenciados na nuvem.', 'info')
-        return redirect(url_for('dashboard'))
-    with app.app_context():
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        src = os.path.join(app.instance_path, 'inova.db')
-        fname = f'manual_{ts}.zip'
-        fpath = os.path.join('backups', fname)
-        os.makedirs('backups', exist_ok=True)
-        with zipfile.ZipFile(fpath, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.write(src, 'inova.db')
-        size_kb = os.path.getsize(fpath) / 1024
-        rec = BackupRecord(filename=fname, size_kb=round(size_kb,2), tipo='manual')
-        db.session.add(rec)
-        db.session.commit()
-    flash('Backup manual criado com sucesso!', 'success')
+    rec = make_backup(tipo='manual')
+    flash(f'Backup manual criado com sucesso! ({round(rec.size_kb, 1)} KB, também enviado por e-mail)', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/backup/download/<int:id>')
 @admin_required
 def backup_download(id):
     rec = BackupRecord.query.get_or_404(id)
-    fpath = os.path.join('backups', rec.filename)
-    if not os.path.exists(fpath):
-        flash('Arquivo de backup não disponível neste ambiente.', 'warning')
+    if not rec.conteudo:
+        flash('Esse backup é de uma versão antiga do sistema e não tem mais o arquivo disponível.', 'warning')
         return redirect(url_for('backup_lista'))
-    return send_file(fpath, as_attachment=True, download_name=rec.filename)
+    return send_file(io.BytesIO(rec.conteudo), mimetype='application/zip',
+                      as_attachment=True, download_name=rec.filename)
 
 @app.route('/backup/lista')
 @admin_required
 def backup_lista():
     bks = BackupRecord.query.order_by(BackupRecord.created_at.desc()).all()
     return render_template('backups.html', bks=bks)
+
+def arquivar_logs_antigos():
+    """Arquiva por e-mail e remove da tabela ativa os logs de auditoria com mais
+    de 6 meses — não perde o histórico, só tira da tabela usada no dia a dia
+    para o sistema não ficar sobrecarregado."""
+    limite = datetime.utcnow() - timedelta(days=180)
+    antigos = AuditLog.query.filter(AuditLog.timestamp < limite).all()
+    if not antigos:
+        return 0
+    dados = [{col.name: _serializar_valor(getattr(a, col.name)) for col in AuditLog.__table__.columns}
+             for a in antigos]
+    json_bytes = json.dumps(dados, ensure_ascii=False, default=str).encode('utf-8')
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    fname = f'logs_arquivados_{ts}.zip'
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('logs_arquivados.json', json_bytes)
+    conteudo = buf.getvalue()
+
+    destino = os.environ.get('EMAIL_BACKUP_DESTINO', EMAIL_SMTP_USER)
+    if destino:
+        enviar_email_com_anexo(
+            destino,
+            f'Logs arquivados — Gestor Acadêmico — {ts}',
+            f'{len(antigos)} registro(s) de histórico com mais de 6 meses foram arquivados e removidos '
+            'da tabela ativa para não sobrecarregar o sistema. O anexo contém todos eles em JSON.',
+            conteudo, fname,
+        )
+
+    qtd = len(antigos)
+    for a in antigos:
+        db.session.delete(a)
+    db.session.commit()
+    return qtd
+
+@app.route('/cron/backup')
+def cron_backup():
+    """Chamada automaticamente pelo Vercel Cron (veja vercel.json). Como o
+    ambiente serverless não mantém processos rodando o tempo todo, o backup
+    semanal e o arquivamento de logs precisam de um gatilho externo como esse,
+    em vez da thread usada quando roda local (backup_scheduler)."""
+    secret = os.environ.get('CRON_SECRET')
+    if secret and request.headers.get('Authorization') != f'Bearer {secret}':
+        return 'Não autorizado', 401
+    rec = make_backup(tipo='auto')
+    qtd_arquivados = arquivar_logs_antigos()
+    return jsonify({'backup_id': rec.id, 'tamanho_kb': rec.size_kb, 'logs_arquivados': qtd_arquivados})
 
 # ─── SEED DATA ─────────────────────────────────────────────────────────────────
 
@@ -2931,6 +3037,7 @@ def _run_migrations():
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),
         ("discipline", "plataforma_em",    "TIMESTAMP"),
+        ("backup_record", "conteudo",      "BYTEA"),
     ]
     with db.engine.connect() as conn:
         for table, col, dtype in migrations:
