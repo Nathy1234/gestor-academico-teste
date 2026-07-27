@@ -8,7 +8,6 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from datetime import datetime, timedelta
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
-import requests
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -37,11 +36,13 @@ def _load_env_var(key):
         pass
     return None
 
-# Carrega apenas a chave da IA do .env se não estiver no ambiente
-if not os.environ.get('ANTHROPIC_API_KEY'):
-    val = _load_env_var('ANTHROPIC_API_KEY')
-    if val and val != 'sua-chave-aqui':
-        os.environ['ANTHROPIC_API_KEY'] = val
+# Carrega do .env (se não estiverem no ambiente) apenas as chaves de serviços
+# externos — nunca SECRET_KEY/DATABASE_URL, pra manter SQLite local por padrão.
+for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
+    if not os.environ.get(_chave):
+        _val = _load_env_var(_chave)
+        if _val and _val != 'sua-chave-aqui':
+            os.environ[_chave] = _val
 
 app = Flask(__name__)
 
@@ -112,34 +113,31 @@ csrf = CSRFProtect(app)
 limiter = Limiter(get_remote_address, app=app, storage_uri='memory://', default_limits=[])
 
 # ─── E-MAIL ────────────────────────────────────────────────────────────────────
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
-EMAIL_REMETENTE = os.environ.get('EMAIL_REMETENTE', 'Gestor Acadêmico <onboarding@resend.dev>')
+EMAIL_SMTP_USER = os.environ.get('EMAIL_SMTP_USER')
+EMAIL_SMTP_PASSWORD = os.environ.get('EMAIL_SMTP_PASSWORD')
 
 def enviar_email(destinatario, assunto, texto):
-    """Envia e-mail via Resend (https://resend.com). Se RESEND_API_KEY não estiver
-    configurada, não falha — só registra no console, o que permite testar os fluxos
-    de e-mail localmente sem precisar de uma conta Resend ainda."""
+    """Envia e-mail via Gmail SMTP. Se EMAIL_SMTP_USER/PASSWORD não estiverem
+    configurados, não falha — só registra no console, o que permite testar os
+    fluxos de e-mail localmente sem precisar da conta configurada ainda."""
     if not destinatario:
         return False
-    if not RESEND_API_KEY:
-        print(f'[EMAIL SIMULADO — RESEND_API_KEY não configurada]\n'
+    if not (EMAIL_SMTP_USER and EMAIL_SMTP_PASSWORD):
+        print(f'[EMAIL SIMULADO — EMAIL_SMTP_USER/PASSWORD não configurados]\n'
               f'Para: {destinatario}\nAssunto: {assunto}\n\n{texto}\n')
         return True
     try:
-        resp = requests.post(
-            'https://api.resend.com/emails',
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
-            json={
-                'from': EMAIL_REMETENTE,
-                'to': [destinatario],
-                'subject': assunto,
-                'text': texto,
-            },
-            timeout=10,
-        )
-        if resp.status_code >= 300:
-            print(f'[ERRO EMAIL] Resend respondeu {resp.status_code}: {resp.text}')
-        return resp.status_code < 300
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText(texto, 'plain', 'utf-8')
+        msg['Subject'] = assunto
+        msg['From'] = f'Gestor Acadêmico <{EMAIL_SMTP_USER}>'
+        msg['To'] = destinatario
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as server:
+            server.starttls()
+            server.login(EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD)
+            server.sendmail(EMAIL_SMTP_USER, [destinatario], msg.as_string())
+        return True
     except Exception as e:
         print(f'[ERRO EMAIL] {e}')
         return False
