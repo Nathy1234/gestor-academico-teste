@@ -113,7 +113,7 @@ limiter = Limiter(get_remote_address, app=app, storage_uri='memory://', default_
 
 # ─── E-MAIL ────────────────────────────────────────────────────────────────────
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
-EMAIL_REMETENTE = os.environ.get('EMAIL_REMETENTE', 'Rastro Acadêmico <onboarding@resend.dev>')
+EMAIL_REMETENTE = os.environ.get('EMAIL_REMETENTE', 'Gestor Acadêmico <onboarding@resend.dev>')
 
 def enviar_email(destinatario, assunto, texto):
     """Envia e-mail via Resend (https://resend.com). Se RESEND_API_KEY não estiver
@@ -489,12 +489,12 @@ def esqueci_senha():
             link = url_for('resetar_senha', token=token, _external=True)
             corpo = (
                 f'Olá {u.nome or u.username},\n\n'
-                f'Recebemos um pedido para redefinir sua senha no Rastro Acadêmico.\n'
+                f'Recebemos um pedido para redefinir sua senha no Gestor Acadêmico.\n'
                 f'Clique no link abaixo para escolher uma nova senha (válido por 1 hora):\n\n'
                 f'{link}\n\n'
                 f'Se você não pediu essa redefinição, pode ignorar este e-mail.'
             )
-            enviar_email(u.email, 'Redefinição de senha — Rastro Acadêmico', corpo)
+            enviar_email(u.email, 'Redefinição de senha — Gestor Acadêmico', corpo)
         # Mensagem sempre igual, exista ou não o e-mail — evita confirmar pra quem
         # está tentando descobrir quais e-mails têm conta no sistema.
         flash('Se esse e-mail estiver cadastrado, enviamos um link de redefinição.', 'success')
@@ -1258,7 +1258,7 @@ def banco_disciplinas_exportar_excel():
     # Título
     ws1.merge_cells('A1:H1')
     title_cell = ws1['A1']
-    title_cell.value = f'Rastro Acadêmico — Banco de Disciplinas'
+    title_cell.value = f'Gestor Acadêmico — Banco de Disciplinas'
     title_cell.font = Font(bold=True, size=14, color='F97316')
     title_cell.alignment = Alignment(horizontal='left', vertical='center')
     title_cell.fill = PatternFill('solid', fgColor='FFF7ED')
@@ -1337,7 +1337,7 @@ def banco_disciplinas_exportar_excel():
 
     ws2.merge_cells('A1:H1')
     t2 = ws2['A1']
-    t2.value = 'Rastro Acadêmico — Lista Completa de Disciplinas'
+    t2.value = 'Gestor Acadêmico — Lista Completa de Disciplinas'
     t2.font = Font(bold=True, size=13, color='F97316')
     t2.alignment = Alignment(horizontal='left', vertical='center')
     t2.fill = PatternFill('solid', fgColor='FFF7ED')
@@ -1374,7 +1374,7 @@ def banco_disciplinas_exportar_excel():
     ws3 = wb.create_sheet('Resumo')
     ws3.merge_cells('A1:C1')
     t3 = ws3['A1']
-    t3.value = 'Rastro Acadêmico — Resumo do Banco de Disciplinas'
+    t3.value = 'Gestor Acadêmico — Resumo do Banco de Disciplinas'
     t3.font = Font(bold=True, size=13, color='F97316')
     t3.alignment = Alignment(horizontal='left', vertical='center')
     t3.fill = PatternFill('solid', fgColor='FFF7ED')
@@ -1503,7 +1503,7 @@ def ia_chat():
         todas_d = Discipline.query.with_entities(Discipline.nome).all()
         unicas = len({_n2(d.nome) for d in todas_d})
         linhas = [
-            f"Aqui está o resumo geral do sistema Rastro Acadêmico:\n",
+            f"Aqui está o resumo geral do sistema Gestor Acadêmico:\n",
             f"**Cursos cadastrados:** {total}",
             f"  • Ativos: {ativos}",
             f"  • Em edição: {em_ed}",
@@ -1752,7 +1752,7 @@ def ia_chat():
     unicas = len({_n3(d.nome) for d in Discipline.query.with_entities(Discipline.nome).all()})
 
     resposta = (
-        f"Posso te ajudar a encontrar informações no sistema Rastro Acadêmico. "
+        f"Posso te ajudar a encontrar informações no sistema Gestor Acadêmico. "
         f"Temos **{total} cursos ativos** e **{unicas} disciplinas** no banco.\n\n"
         f"Experimente me perguntar:\n"
         f"• _\"Quais eventos estão cadastrados?\"_\n"

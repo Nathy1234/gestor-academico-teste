@@ -1,4 +1,4 @@
-# 🎓 Rastro Acadêmico — Sistema de Gestão de Cursos
+# 🎓 Gestor Acadêmico — Sistema de Gestão de Cursos
 
 Sistema web **clean e funcional** para gerenciar todos os cursos, com rastreabilidade
 de quem inseriu e editou cada um, substituindo a planilha Excel por um sistema com
