@@ -77,7 +77,7 @@ def _insersor_contains(insersor_field, username):
             return True
     return False
 
-EMAIL_DOMINIO_PERMITIDO = '@unifatecie.edu.br'
+EMAIL_DOMINIO_PERMITIDO = '@fatecie.edu.br'
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 if not os.environ.get('SECRET_KEY'):
     print('[AVISO] SECRET_KEY não definida nas variáveis de ambiente. '
