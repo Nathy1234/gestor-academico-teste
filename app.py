@@ -1,8 +1,14 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from datetime import datetime, timedelta
 from functools import wraps
-import hashlib, os, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
+import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
+import requests
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -48,13 +54,45 @@ TIPOS_CURSO = [
     'evento', 'pratica_conectada', 'pratica_estagio',
     'projeto_ambiental', 'ggbr', 'integra_edu',
 ]
-EQUIPE_INSERCAO = ['NATÁLIA', 'PEDRO', 'STEFANYE', 'LUCAS', 'JUNIOR', 'FELIPE']
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'inova-carreira-secret-2024')
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+def responsaveis_atuais():
+    """Responsáveis por inserção de cursos = usuários cadastrados no sistema
+    (substituiu a lista fixa antiga — para adicionar/remover alguém, basta
+    criar ou excluir a conta em Usuários, sem precisar mexer no código)."""
+    return [u.username for u in User.query.order_by(User.username).all()]
+
+def _insersor_contains(insersor_field, username):
+    """Verifica se `username` está entre os insersores de um curso, aceitando
+    tanto o nome completo quanto as iniciais legadas (ex: 'N' = Natália)."""
+    if not insersor_field:
+        return False
+    un_norm = _norm_name(username)
+    inicial = next((k for k, v in INICIAIS_INSERCAO.items() if v == un_norm), None)
+    for parte in insersor_field.split(','):
+        p = parte.strip()
+        if _norm_name(p) == un_norm:
+            return True
+        if inicial and len(p) == 1 and p.upper() == inicial:
+            return True
+    return False
+
+EMAIL_DOMINIO_PERMITIDO = '@unifatecie.edu.br'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+if not os.environ.get('SECRET_KEY'):
+    print('[AVISO] SECRET_KEY não definida nas variáveis de ambiente. '
+          'Gerando uma chave temporária para esta execução — os usuários serão '
+          'desconectados a cada reinício do servidor. Defina SECRET_KEY no ambiente '
+          '(Vercel/host) para sessões estáveis e seguras.')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_PERMANENT'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 _db_url = os.environ.get('DATABASE_URL', 'sqlite:///inova.db')
 if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+# Em produção (Postgres) o cookie de sessão só trafega em HTTPS; em SQLite
+# local (desenvolvimento) isso quebraria o login via http://localhost.
+app.config['SESSION_COOKIE_SECURE'] = _db_url.startswith('postgresql://')
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 if _db_url.startswith('postgresql://'):
@@ -70,13 +108,54 @@ if _db_url.startswith('postgresql://'):
         'pool_recycle': 300,
     }
 db = SQLAlchemy(app)
+csrf = CSRFProtect(app)
+limiter = Limiter(get_remote_address, app=app, storage_uri='memory://', default_limits=[])
+
+# ─── E-MAIL ────────────────────────────────────────────────────────────────────
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
+EMAIL_REMETENTE = os.environ.get('EMAIL_REMETENTE', 'Rastro Acadêmico <onboarding@resend.dev>')
+
+def enviar_email(destinatario, assunto, texto):
+    """Envia e-mail via Resend (https://resend.com). Se RESEND_API_KEY não estiver
+    configurada, não falha — só registra no console, o que permite testar os fluxos
+    de e-mail localmente sem precisar de uma conta Resend ainda."""
+    if not destinatario:
+        return False
+    if not RESEND_API_KEY:
+        print(f'[EMAIL SIMULADO — RESEND_API_KEY não configurada]\n'
+              f'Para: {destinatario}\nAssunto: {assunto}\n\n{texto}\n')
+        return True
+    try:
+        resp = requests.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
+            json={
+                'from': EMAIL_REMETENTE,
+                'to': [destinatario],
+                'subject': assunto,
+                'text': texto,
+            },
+            timeout=10,
+        )
+        if resp.status_code >= 300:
+            print(f'[ERRO EMAIL] Resend respondeu {resp.status_code}: {resp.text}')
+        return resp.status_code < 300
+    except Exception as e:
+        print(f'[ERRO EMAIL] {e}')
+        return False
+
+def _reset_senha_serializer():
+    return URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='reset-senha')
 
 # ─── MODELS ────────────────────────────────────────────────────────────────────
 
 class User(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     username     = db.Column(db.String(80), unique=True, nullable=False)
+    nome         = db.Column(db.String(200))  # nome completo, para exibição em e-mails
+    email        = db.Column(db.String(200))
     password     = db.Column(db.String(200), nullable=False)
+    must_change_password = db.Column(db.Boolean, default=False)
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
@@ -119,6 +198,10 @@ class User(db.Model):
 
     def can_manage_backup(self):
         return self.role == 'admin' or self.get_perm('backup_gerenciar')
+
+    def can_change_own_password(self):
+        if self.role == 'admin': return True
+        return not self._p().get('block_trocar_senha')
 
 class Course(db.Model):
     id            = db.Column(db.Integer, primary_key=True)
@@ -225,7 +308,14 @@ class BackupRecord(db.Model):
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
-def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
+def hash_pw(pw): return generate_password_hash(pw)
+
+def check_pw(stored_hash, plain_pw):
+    """Verifica a senha. Aceita hashes novos (werkzeug, com salt) e os
+    hashes antigos em SHA-256 puro criados antes desta correção de segurança."""
+    if stored_hash.startswith(('pbkdf2:', 'scrypt:')):
+        return check_password_hash(stored_hash, plain_pw)
+    return stored_hash == hashlib.sha256(plain_pw.encode()).hexdigest()
 
 def login_required(f):
     @wraps(f)
@@ -325,16 +415,12 @@ def inject_notificacoes():
         .filter(Discipline.plataforma_ok == False)\
         .filter(Course.status.notin_(['descontinuado']))\
         .filter(Course.insersor != None, Course.insersor != '')
+    rows = q.order_by(Course.nome, Discipline.ordem).all()
     if u.role != 'admin':
-        from sqlalchemy import or_ as sql_or, func as sql_func
-        un = u.username.lower()
-        q = q.filter(sql_or(
-            sql_func.lower(Course.insersor) == un,
-            sql_func.lower(Course.insersor).like(f'{un},%'),
-            sql_func.lower(Course.insersor).like(f'%,{un}'),
-            sql_func.lower(Course.insersor).like(f'%,{un},%'),
-        ))
-    pendentes = q.order_by(Course.nome, Discipline.ordem).all()
+        # Filtra em Python (não em SQL) para reconhecer também as iniciais
+        # legadas (ex: curso com insersor='N' deve notificar a Natália).
+        rows = [(disc, curso) for disc, curso in rows if _insersor_contains(curso.insersor, u.username)]
+    pendentes = rows
 
     by_course = {}
     for disc, curso in pendentes:
@@ -369,10 +455,20 @@ def index():
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET','POST'])
+@limiter.limit("10 per minute", methods=['POST'])
 def login():
     if request.method == 'POST':
-        u = User.query.filter_by(username=request.form['username']).first()
-        if u and u.password == hash_pw(request.form['password']):
+        identificador = request.form.get('email', '').strip().lower()
+        # Aceita e-mail institucional (novo padrão) ou nome de usuário (contas
+        # antigas ainda sem e-mail cadastrado) até que todas as contas migrem.
+        u = User.query.filter(
+            db.or_(db.func.lower(User.email) == identificador,
+                   db.func.lower(User.username) == identificador)
+        ).first()
+        if u and check_pw(u.password, request.form['password']):
+            if not u.password.startswith(('pbkdf2:', 'scrypt:')):
+                u.password = hash_pw(request.form['password'])
+                db.session.commit()
             session.permanent = True
             session['user_id'] = u.id
             session['username'] = u.username
@@ -382,10 +478,86 @@ def login():
         flash('Usuário ou senha incorretos.', 'danger')
     return render_template('login.html')
 
+@app.route('/esqueci-senha', methods=['GET','POST'])
+@limiter.limit("5 per minute", methods=['POST'])
+def esqueci_senha():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        u = User.query.filter(db.func.lower(User.email) == email).first()
+        if u:
+            token = _reset_senha_serializer().dumps(u.id)
+            link = url_for('resetar_senha', token=token, _external=True)
+            corpo = (
+                f'Olá {u.nome or u.username},\n\n'
+                f'Recebemos um pedido para redefinir sua senha no Rastro Acadêmico.\n'
+                f'Clique no link abaixo para escolher uma nova senha (válido por 1 hora):\n\n'
+                f'{link}\n\n'
+                f'Se você não pediu essa redefinição, pode ignorar este e-mail.'
+            )
+            enviar_email(u.email, 'Redefinição de senha — Rastro Acadêmico', corpo)
+        # Mensagem sempre igual, exista ou não o e-mail — evita confirmar pra quem
+        # está tentando descobrir quais e-mails têm conta no sistema.
+        flash('Se esse e-mail estiver cadastrado, enviamos um link de redefinição.', 'success')
+        return redirect(url_for('login'))
+    return render_template('esqueci_senha.html')
+
+@app.route('/resetar-senha/<token>', methods=['GET','POST'])
+def resetar_senha(token):
+    try:
+        user_id = _reset_senha_serializer().loads(token, max_age=3600)
+    except (BadSignature, SignatureExpired):
+        flash('Link inválido ou expirado. Solicite a redefinição novamente.', 'danger')
+        return redirect(url_for('esqueci_senha'))
+    u = User.query.get(user_id)
+    if not u:
+        flash('Usuário não encontrado.', 'danger')
+        return redirect(url_for('esqueci_senha'))
+    if request.method == 'POST':
+        nova = request.form.get('nova_senha', '')
+        confirmar = request.form.get('confirmar_senha', '')
+        if len(nova) < 8:
+            flash('A nova senha precisa ter pelo menos 8 caracteres.', 'danger')
+        elif nova != confirmar:
+            flash('As senhas não coincidem.', 'danger')
+        else:
+            u.password = hash_pw(nova)
+            u.must_change_password = False
+            db.session.commit()
+            log_action(u.id, u.username, 'resetar_senha_email', 'user', u.id)
+            flash('Senha redefinida com sucesso! Faça login com a nova senha.', 'success')
+            return redirect(url_for('login'))
+    return render_template('resetar_senha.html', token=token)
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/minha-conta', methods=['GET','POST'])
+@login_required
+def minha_conta():
+    u = User.query.get(session['user_id'])
+    if request.method == 'POST':
+        if not u.can_change_own_password():
+            flash('Você não tem permissão para alterar sua própria senha. Fale com um administrador.', 'danger')
+            return redirect(url_for('minha_conta'))
+        senha_atual = request.form.get('senha_atual', '')
+        nova = request.form.get('nova_senha', '')
+        confirmar = request.form.get('confirmar_senha', '')
+        if not check_pw(u.password, senha_atual):
+            flash('Senha atual incorreta.', 'danger')
+        elif len(nova) < 8:
+            flash('A nova senha precisa ter pelo menos 8 caracteres.', 'danger')
+        elif nova != confirmar:
+            flash('As senhas novas não coincidem.', 'danger')
+        else:
+            u.password = hash_pw(nova)
+            u.must_change_password = False
+            db.session.commit()
+            log_action(u.id, u.username, 'trocar_senha', 'user', u.id)
+            flash('Senha alterada com sucesso!', 'success')
+            return redirect(url_for('dashboard'))
+    return render_template('minha_conta.html', u=u)
 
 # ─── DASHBOARD ─────────────────────────────────────────────────────────────────
 
@@ -446,7 +618,7 @@ def dashboard():
 
     # Andamento por insersor: pendentes e concluídas por pessoa
     # Para não-admins: apenas a própria linha
-    equipe = EQUIPE_INSERCAO if is_admin else [u.username.upper()]
+    equipe = [n.upper() for n in responsaveis_atuais()] if is_admin else [u.username.upper()]
 
     stats_map = {nome.upper(): {'pendentes': 0, 'concluidas': 0, 'total': 0} for nome in equipe}
 
@@ -477,11 +649,11 @@ def dashboard():
         key=lambda x: x[1], reverse=True
     )
 
-    insersores = EQUIPE_INSERCAO if is_admin else []
+    insersores = responsaveis_atuais() if is_admin else []
 
     # Card: cursos por responsável (insersor)
     cursos_ins_stats = []
-    nomes_ins = EQUIPE_INSERCAO if is_admin else [u.username]
+    nomes_ins = responsaveis_atuais() if is_admin else [u.username]
     for ins_nome in nomes_ins:
         q_ins = _ins_filter(Course.query, ins_nome)
         total_ins = q_ins.count()
@@ -908,6 +1080,38 @@ def reembolso_editar(id):
         return redirect(url_for('reembolsos'))
     return render_template('reembolso_form.html', item=r)
 
+@app.route('/reembolsos/<int:id>/enviar-email', methods=['POST'])
+@login_required
+def reembolso_enviar_email(id):
+    r = Refund.query.get_or_404(id)
+    if not r.email_destino:
+        flash('Preencha o campo "E-mail de Destino" e salve antes de enviar.', 'danger')
+        return redirect(url_for('reembolso_editar', id=id))
+    valor_pago = ('R$ ' + f'{r.valor:.2f}'.replace('.', ',')) if r.valor else 'R$ —'
+    valor_rec_num = r.valor_estorno or r.valor
+    valor_rec = ('R$ ' + f'{valor_rec_num:.2f}'.replace('.', ',')) if valor_rec_num else 'R$ —'
+    assunto = f'SOLICITAÇÃO DE REEMBOLSO INOVA CARREIRA - {r.nome_aluno}'
+    corpo = (
+        'Prezado(a)s,\n\n'
+        'Por favor, solicito o pagamento de reembolso para o(a) seguinte aluno(a) matriculado(a) '
+        f'no curso {r.nome_curso}, {r.motivo or ""}, encaminhado em anexo comprovantes de '
+        'pagamento do aluno e do sistema da plataforma.\n\n'
+        f'Valor Pago = {valor_pago}\n'
+        f'Valor a receber: {valor_rec}\n\n'
+        'Dados para pagamento:\n\n'
+        f'Nome: {r.nome_aluno}\n'
+        f'CPF : {r.cpf or "[CPF]"}\n'
+        f'Celular: {r.celular or "[CELULAR]"}\n\n'
+        f'PIX: {r.pix or "[PIX]"}\n\n\n'
+        'Atenciosamente,\nINOVA Carreira'
+    )
+    if enviar_email(r.email_destino, assunto, corpo):
+        log_action(session['user_id'], session['username'], 'enviar_email', 'reembolso', r.id, r.nome_aluno)
+        flash(f'E-mail enviado para {r.email_destino}!', 'success')
+    else:
+        flash('Não foi possível enviar o e-mail agora. Tente novamente em instantes.', 'danger')
+    return redirect(url_for('reembolso_editar', id=id))
+
 @app.route('/reembolsos/<int:id>/excluir', methods=['POST'])
 @admin_required
 def reembolso_excluir(id):
@@ -1054,7 +1258,7 @@ def banco_disciplinas_exportar_excel():
     # Título
     ws1.merge_cells('A1:H1')
     title_cell = ws1['A1']
-    title_cell.value = f'INOVA Carreira — Banco de Disciplinas'
+    title_cell.value = f'Rastro Acadêmico — Banco de Disciplinas'
     title_cell.font = Font(bold=True, size=14, color='F97316')
     title_cell.alignment = Alignment(horizontal='left', vertical='center')
     title_cell.fill = PatternFill('solid', fgColor='FFF7ED')
@@ -1133,7 +1337,7 @@ def banco_disciplinas_exportar_excel():
 
     ws2.merge_cells('A1:H1')
     t2 = ws2['A1']
-    t2.value = 'INOVA Carreira — Lista Completa de Disciplinas'
+    t2.value = 'Rastro Acadêmico — Lista Completa de Disciplinas'
     t2.font = Font(bold=True, size=13, color='F97316')
     t2.alignment = Alignment(horizontal='left', vertical='center')
     t2.fill = PatternFill('solid', fgColor='FFF7ED')
@@ -1170,7 +1374,7 @@ def banco_disciplinas_exportar_excel():
     ws3 = wb.create_sheet('Resumo')
     ws3.merge_cells('A1:C1')
     t3 = ws3['A1']
-    t3.value = 'INOVA Carreira — Resumo do Banco de Disciplinas'
+    t3.value = 'Rastro Acadêmico — Resumo do Banco de Disciplinas'
     t3.font = Font(bold=True, size=13, color='F97316')
     t3.alignment = Alignment(horizontal='left', vertical='center')
     t3.fill = PatternFill('solid', fgColor='FFF7ED')
@@ -1299,7 +1503,7 @@ def ia_chat():
         todas_d = Discipline.query.with_entities(Discipline.nome).all()
         unicas = len({_n2(d.nome) for d in todas_d})
         linhas = [
-            f"Aqui está o resumo geral do sistema INOVA Carreira:\n",
+            f"Aqui está o resumo geral do sistema Rastro Acadêmico:\n",
             f"**Cursos cadastrados:** {total}",
             f"  • Ativos: {ativos}",
             f"  • Em edição: {em_ed}",
@@ -1548,7 +1752,7 @@ def ia_chat():
     unicas = len({_n3(d.nome) for d in Discipline.query.with_entities(Discipline.nome).all()})
 
     resposta = (
-        f"Posso te ajudar a encontrar informações no sistema INOVA Carreira. "
+        f"Posso te ajudar a encontrar informações no sistema Rastro Acadêmico. "
         f"Temos **{total} cursos ativos** e **{unicas} disciplinas** no banco.\n\n"
         f"Experimente me perguntar:\n"
         f"• _\"Quais eventos estão cadastrados?\"_\n"
@@ -1930,25 +2134,12 @@ def historico():
 @admin_required
 def usuarios():
     users = User.query.order_by(User.username).all()
-    todos_cursos = Course.query.filter(Course.insersor != None, Course.insersor != '').all()
-
-    def _match_ins(insersor_field, username):
-        un_norm = _norm_name(username)
-        inicial = next((k for k, v in INICIAIS_INSERCAO.items() if v == un_norm), None)
-        for parte in insersor_field.split(','):
-            p = parte.strip()
-            if _norm_name(p) == un_norm:
-                return True
-            if inicial and len(p) == 1 and p.upper() == inicial:
-                return True
-        return False
-
     # todos os cursos, sem exceção de tipo ou status
     todos_cursos = Course.query.all()
 
     stats = {}
     for u in users:
-        meus = [c for c in todos_cursos if c.insersor and _match_ins(c.insersor, u.username)]
+        meus = [c for c in todos_cursos if c.insersor and _insersor_contains(c.insersor, u.username)]
         por_status = {}
         for c in meus:
             por_status[c.status] = por_status.get(c.status, 0) + 1
@@ -1980,15 +2171,7 @@ def usuario_cursos(id):
     u = User.query.get_or_404(id)
     todos_cursos = Course.query.filter(Course.insersor != None, Course.insersor != '')\
                                .order_by(Course.nome).all()
-    un_norm = _norm_name(u.username)
-    inicial = next((k for k, v in INICIAIS_INSERCAO.items() if v == un_norm), None)
-    meus = []
-    for c in todos_cursos:
-        for parte in c.insersor.split(','):
-            p = parte.strip()
-            if _norm_name(p) == un_norm or (inicial and len(p) == 1 and p.upper() == inicial):
-                meus.append(c)
-                break
+    meus = [c for c in todos_cursos if _insersor_contains(c.insersor, u.username)]
 
     disc_stats = {}
     for c in meus:
@@ -2006,17 +2189,29 @@ def usuario_cursos(id):
     return render_template('usuario_cursos.html', u=u, cursos=meus,
                            disc_stats=disc_stats, tipo_label=TIPO_LABEL)
 
+def _validar_email_institucional(email):
+    email = (email or '').strip().lower()
+    if not email or not email.endswith(EMAIL_DOMINIO_PERMITIDO):
+        return None
+    return email
+
 @app.route('/usuarios/novo', methods=['GET','POST'])
 @admin_required
 def usuario_novo():
     if request.method == 'POST':
         d = request.form
+        email = _validar_email_institucional(d.get('email'))
         if User.query.filter_by(username=d['username']).first():
             flash('Usuário já existe.', 'danger')
+        elif not email:
+            flash(f'O e-mail precisa ser institucional ({EMAIL_DOMINIO_PERMITIDO}).', 'danger')
+        elif User.query.filter_by(email=email).first():
+            flash('Já existe um usuário com esse e-mail.', 'danger')
         else:
             perms = _perms_from_form(request.form)
-            u = User(username=d['username'], password=hash_pw(d['password']),
-                     role=d['role'], permissoes=json.dumps(perms))
+            u = User(username=d['username'], nome=d.get('nome', '').strip(), email=email,
+                     password=hash_pw(d['password']),
+                     role=d['role'], permissoes=json.dumps(perms), must_change_password=True)
             db.session.add(u)
             db.session.commit()
             log_action(session['user_id'], session['username'], 'criar', 'user', u.id, u.username)
@@ -2037,10 +2232,20 @@ def usuario_editar(id):
                 flash('Já existe um usuário com esse nome.', 'danger')
                 return render_template('usuario_form.html', user=u)
             u.username = novo_username
+        novo_email = _validar_email_institucional(d.get('email'))
+        if not novo_email:
+            flash(f'O e-mail precisa ser institucional ({EMAIL_DOMINIO_PERMITIDO}).', 'danger')
+            return render_template('usuario_form.html', user=u)
+        if novo_email != u.email and User.query.filter_by(email=novo_email).first():
+            flash('Já existe um usuário com esse e-mail.', 'danger')
+            return render_template('usuario_form.html', user=u)
+        u.email = novo_email
+        u.nome = d.get('nome', '').strip()
         u.role = d['role']
         u.permissoes = json.dumps(_perms_from_form(d))
         if d.get('password'):
             u.password = hash_pw(d['password'])
+            u.must_change_password = True
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'user', id, u.username)
         flash('Usuário atualizado!', 'success')
@@ -2052,7 +2257,7 @@ def _perms_from_form(d):
         'cursos_editar', 'cursos_excluir',
         'cupons_gerenciar', 'reembolsos_gerenciar',
         'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
-        'block_cupons', 'block_reembolsos', 'block_historico',
+        'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
@@ -2064,6 +2269,11 @@ def usuario_excluir(id):
         flash('Você não pode excluir sua própria conta.', 'danger')
         return redirect(url_for('usuarios'))
     username = u.username
+    # Cursos e registros de histórico guardam o nome em texto separadamente
+    # (Course.insersor, AuditLog.username), então desvincular o ID aqui não perde
+    # o histórico — só evita a violação de chave estrangeira ao excluir o usuário.
+    Course.query.filter_by(created_by=u.id).update({'created_by': None})
+    AuditLog.query.filter_by(user_id=u.id).update({'user_id': None})
     db.session.delete(u)
     db.session.commit()
     log_action(session['user_id'], session['username'], 'excluir', 'user', id, username)
@@ -2507,10 +2717,15 @@ def _import_excel():
 
 def seed_data():
     if User.query.count() == 0:
-        admin = User(username='admin', password=hash_pw('inova2024'), role='admin')
-        junior = User(username='junior', password=hash_pw('inova2024'), role='editor')
-        felipe = User(username='felipe', password=hash_pw('inova2024'), role='editor')
-        viewer = User(username='visualizador', password=hash_pw('inova2024'), role='viewer')
+        # Senhas padrão temporárias — troca obrigatória no primeiro acesso.
+        admin = User(username='admin', email='admin' + EMAIL_DOMINIO_PERMITIDO,
+                     password=hash_pw('inova2024'), role='admin', must_change_password=True)
+        junior = User(username='junior', email='junior' + EMAIL_DOMINIO_PERMITIDO,
+                      password=hash_pw('inova2024'), role='editor', must_change_password=True)
+        felipe = User(username='felipe', email='felipe' + EMAIL_DOMINIO_PERMITIDO,
+                      password=hash_pw('inova2024'), role='editor', must_change_password=True)
+        viewer = User(username='visualizador', email='visualizador' + EMAIL_DOMINIO_PERMITIDO,
+                      password=hash_pw('inova2024'), role='viewer', must_change_password=True)
         db.session.add_all([admin, junior, felipe, viewer])
         db.session.commit()
     if Course.query.count() == 0:
@@ -2733,8 +2948,10 @@ def _run_migrations():
                     conn.rollback()
                 except Exception:
                     pass
-        # user.permissoes precisa de aspas pois user é palavra reservada em alguns DBs
-        for col, dtype in [("permissoes", "TEXT DEFAULT '{}' ")]:
+        # tabela "user" precisa de aspas pois é palavra reservada em alguns DBs
+        for col, dtype in [("permissoes", "TEXT DEFAULT '{}' "), ("email", "VARCHAR(200)"),
+                           ("must_change_password", "BOOLEAN DEFAULT false"),
+                           ("nome", "VARCHAR(200)")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
@@ -2762,6 +2979,19 @@ def ensure_db():
             import traceback
             traceback.print_exc()
             return f"<pre>Erro ao inicializar banco:\n{traceback.format_exc()}</pre>", 500
+
+ROTAS_LIVRES_TROCA_SENHA = {'minha_conta', 'logout', 'login', 'static', 'esqueci_senha', 'resetar_senha'}
+
+@app.before_request
+def exigir_troca_senha():
+    if request.endpoint in ROTAS_LIVRES_TROCA_SENHA or request.endpoint is None:
+        return
+    if 'user_id' not in session:
+        return
+    u = User.query.get(session['user_id'])
+    if u and u.must_change_password and u.can_change_own_password():
+        flash('Por segurança, troque sua senha antes de continuar.', 'danger')
+        return redirect(url_for('minha_conta'))
 
 if __name__ == '__main__':
     t = threading.Thread(target=backup_scheduler, daemon=True)

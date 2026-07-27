@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Backups — INOVA{% endblock %}
+{% block title %}Backups — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -8,6 +8,7 @@
       <div class="page-subtitle">Backup automático semanal · Máximo 20 backups armazenados</div>
     </div>
     <form method="POST" action="{{ url_for('backup_manual') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-primary">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Fazer Backup Agora

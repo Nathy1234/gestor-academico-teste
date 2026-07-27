@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Esqueci minha senha — Rastro Acadêmico</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function() {
+      const t = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">RA</div>
+      <div>
+        <div class="login-logo-text">Rastro Acadêmico</div>
+        <small class="login-logo-sub">Esqueci minha senha</small>
+      </div>
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="alert alert-{{ cat }}" style="margin:0 0 16px">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+      Informe seu e-mail institucional. Se ele estiver cadastrado, enviaremos um link para você criar uma nova senha.
+    </p>
+
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label>E-mail institucional</label>
+        <input type="email" name="email" required autofocus placeholder="seunome@unifatecie.edu.br">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px;padding:11px">
+        Enviar link de redefinição
+      </button>
+      <div style="text-align:center;margin-top:14px">
+        <a href="{{ url_for('login') }}" style="font-size:12px;color:var(--text-muted)">← Voltar ao login</a>
+      </div>
+    </form>
+  </div>
+</div>
+</body>
+</html>

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Usuários — INOVA{% endblock %}
+{% block title %}Usuários — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -133,6 +133,7 @@
           {% if u.id != session.user_id %}
           <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
                 onsubmit="return confirm('Excluir {{ u.username }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger" style="font-size:12px;padding:7px 12px">✕</button>
           </form>
           {% endif %}
@@ -188,6 +189,7 @@
               {% if u.id != session.user_id %}
               <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
                     onsubmit="return confirm('Excluir {{ u.username }}?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
               </form>
               {% endif %}

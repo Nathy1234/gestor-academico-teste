@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{% if cupom %}Editar Cupom{% else %}Novo Cupom{% endif %} — INOVA{% endblock %}
+{% block title %}{% if cupom %}Editar Cupom{% else %}Novo Cupom{% endif %} — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -11,6 +11,7 @@
   <div class="card">
     <div class="card-body">
       <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-grid">
           <div class="form-group"><label>Nome do Cupom *</label>
             <input type="text" name="nome" value="{{ cupom.nome if cupom else '' }}" required></div>

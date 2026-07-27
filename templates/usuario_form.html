@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{% if user %}Editar Usuário{% else %}Novo Usuário{% endif %} — INOVA{% endblock %}
+{% block title %}{% if user %}Editar Usuário{% else %}Novo Usuário{% endif %} — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -16,6 +16,7 @@
       <div class="card-header"><div class="card-title">Dados de Acesso</div></div>
       <div class="card-body">
         <form method="POST" id="userForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group" style="margin-bottom:16px">
             <label>Nome de Usuário</label>
             <input type="text" name="username"
@@ -26,6 +27,24 @@
               Alterar o nome atualiza apenas o login. Os cursos vinculados ao nome antigo precisam ser atualizados manualmente.
             </div>
             {% endif %}
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Nome completo</label>
+            <input type="text" name="nome"
+              value="{{ user.nome if user else '' }}"
+              placeholder="Ex: Natália Souza">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+              Usado para identificar a pessoa em e-mails (recuperação de senha, etc).
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>E-mail institucional</label>
+            <input type="email" name="email"
+              value="{{ user.email if user else '' }}"
+              required placeholder="nome@unifatecie.edu.br">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+              Usado para login. Precisa ser um e-mail @unifatecie.edu.br.
+            </div>
           </div>
           <div class="form-group" style="margin-bottom:16px">
             <label>Senha{% if user %} <span style="color:var(--text-muted);font-weight:400">(vazio = manter)</span>{% endif %}</label>
@@ -124,11 +143,17 @@
               {% elif user and user._p().get('block_reembolsos') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Reembolsos</div><div class="perm-desc">Este editor não poderá ver nem acessar a seção de reembolsos</div></div>
           </label>
-          <label class="perm-item" style="border-bottom:none">
+          <label class="perm-item">
             <input type="checkbox" name="perm_block_historico" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_historico') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Histórico</div><div class="perm-desc">Este editor não poderá ver o log de atividades</div></div>
+          </label>
+          <label class="perm-item" style="border-bottom:none">
+            <input type="checkbox" name="perm_block_trocar_senha" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_trocar_senha') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Troca de Senha</div><div class="perm-desc">Este usuário não poderá alterar a própria senha em "Minha Conta" — só o admin poderá trocá-la</div></div>
           </label>
         </div>
 
@@ -164,6 +189,7 @@ const EDITOR_DEFAULTS = {
   cupons_gerenciar: true, reembolsos_gerenciar: true,
   historico_ver: true, usuarios_gerenciar: false, backup_gerenciar: false,
   block_cupons: false, block_reembolsos: false, block_historico: false,
+  block_trocar_senha: false,
 };
 
 function applyRoleDefaults() {

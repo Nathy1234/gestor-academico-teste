@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Pacotes — INOVA{% endblock %}
+{% block title %}Pacotes — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -11,6 +11,7 @@
       {% if session.role == 'admin' %}
       <form method="POST" action="{{ url_for('admin_migrar_externos') }}"
             onsubmit="return confirm('Mover todos os cursos com status EXTERNO para a categoria PACOTE?\n\nEssa ação vai alterar o tipo deles para Pacote e o status para Ativo.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary" style="color:#f97316">
           Migrar Externos → Pacotes
         </button>

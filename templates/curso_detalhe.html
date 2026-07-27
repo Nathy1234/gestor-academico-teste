@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{{ c.nome[:50] }} — INOVA{% endblock %}
+{% block title %}{{ c.nome[:50] }} — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -23,6 +23,7 @@
         Editar
       </a>
       <form method="POST" action="{{ url_for('curso_arquivar', id=c.id) }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-warning"
           data-confirm="Arquivar este curso? Ele ficará como Descontinuado mas não será excluído.">
           Arquivar
@@ -31,6 +32,7 @@
       {% endif %}
       {% if session.role == 'admin' %}
       <form method="POST" action="{{ url_for('curso_excluir', id=c.id) }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-danger"
           data-confirm="⚠️ EXCLUIR PERMANENTEMENTE '{{ c.nome }}'? Esta ação não pode ser desfeita!">
           Excluir

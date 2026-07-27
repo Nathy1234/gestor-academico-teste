@@ -1,8 +1,8 @@
-# 🎓 INOVA Carreira — Sistema de Gestão de Cursos
+# 🎓 Rastro Acadêmico — Sistema de Gestão de Cursos
 
-Sistema web **clean e funcional** para gerenciar todos os cursos da INOVA Carreira,
-substituindo a planilha Excel por um sistema com banco de dados, histórico de ações,
-controle de acesso por perfil e backup automático semanal.
+Sistema web **clean e funcional** para gerenciar todos os cursos, com rastreabilidade
+de quem inseriu e editou cada um, substituindo a planilha Excel por um sistema com
+banco de dados, histórico de ações, controle de acesso por perfil e backup automático.
 
 ---
 

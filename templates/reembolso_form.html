@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{% if item %}Editar Reembolso{% else %}Novo Reembolso{% endif %} — INOVA{% endblock %}
+{% block title %}{% if item %}Editar Reembolso{% else %}Novo Reembolso{% endif %} — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -11,6 +11,7 @@
 
   <div class="card"><div class="card-body">
     <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <!-- BLOCO 1: DADOS DO ALUNO -->
       <div class="section-label">Dados do Aluno</div>
@@ -178,24 +179,34 @@
               E-mail automático de reembolso
             </div>
             <div style="font-size:12px;color:var(--text-muted)">
-              Clique para abrir o Outlook pré-preenchido com os dados deste reembolso.
-              Os campos do formulário são usados diretamente — salve antes para garantir as informações mais recentes.
+              "Enviar agora" manda o e-mail direto pelo sistema (não depende de ter o Outlook configurado
+              no computador). "Gerar no Outlook" só abre um rascunho no seu cliente de e-mail padrão, se houver um configurado.
+              Salve o reembolso antes para garantir que os dados enviados são os mais recentes.
             </div>
           </div>
-          <button type="button" onclick="gerarEmailForm()"
-                  style="white-space:nowrap;background:#f97316;color:#fff;border:none;border-radius:8px;
-                         padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;
-                         display:flex;align-items:center;gap:8px;
-                         box-shadow:0 2px 8px rgba(249,115,22,.3);transition:all .15s"
-                  onmouseover="this.style.background='#ea580c';this.style.transform='translateY(-1px)'"
-                  onmouseout="this.style.background='#f97316';this.style.transform=''">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 style="width:15px;height:15px">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-              <polyline points="22,6 12,13 2,6"/>
-            </svg>
-            Gerar E-mail no Outlook
-          </button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <form method="POST" action="{{ url_for('reembolso_enviar_email', id=item.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" style="white-space:nowrap;background:#16a34a;color:#fff;border:none;border-radius:8px;
+                             padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer">
+                ✓ Enviar agora
+              </button>
+            </form>
+            <button type="button" onclick="gerarEmailForm()"
+                    style="white-space:nowrap;background:#f97316;color:#fff;border:none;border-radius:8px;
+                           padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;
+                           display:flex;align-items:center;gap:8px;
+                           box-shadow:0 2px 8px rgba(249,115,22,.3);transition:all .15s"
+                    onmouseover="this.style.background='#ea580c';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.background='#f97316';this.style.transform=''">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   style="width:15px;height:15px">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              Gerar no Outlook
+            </button>
+          </div>
         </div>
       </div>
       {% endif %}

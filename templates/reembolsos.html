@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Reembolsos — INOVA{% endblock %}
+{% block title %}Reembolsos — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -11,6 +11,7 @@
       {% if session.role == 'admin' %}
       <form method="POST" action="{{ url_for('reembolsos_marcar_todos_concluidos') }}"
             onsubmit="return confirm('Marcar TODOS os reembolsos pendentes como concluídos?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0">
           ✓ Marcar todos concluídos
         </button>
@@ -149,6 +150,7 @@
                 {% if session.role == 'admin' %}
                 <form method="POST" action="{{ url_for('reembolso_excluir', id=r.id) }}" style="display:inline"
                       onsubmit="return confirm('Excluir reembolso de {{ r.nome_aluno }}?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-sm btn-danger">✕</button>
                 </form>
                 {% endif %}

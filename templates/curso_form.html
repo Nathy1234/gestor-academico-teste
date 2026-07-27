@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{% if curso %}Editar{% else %}Novo Curso{% endif %} — INOVA{% endblock %}
+{% block title %}{% if curso %}Editar{% else %}Novo Curso{% endif %} — Rastro{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-header">
@@ -16,6 +16,7 @@
   </div>
 
   <form method="POST" id="courseForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="disciplinas_json" id="disciplinas_json" value="">
     <input type="hidden" name="from_page" value="{{ request.args.get('from', '') }}">
 
