@@ -2561,7 +2561,8 @@ def admin_corrigir_dominio_email():
         u.email = antigo.replace('@unifatecie.edu.br', '@fatecie.edu.br')
         corrigidos.append(f'{u.username}: {antigo} -> {u.email}')
     db.session.commit()
-    return jsonify({'corrigidos': corrigidos})
+    todos = [f'{u.username}: {u.email}' for u in User.query.order_by(User.id).all()]
+    return jsonify({'corrigidos': corrigidos, 'estado_atual': todos})
 
 # ─── SEED DATA ─────────────────────────────────────────────────────────────────
 
