@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.0.0'
+VERSAO = '1.0.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -474,7 +474,7 @@ def backup_scheduler():
     (ambiente local). Em produção (Vercel), o agendamento é feito pelo
     Vercel Cron chamando a rota /cron/backup."""
     while True:
-        time.sleep(7 * 24 * 3600)  # semanal
+        time.sleep(24 * 3600)  # diário
         make_backup(tipo='auto')
 
 def _desserializar_valor(valor, coluna):
@@ -2539,8 +2539,10 @@ def arquivar_logs_antigos():
 def cron_backup():
     """Chamada automaticamente pelo Vercel Cron (veja vercel.json). Como o
     ambiente serverless não mantém processos rodando o tempo todo, o backup
-    semanal e o arquivamento de logs precisam de um gatilho externo como esse,
-    em vez da thread usada quando roda local (backup_scheduler)."""
+    diário e o arquivamento de logs precisam de um gatilho externo como esse,
+    em vez da thread usada quando roda local (backup_scheduler). Rodar todo
+    dia também mantém o projeto Supabase "ativo", evitando a pausa automática
+    por inatividade do plano gratuito."""
     secret = os.environ.get('CRON_SECRET')
     if secret and request.headers.get('Authorization') != f'Bearer {secret}':
         return 'Não autorizado', 401
