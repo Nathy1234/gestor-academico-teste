@@ -183,7 +183,7 @@
 
 <script>
 // Initialize matrix with existing data
-const existingDisc = {{ disc|tojson if disc else '[]' }};
+const existingDisc = {{ disc_json|tojson if disc_json else '[]' }};
 const mapped = existingDisc.map(d => ({
   modulo: d.modulo || '',
   ordem: d.ordem || 1,

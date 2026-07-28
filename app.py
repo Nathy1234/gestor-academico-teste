@@ -1020,9 +1020,13 @@ def curso_editar(id):
             return redirect(url_for('matrizes'))
         return redirect(url_for('curso_detalhe', id=id))
     disc = Discipline.query.filter_by(course_id=id).order_by(Discipline.ordem).all()
+    disc_json = [{'modulo': d.modulo, 'ordem': d.ordem, 'nome': d.nome, 'carga': d.carga,
+                  'professor': d.professor, 'titulacao': d.titulacao, 'cod_moodle': d.cod_moodle}
+                 for d in disc]
     tipos = ['pos','profissionalizante','rapido','pacote','terceiros','evento','pratica_conectada','pratica_estagio','projeto_ambiental','ggbr','integra_edu']
     usuarios = User.query.order_by(User.username).all()
-    return render_template('curso_form.html', curso=c, disc=disc, tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
+    return render_template('curso_form.html', curso=c, disc=disc, disc_json=disc_json,
+                           tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
 
 @app.route('/cursos/<int:id>/arquivar', methods=['POST'])
 @editor_required
