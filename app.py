@@ -2548,22 +2548,6 @@ def cron_backup():
     qtd_arquivados = arquivar_logs_antigos()
     return jsonify({'backup_id': rec.id, 'tamanho_kb': rec.size_kb, 'logs_arquivados': qtd_arquivados})
 
-@app.route('/admin/corrigir-dominio-email')
-def admin_corrigir_dominio_email():
-    """Manutenção pontual — corrige e-mails de contas criadas antes da troca
-    de domínio institucional, de @unifatecie.edu.br para @fatecie.edu.br."""
-    secret = os.environ.get('CRON_SECRET')
-    if secret and request.headers.get('Authorization') != f'Bearer {secret}':
-        return 'Não autorizado', 401
-    corrigidos = []
-    for u in User.query.filter(User.email.like('%@unifatecie.edu.br')).all():
-        antigo = u.email
-        u.email = antigo.replace('@unifatecie.edu.br', '@fatecie.edu.br')
-        corrigidos.append(f'{u.username}: {antigo} -> {u.email}')
-    db.session.commit()
-    todos = [f'{u.username}: {u.email}' for u in User.query.order_by(User.id).all()]
-    return jsonify({'corrigidos': corrigidos, 'estado_atual': todos})
-
 # ─── SEED DATA ─────────────────────────────────────────────────────────────────
 
 def _import_excel():
