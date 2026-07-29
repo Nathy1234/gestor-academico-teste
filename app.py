@@ -1339,18 +1339,33 @@ def pagamentos_terceiros():
         q = q.filter(ThirdPartyPayment.ano == f_ano)
     items = q.order_by(ThirdPartyPayment.data_emissao.desc()).all()
 
+    # Terceiro -> Curso -> lista de registros (intervalos de pagamento)
     grupos = {}
     for p in items:
-        grupos.setdefault(p.terceiro or '(sem terceiro)', []).append(p)
-    grupos_ordenados = sorted(grupos.items(), key=lambda kv: kv[0].upper())
-    subtotais = {nome: sum(p.valor or 0 for p in lista) for nome, lista in grupos_ordenados}
+        nome_terceiro = p.terceiro or '(sem terceiro)'
+        nome_curso = p.curso.nome if p.curso else '(curso não encontrado)'
+        grupos.setdefault(nome_terceiro, {}).setdefault(nome_curso, []).append(p)
+
+    grupos_ordenados = []
+    subtotais_terceiro = {}
+    for nome_terceiro in sorted(grupos.keys(), key=str.upper):
+        cursos_do_terceiro = grupos[nome_terceiro]
+        cursos_ordenados = []
+        subtotal_terceiro = 0
+        for nome_curso in sorted(cursos_do_terceiro.keys(), key=str.upper):
+            registros = sorted(cursos_do_terceiro[nome_curso], key=lambda p: p.data_emissao or date.min, reverse=True)
+            subtotal_curso = sum(p.valor or 0 for p in registros)
+            subtotal_terceiro += subtotal_curso
+            cursos_ordenados.append((nome_curso, registros, subtotal_curso))
+        grupos_ordenados.append((nome_terceiro, cursos_ordenados))
+        subtotais_terceiro[nome_terceiro] = subtotal_terceiro
 
     total_valor = sum(i.valor or 0 for i in items)
     terceiros = sorted({p.terceiro for p in ThirdPartyPayment.query.all() if p.terceiro})
     anos = sorted({p.ano for p in ThirdPartyPayment.query.all() if p.ano}, reverse=True)
     cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
 
-    return render_template('pagamentos_terceiros.html', grupos=grupos_ordenados, subtotais=subtotais,
+    return render_template('pagamentos_terceiros.html', grupos=grupos_ordenados, subtotais_terceiro=subtotais_terceiro,
                            total_valor=total_valor, total_registros=len(items),
                            terceiros=terceiros, anos=anos, cursos_terceiros=cursos_terceiros,
                            f_terceiro=f_terceiro, f_curso=f_curso, f_ano=f_ano)
