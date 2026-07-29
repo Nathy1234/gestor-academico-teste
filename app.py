@@ -2962,18 +2962,6 @@ def seed_data():
     if Course.query.count() == 0:
         _import_excel()
 
-@app.route('/admin/reimportar', methods=['GET', 'POST'])
-@admin_required
-def admin_reimportar():
-    # Remove apenas cursos, disciplinas e cupons — preserva reembolsos (dados reais)
-    Discipline.query.delete()
-    Course.query.delete()
-    Coupon.query.delete()
-    db.session.commit()
-    _import_excel()
-    flash('Dados limpos e reimportados com sucesso! Reembolsos foram preservados.', 'success')
-    return redirect(url_for('dashboard'))
-
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
 def admin_importar_disciplinas():
@@ -3086,63 +3074,6 @@ def _importar_so_disciplinas():
 
     return total
 
-@app.route('/admin/excel-debug')
-@admin_required
-def admin_excel_debug():
-    import openpyxl, os
-    excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
-    wb = openpyxl.load_workbook(excel_path)
-    linhas = [f"<b>Abas:</b> {', '.join(wb.sheetnames)}<br><br>"]
-
-    # Todas as linhas não-vazias do Profissionalizantes após linha 43
-    for shname in wb.sheetnames:
-        if 'PROFISSIONALIZANTE' in shname.upper():
-            ws = wb[shname]
-            total = ws.max_row
-            linhas.append(f"<b>Aba: {shname} — total de linhas: {total}</b><br>")
-            # Mostrar primeiras linhas não-vazias após linha 43
-            count = 0
-            for i, row in enumerate(ws.iter_rows(min_row=44, values_only=True)):
-                if any(c for c in row[:8] if c is not None and str(c).strip()):
-                    cols = [str(c or '')[:40] for c in row[:8]]
-                    linhas.append(f"Linha {i+44}: {' | '.join(cols)}<br>")
-                    count += 1
-                    if count >= 40:
-                        break
-            if count == 0:
-                linhas.append("Nenhuma linha não-vazia encontrada após linha 43.<br>")
-            break
-
-    linhas.append("<br>")
-
-    # Aba DISCIPLINAS PÓS
-    if 'DISCIPLINAS PÓS' in wb.sheetnames:
-        linhas.append("<b>Aba: DISCIPLINAS PÓS (primeiras 20 linhas)</b><br>")
-        ws = wb['DISCIPLINAS PÓS']
-        for i, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=True)):
-            cols = [str(c or '')[:35] for c in row[:8]]
-            linhas.append(f"Linha {i+1}: {' | '.join(cols)}<br>")
-
-    return ''.join(linhas)
-
-@app.route('/admin/status')
-@admin_required
-def admin_status():
-    from sqlalchemy import func
-    linhas = [f"<b>Status do banco:</b><br>"]
-    linhas.append(f"Cursos: {Course.query.count()}<br>")
-    linhas.append(f"Disciplinas: {Discipline.query.count()}<br>")
-    linhas.append(f"Cupons: {Coupon.query.count()}<br>")
-    linhas.append(f"Reembolsos: {Refund.query.count()}<br><br>")
-    linhas.append("<b>Cursos por tipo:</b><br>")
-    for tipo, qtd in db.session.query(Course.tipo, func.count(Course.id)).group_by(Course.tipo).all():
-        com_disc = db.session.query(func.count(Course.id)).filter(
-            Course.tipo == tipo,
-            db.session.query(Discipline).filter(Discipline.course_id == Course.id).exists()
-        ).scalar()
-        linhas.append(f"{tipo}: {qtd} cursos, {com_disc} com disciplinas<br>")
-    return ''.join(linhas)
-
 # ─── INIT ──────────────────────────────────────────────────────────────────────
 
 _db_ready = False
@@ -3207,10 +3138,10 @@ def ensure_db():
             _run_migrations()
             seed_data()
             _db_ready = True
-        except Exception as e:
+        except Exception:
             import traceback
-            traceback.print_exc()
-            return f"<pre>Erro ao inicializar banco:\n{traceback.format_exc()}</pre>", 500
+            traceback.print_exc()  # detalhe completo só no log do servidor, nunca pro navegador
+            return "Erro ao conectar com o banco de dados. Tente novamente em instantes.", 500
 
 ROTAS_LIVRES_TROCA_SENHA = {'minha_conta', 'logout', 'login', 'static', 'esqueci_senha', 'resetar_senha'}
 
