@@ -1456,7 +1456,9 @@ def pagamento_terceiro_novo():
         log_action(session['user_id'], session['username'], 'criar', 'pagamento_terceiro', p.id, p.terceiro)
         flash('Pagamento de terceiro registrado!', 'success')
         return redirect(url_for('pagamentos_terceiros'))
-    return render_template('pagamento_terceiro_form.html', item=None, cursos_terceiros=cursos_terceiros)
+    terceiro_prefill = request.args.get('terceiro', '').strip()
+    return render_template('pagamento_terceiro_form.html', item=None, cursos_terceiros=cursos_terceiros,
+                           terceiro_prefill=terceiro_prefill)
 
 @app.route('/pagamentos-terceiros/<int:id>/editar', methods=['GET', 'POST'])
 @admin_required
