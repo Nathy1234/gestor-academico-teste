@@ -1309,6 +1309,20 @@ def _pdate(s):
     try: return datetime.strptime(s, '%Y-%m-%d').date()
     except: return None
 
+def _parse_valor_brl(s):
+    """Aceita tanto '1076.90' quanto '1.076,90' ou '1076,90' — o campo é
+    texto livre (não number) justamente para não perder os centavos quando
+    o usuário digita com vírgula."""
+    s = (s or '').strip().replace('R$', '').strip()
+    if not s:
+        return 0.0
+    if ',' in s:
+        s = s.replace('.', '').replace(',', '.')
+    try:
+        return round(float(s), 2)
+    except ValueError:
+        return 0.0
+
 @app.route('/pagamentos-terceiros')
 @admin_required
 def pagamentos_terceiros():
@@ -1325,12 +1339,19 @@ def pagamentos_terceiros():
         q = q.filter(ThirdPartyPayment.ano == f_ano)
     items = q.order_by(ThirdPartyPayment.data_emissao.desc()).all()
 
+    grupos = {}
+    for p in items:
+        grupos.setdefault(p.terceiro or '(sem terceiro)', []).append(p)
+    grupos_ordenados = sorted(grupos.items(), key=lambda kv: kv[0].upper())
+    subtotais = {nome: sum(p.valor or 0 for p in lista) for nome, lista in grupos_ordenados}
+
     total_valor = sum(i.valor or 0 for i in items)
     terceiros = sorted({p.terceiro for p in ThirdPartyPayment.query.all() if p.terceiro})
     anos = sorted({p.ano for p in ThirdPartyPayment.query.all() if p.ano}, reverse=True)
     cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
 
-    return render_template('pagamentos_terceiros.html', items=items, total_valor=total_valor,
+    return render_template('pagamentos_terceiros.html', grupos=grupos_ordenados, subtotais=subtotais,
+                           total_valor=total_valor, total_registros=len(items),
                            terceiros=terceiros, anos=anos, cursos_terceiros=cursos_terceiros,
                            f_terceiro=f_terceiro, f_curso=f_curso, f_ano=f_ano)
 
@@ -1347,7 +1368,7 @@ def pagamento_terceiro_novo():
             intervalo_inicio=_pdate(d.get('intervalo_inicio', '')),
             intervalo_fim=_pdate(d.get('intervalo_fim', '')),
             ano=d.get('ano', '').strip(),
-            valor=float(d.get('valor', 0) or 0),
+            valor=_parse_valor_brl(d.get('valor', '')),
             obs=d.get('obs', ''),
             created_by=session['user_id'],
         )
@@ -1371,7 +1392,7 @@ def pagamento_terceiro_editar(id):
         p.intervalo_inicio = _pdate(d.get('intervalo_inicio', ''))
         p.intervalo_fim = _pdate(d.get('intervalo_fim', ''))
         p.ano = d.get('ano', '').strip()
-        p.valor = float(d.get('valor', 0) or 0)
+        p.valor = _parse_valor_brl(d.get('valor', ''))
         p.obs = d.get('obs', '')
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'pagamento_terceiro', id, p.terceiro)
