@@ -35,56 +35,66 @@
   </div>
   {% endif %}
 
-  {% for terceiro, lista in grupos %}
+  {% for terceiro, cursos in grupos %}
   <div class="card" style="margin-bottom:20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-weight:700;font-size:14px">{{ terceiro }}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:2px solid var(--border);background:var(--bg)">
+      <div style="font-weight:700;font-size:15px">{{ terceiro }}</div>
       <div style="display:flex;align-items:center;gap:14px">
-        <span style="font-size:12px;color:var(--text-muted)">{{ lista|length }} registro(s)</span>
-        <span style="font-weight:700;color:#16a34a;font-size:13px">R$ {{ '{:,.2f}'.format(subtotais[terceiro])|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}</span>
+        <span style="font-size:12px;color:var(--text-muted)">{{ cursos|length }} curso(s)</span>
+        <span style="font-weight:700;color:#16a34a;font-size:14px">R$ {{ '{:,.2f}'.format(subtotais_terceiro[terceiro])|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}</span>
       </div>
     </div>
-    <div class="table-wrapper">
-      <table style="min-width:1000px">
-        <thead>
-          <tr>
-            <th>Curso</th>
-            <th>Data de Emissão</th>
-            <th>Intervalo de Venda</th>
-            <th>Ano</th>
-            <th>Valor</th>
-            <th>Observações</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in lista %}
-          <tr>
-            <td style="font-size:12px;max-width:220px">{{ p.curso.nome if p.curso else '—' }}</td>
-            <td style="font-size:12px;white-space:nowrap">{{ p.data_emissao.strftime('%d/%m/%Y') if p.data_emissao else '—' }}</td>
-            <td style="font-size:12px;white-space:nowrap">
-              {% if p.intervalo_inicio and p.intervalo_fim %}
-                {{ p.intervalo_inicio.strftime('%d/%m/%Y') }} a {{ p.intervalo_fim.strftime('%d/%m/%Y') }}
-              {% else %}—{% endif %}
-            </td>
-            <td style="font-size:12px;white-space:nowrap">{{ p.ano or '—' }}</td>
-            <td style="white-space:nowrap;font-weight:500">{% if p.valor %}R$ {{ '{:,.2f}'.format(p.valor)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}{% else %}—{% endif %}</td>
-            <td style="font-size:12px;max-width:200px;color:var(--text-muted)">{{ (p.obs or '')[:60] }}{% if p.obs and p.obs|length > 60 %}…{% endif %}</td>
-            <td style="white-space:nowrap">
-              <div style="display:flex;gap:5px;align-items:center">
-                <a href="{{ url_for('pagamento_terceiro_editar', id=p.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-                <form method="POST" action="{{ url_for('pagamento_terceiro_excluir', id=p.id) }}" style="display:inline"
-                      onsubmit="return confirm('Excluir este registro de {{ p.terceiro }}?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button type="submit" class="btn btn-sm btn-danger">✕</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+
+    {% for curso, registros, subtotal_curso in cursos %}
+    <div style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 18px 10px 30px">
+        <div style="font-weight:600;font-size:13px;color:var(--text-muted)">↳ {{ curso }}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:11px;color:var(--text-muted)">{{ registros|length }} intervalo(s)</span>
+          <span style="font-weight:600;font-size:12px">R$ {{ '{:,.2f}'.format(subtotal_curso)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}</span>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table style="min-width:900px">
+          <thead>
+            <tr>
+              <th>Data de Emissão</th>
+              <th>Intervalo de Venda</th>
+              <th>Ano</th>
+              <th>Valor</th>
+              <th>Observações</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in registros %}
+            <tr>
+              <td style="font-size:12px;white-space:nowrap">{{ p.data_emissao.strftime('%d/%m/%Y') if p.data_emissao else '—' }}</td>
+              <td style="font-size:12px;white-space:nowrap">
+                {% if p.intervalo_inicio and p.intervalo_fim %}
+                  {{ p.intervalo_inicio.strftime('%d/%m/%Y') }} a {{ p.intervalo_fim.strftime('%d/%m/%Y') }}
+                {% else %}—{% endif %}
+              </td>
+              <td style="font-size:12px;white-space:nowrap">{{ p.ano or '—' }}</td>
+              <td style="white-space:nowrap;font-weight:500">{% if p.valor %}R$ {{ '{:,.2f}'.format(p.valor)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}{% else %}—{% endif %}</td>
+              <td style="font-size:12px;max-width:220px;color:var(--text-muted)">{{ (p.obs or '')[:60] }}{% if p.obs and p.obs|length > 60 %}…{% endif %}</td>
+              <td style="white-space:nowrap">
+                <div style="display:flex;gap:5px;align-items:center">
+                  <a href="{{ url_for('pagamento_terceiro_editar', id=p.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+                  <form method="POST" action="{{ url_for('pagamento_terceiro_excluir', id=p.id) }}" style="display:inline"
+                        onsubmit="return confirm('Excluir este registro de {{ p.terceiro }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    {% endfor %}
   </div>
   {% else %}
   <div class="card"><div class="card-body" style="text-align:center;color:var(--text-muted);padding:32px">
