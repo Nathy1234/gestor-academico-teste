@@ -339,6 +339,24 @@ class Refund(db.Model):
             return ('sem_exclusao', 'Aguarda Exclusão do Curso')
         return ('concluido', 'Concluído')
 
+class ThirdPartyPayment(db.Model):
+    """Controle de repasses de venda para terceiros — restrito ao admin.
+    Substitui a planilha manual usada antes para acompanhar o que já foi
+    reportado/pago a cada parceiro."""
+    id                = db.Column(db.Integer, primary_key=True)
+    course_id         = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    terceiro          = db.Column(db.String(150), nullable=False)
+    data_emissao      = db.Column(db.Date)   # emissão/envio do relatório
+    intervalo_inicio  = db.Column(db.Date)   # início do período de vendas reportado
+    intervalo_fim     = db.Column(db.Date)   # fim do período de vendas reportado
+    ano               = db.Column(db.String(10))
+    valor             = db.Column(db.Float)
+    obs               = db.Column(db.Text)
+    created_at        = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by        = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    curso = db.relationship('Course')
+
 class BackupRecord(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     filename   = db.Column(db.String(200))
@@ -411,7 +429,7 @@ def log_action(user_id, username, action, entity, entity_id, detail=''):
     db.session.add(entry)
     db.session.commit()
 
-BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund]
+BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
 
 def _serializar_valor(v):
     if isinstance(v, (datetime, date)):
@@ -492,8 +510,8 @@ def _desserializar_valor(valor, coluna):
 
 # Ordem que respeita as chaves estrangeiras: Discipline depende de Course,
 # Course e AuditLog dependem de User — então apaga nessa ordem e insere ao contrário.
-RESTORE_ORDEM_APAGAR   = [Discipline, Course, AuditLog, Coupon, Refund, User]
-RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund]
+RESTORE_ORDEM_APAGAR   = [ThirdPartyPayment, Discipline, Course, AuditLog, Coupon, Refund, User]
+RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
 
 def restaurar_backup(dados):
     """Substitui TODOS os dados atuais pelos do backup (mesmo formato gerado
@@ -1281,6 +1299,96 @@ def _refund_from_form(d):
         pix=d.get('pix',''),
         email_destino=d.get('email_destino',''),
     )
+
+# ─── PAGAMENTOS DE TERCEIROS ───────────────────────────────────────────────────
+# Controle de repasse de vendas para parceiros terceiros — só o admin acessa,
+# insere ou apaga. Substitui a planilha usada antes para acompanhar o que já
+# foi reportado/pago a cada parceiro.
+
+def _pdate(s):
+    try: return datetime.strptime(s, '%Y-%m-%d').date()
+    except: return None
+
+@app.route('/pagamentos-terceiros')
+@admin_required
+def pagamentos_terceiros():
+    f_terceiro = request.args.get('terceiro', '').strip()
+    f_curso    = request.args.get('curso', '', type=int)
+    f_ano      = request.args.get('ano', '').strip()
+
+    q = ThirdPartyPayment.query
+    if f_terceiro:
+        q = q.filter(ThirdPartyPayment.terceiro.ilike(f'%{f_terceiro}%'))
+    if f_curso:
+        q = q.filter(ThirdPartyPayment.course_id == f_curso)
+    if f_ano:
+        q = q.filter(ThirdPartyPayment.ano == f_ano)
+    items = q.order_by(ThirdPartyPayment.data_emissao.desc()).all()
+
+    total_valor = sum(i.valor or 0 for i in items)
+    terceiros = sorted({p.terceiro for p in ThirdPartyPayment.query.all() if p.terceiro})
+    anos = sorted({p.ano for p in ThirdPartyPayment.query.all() if p.ano}, reverse=True)
+    cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
+
+    return render_template('pagamentos_terceiros.html', items=items, total_valor=total_valor,
+                           terceiros=terceiros, anos=anos, cursos_terceiros=cursos_terceiros,
+                           f_terceiro=f_terceiro, f_curso=f_curso, f_ano=f_ano)
+
+@app.route('/pagamentos-terceiros/novo', methods=['GET', 'POST'])
+@admin_required
+def pagamento_terceiro_novo():
+    cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
+    if request.method == 'POST':
+        d = request.form
+        p = ThirdPartyPayment(
+            course_id=d.get('course_id', type=int),
+            terceiro=d.get('terceiro', '').strip(),
+            data_emissao=_pdate(d.get('data_emissao', '')),
+            intervalo_inicio=_pdate(d.get('intervalo_inicio', '')),
+            intervalo_fim=_pdate(d.get('intervalo_fim', '')),
+            ano=d.get('ano', '').strip(),
+            valor=float(d.get('valor', 0) or 0),
+            obs=d.get('obs', ''),
+            created_by=session['user_id'],
+        )
+        db.session.add(p)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'criar', 'pagamento_terceiro', p.id, p.terceiro)
+        flash('Pagamento de terceiro registrado!', 'success')
+        return redirect(url_for('pagamentos_terceiros'))
+    return render_template('pagamento_terceiro_form.html', item=None, cursos_terceiros=cursos_terceiros)
+
+@app.route('/pagamentos-terceiros/<int:id>/editar', methods=['GET', 'POST'])
+@admin_required
+def pagamento_terceiro_editar(id):
+    p = ThirdPartyPayment.query.get_or_404(id)
+    cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
+    if request.method == 'POST':
+        d = request.form
+        p.course_id = d.get('course_id', type=int)
+        p.terceiro = d.get('terceiro', '').strip()
+        p.data_emissao = _pdate(d.get('data_emissao', ''))
+        p.intervalo_inicio = _pdate(d.get('intervalo_inicio', ''))
+        p.intervalo_fim = _pdate(d.get('intervalo_fim', ''))
+        p.ano = d.get('ano', '').strip()
+        p.valor = float(d.get('valor', 0) or 0)
+        p.obs = d.get('obs', '')
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'pagamento_terceiro', id, p.terceiro)
+        flash('Pagamento de terceiro atualizado!', 'success')
+        return redirect(url_for('pagamentos_terceiros'))
+    return render_template('pagamento_terceiro_form.html', item=p, cursos_terceiros=cursos_terceiros)
+
+@app.route('/pagamentos-terceiros/<int:id>/excluir', methods=['POST'])
+@admin_required
+def pagamento_terceiro_excluir(id):
+    p = ThirdPartyPayment.query.get_or_404(id)
+    nome = p.terceiro
+    db.session.delete(p)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'pagamento_terceiro', id, nome)
+    flash(f'Pagamento de "{nome}" excluído.', 'success')
+    return redirect(url_for('pagamentos_terceiros'))
 
 # ─── MATRIZES CURRICULARES ─────────────────────────────────────────────────────
 

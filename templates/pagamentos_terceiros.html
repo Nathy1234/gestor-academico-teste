@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}Pagamentos de Terceiros — Gestor{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Pagamentos de Terceiros</div>
+      <div class="page-subtitle">{{ items|length }} registro(s){% if f_terceiro or f_curso or f_ano %} filtrado(s){% endif %}</div>
+    </div>
+    <a href="{{ url_for('pagamento_terceiro_novo') }}" class="btn btn-primary">+ Novo Registro</a>
+  </div>
+
+  <!-- FILTROS -->
+  <form method="GET" class="filters" style="margin-bottom:16px">
+    <select name="terceiro" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os terceiros</option>
+      {% for t in terceiros %}<option value="{{ t }}" {% if f_terceiro==t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+    <select name="curso" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os cursos</option>
+      {% for c in cursos_terceiros %}<option value="{{ c.id }}" {% if f_curso==c.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+    </select>
+    <select name="ano" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os anos</option>
+      {% for a in anos %}<option value="{{ a }}" {% if f_ano==a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    <a href="{{ url_for('pagamentos_terceiros') }}" class="btn btn-secondary">Limpar</a>
+  </form>
+
+  {% if items %}
+  <div style="background:var(--card-bg);border:1px solid var(--border);border-left:4px solid #16a34a;border-radius:8px;padding:10px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
+    <span style="font-weight:700;color:#16a34a">R$ {{ "%.2f"|format(total_valor) }}</span>
+    <span style="font-size:13px;color:var(--text-muted)">somado nos registros filtrados</span>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table style="min-width:1000px">
+        <thead>
+          <tr>
+            <th>Terceiro</th>
+            <th>Curso</th>
+            <th>Data de Emissão</th>
+            <th>Intervalo de Venda</th>
+            <th>Ano</th>
+            <th>Valor</th>
+            <th>Observações</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in items %}
+          <tr>
+            <td style="white-space:nowrap;font-weight:500;font-size:13px">{{ p.terceiro or '—' }}</td>
+            <td style="font-size:12px;max-width:200px">{{ p.curso.nome if p.curso else '—' }}</td>
+            <td style="font-size:12px;white-space:nowrap">{{ p.data_emissao.strftime('%d/%m/%Y') if p.data_emissao else '—' }}</td>
+            <td style="font-size:12px;white-space:nowrap">
+              {% if p.intervalo_inicio and p.intervalo_fim %}
+                {{ p.intervalo_inicio.strftime('%d/%m/%Y') }} a {{ p.intervalo_fim.strftime('%d/%m/%Y') }}
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-size:12px;white-space:nowrap">{{ p.ano or '—' }}</td>
+            <td style="white-space:nowrap;font-weight:500">{% if p.valor %}R$ {{ "%.2f"|format(p.valor) }}{% else %}—{% endif %}</td>
+            <td style="font-size:12px;max-width:200px;color:var(--text-muted)">{{ (p.obs or '')[:60] }}{% if p.obs and p.obs|length > 60 %}…{% endif %}</td>
+            <td style="white-space:nowrap">
+              <div style="display:flex;gap:5px;align-items:center">
+                <a href="{{ url_for('pagamento_terceiro_editar', id=p.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+                <form method="POST" action="{{ url_for('pagamento_terceiro_excluir', id=p.id) }}" style="display:inline"
+                      onsubmit="return confirm('Excluir este registro de {{ p.terceiro }}?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum pagamento de terceiro registrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
