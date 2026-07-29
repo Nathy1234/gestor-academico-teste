@@ -1323,9 +1323,7 @@ def _parse_valor_brl(s):
     except ValueError:
         return 0.0
 
-@app.route('/pagamentos-terceiros')
-@admin_required
-def pagamentos_terceiros():
+def _pagamentos_terceiros_filtrados():
     f_terceiro = request.args.get('terceiro', '').strip()
     f_curso    = request.args.get('curso', '', type=int)
     f_ano      = request.args.get('ano', '').strip()
@@ -1338,6 +1336,12 @@ def pagamentos_terceiros():
     if f_ano:
         q = q.filter(ThirdPartyPayment.ano == f_ano)
     items = q.order_by(ThirdPartyPayment.data_emissao.desc()).all()
+    return items, f_terceiro, f_curso, f_ano
+
+@app.route('/pagamentos-terceiros')
+@admin_required
+def pagamentos_terceiros():
+    items, f_terceiro, f_curso, f_ano = _pagamentos_terceiros_filtrados()
 
     # Terceiro -> Curso -> lista de registros (intervalos de pagamento)
     grupos = {}
@@ -1369,6 +1373,66 @@ def pagamentos_terceiros():
                            total_valor=total_valor, total_registros=len(items),
                            terceiros=terceiros, anos=anos, cursos_terceiros=cursos_terceiros,
                            f_terceiro=f_terceiro, f_curso=f_curso, f_ano=f_ano)
+
+@app.route('/pagamentos-terceiros/exportar-excel')
+@admin_required
+def pagamentos_terceiros_exportar_excel():
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    items, f_terceiro, f_curso, f_ano = _pagamentos_terceiros_filtrados()
+    items = sorted(items, key=lambda p: (
+        (p.terceiro or '').upper(),
+        (p.curso.nome if p.curso else '').upper(),
+        p.data_emissao or date.min,
+    ))
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Pagamentos Terceiros'
+
+    thin  = Side(style='thin', color='CBD5E1')
+    bdr   = Border(left=thin, right=thin, top=thin, bottom=thin)
+    wrap  = Alignment(wrap_text=True, vertical='top')
+    center = Alignment(horizontal='center', vertical='center')
+    hfill = PatternFill('solid', fgColor='6366F1')
+    hfont = Font(bold=True, color='FFFFFF', size=10)
+
+    headers = ['Terceiro', 'Curso', 'Data de Emissão', 'Início do Intervalo',
+               'Fim do Intervalo', 'Ano', 'Valor (R$)', 'Observações']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=col, value=h)
+        c.fill = hfill; c.font = hfont; c.alignment = center; c.border = bdr
+    ws.row_dimensions[1].height = 28
+
+    for i, p in enumerate(items, 2):
+        vals = [
+            p.terceiro or '',
+            p.curso.nome if p.curso else '',
+            p.data_emissao.strftime('%d/%m/%Y') if p.data_emissao else '',
+            p.intervalo_inicio.strftime('%d/%m/%Y') if p.intervalo_inicio else '',
+            p.intervalo_fim.strftime('%d/%m/%Y') if p.intervalo_fim else '',
+            p.ano or '',
+            p.valor or 0,
+            p.obs or '',
+        ]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=i, column=col, value=val)
+            cell.border = bdr; cell.alignment = wrap
+            if col == 7:
+                cell.number_format = '#,##0.00'
+
+    widths = [22, 40, 16, 16, 16, 8, 14, 40]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = 'A2'
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    fname = f'pagamentos_terceiros_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=fname)
 
 @app.route('/pagamentos-terceiros/novo', methods=['GET', 'POST'])
 @admin_required
