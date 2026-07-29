@@ -54,7 +54,9 @@
       <div class="form-grid" style="margin-bottom:20px">
         <div class="form-group">
           <label>Valor Final (R$)</label>
-          <input type="number" step="0.01" name="valor" value="{{ item.valor if item else '' }}" placeholder="0.00">
+          <input type="text" inputmode="decimal" name="valor"
+                 value="{{ '%.2f'|format(item.valor)|replace('.', ',') if item and item.valor else '' }}"
+                 placeholder="1.076,90">
         </div>
       </div>
 
