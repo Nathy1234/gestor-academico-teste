@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.0.1'
+VERSAO = '1.0.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -381,8 +381,15 @@ def login_required(f):
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('login'))
+        if not User.query.get(session['user_id']):
+            return _sessao_invalida()
         return f(*args, **kwargs)
     return decorated
+
+def _sessao_invalida():
+    session.clear()
+    flash('Sua sessão expirou. Faça login novamente.', 'warning')
+    return redirect(url_for('login'))
 
 def admin_required(f):
     @wraps(f)
@@ -390,7 +397,9 @@ def admin_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         u = User.query.get(session['user_id'])
-        if not u or u.role != 'admin':
+        if not u:
+            return _sessao_invalida()
+        if u.role != 'admin':
             flash('Acesso restrito a administradores.', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
@@ -402,7 +411,9 @@ def editor_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         u = User.query.get(session['user_id'])
-        if not u or u.role not in ('admin', 'editor'):
+        if not u:
+            return _sessao_invalida()
+        if u.role not in ('admin', 'editor'):
             flash('Sem permissão para editar.', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
@@ -416,7 +427,9 @@ def perm_check(check_fn_name):
             if 'user_id' not in session:
                 return redirect(url_for('login'))
             u = User.query.get(session['user_id'])
-            if not u or not getattr(u, check_fn_name)():
+            if not u:
+                return _sessao_invalida()
+            if not getattr(u, check_fn_name)():
                 flash('Você não tem permissão para acessar esta seção.', 'danger')
                 return redirect(url_for('dashboard'))
             return f(*args, **kwargs)
