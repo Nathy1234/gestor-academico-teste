@@ -130,6 +130,11 @@
           <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">
             Editar
           </a>
+          <form method="POST" action="{{ url_for('usuario_redefinir_senha', id=u.id) }}"
+                onsubmit="return confirm('{{ u.username }} vai precisar trocar a senha no próximo login. Confirmar?')" title="Marcar para trocar senha no próximo login">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">🔑</button>
+          </form>
           {% if u.id != session.user_id %}
           <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
                 onsubmit="return confirm('Excluir {{ u.username }}?')">
@@ -186,6 +191,11 @@
           <td style="padding-right:16px">
             <div style="display:flex;gap:6px;justify-content:flex-end">
               <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a>
+              <form method="POST" action="{{ url_for('usuario_redefinir_senha', id=u.id) }}"
+                    onsubmit="return confirm('{{ u.username }} vai precisar trocar a senha no próximo login. Confirmar?')" title="Marcar para trocar senha no próximo login">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-secondary">🔑</button>
+              </form>
               {% if u.id != session.user_id %}
               <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
                     onsubmit="return confirm('Excluir {{ u.username }}?')">

@@ -400,6 +400,17 @@ input:focus, select:focus, textarea:focus {
 }
 textarea { resize: vertical; min-height: 80px; }
 
+.pw-wrap { position: relative; }
+.pw-wrap input[type=password], .pw-wrap input[type=text] { width: 100%; padding-right: 38px; }
+.pw-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; border: none; background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; color: var(--text-muted);
+  border-radius: 6px; padding: 0;
+}
+.pw-toggle:hover { background: var(--bg); color: var(--text); }
+.pw-toggle svg { width: 16px; height: 16px; }
+
 /* ── MATRIX ── */
 .matrix-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .matrix-header {

@@ -125,6 +125,29 @@ document.addEventListener('click', e => {
   if (!confirm(btn.dataset.confirm)) e.preventDefault();
 });
 
+// ── MOSTRAR/OCULTAR SENHA ─────────────────────────────────────────
+const EYE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.6 20.6 0 0 1 5.06-6.06M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a20.6 20.6 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+document.querySelectorAll('input[type=password]').forEach(input => {
+  const wrap = document.createElement('div');
+  wrap.className = 'pw-wrap';
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pw-toggle';
+  btn.setAttribute('aria-label', 'Mostrar senha');
+  btn.innerHTML = EYE_ICON;
+  wrap.appendChild(btn);
+  btn.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.innerHTML = show ? EYE_OFF_ICON : EYE_ICON;
+    btn.setAttribute('aria-label', show ? 'Ocultar senha' : 'Mostrar senha');
+  });
+});
+
 // ── AUTO-DISMISS ALERTS ──────────────────────────────────────────
 document.querySelectorAll('.alert').forEach(a => {
   a.style.transition = 'opacity .5s';

@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.0.2'
+VERSAO = '1.0.3'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -2556,6 +2556,8 @@ def usuario_novo():
             flash(f'O e-mail precisa ser institucional ({EMAIL_DOMINIO_PERMITIDO}).', 'danger')
         elif User.query.filter_by(email=email).first():
             flash('Já existe um usuário com esse e-mail.', 'danger')
+        elif d.get('password') != d.get('confirmar_senha'):
+            flash('As senhas não coincidem.', 'danger')
         else:
             perms = _perms_from_form(request.form)
             u = User(username=d['username'], nome=d.get('nome', '').strip(), email=email,
@@ -2588,6 +2590,9 @@ def usuario_editar(id):
         if novo_email != u.email and User.query.filter_by(email=novo_email).first():
             flash('Já existe um usuário com esse e-mail.', 'danger')
             return render_template('usuario_form.html', user=u)
+        if d.get('password') and d.get('password') != d.get('confirmar_senha'):
+            flash('As senhas não coincidem.', 'danger')
+            return render_template('usuario_form.html', user=u)
         u.email = novo_email
         u.nome = d.get('nome', '').strip()
         u.role = d['role']
@@ -2609,6 +2614,16 @@ def _perms_from_form(d):
         'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
+
+@app.route('/usuarios/<int:id>/redefinir-senha', methods=['POST'])
+@admin_required
+def usuario_redefinir_senha(id):
+    u = User.query.get_or_404(id)
+    u.must_change_password = True
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'redefinir_senha', 'user', id, u.username)
+    flash(f'"{u.username}" precisará trocar a senha no próximo login.', 'success')
+    return redirect(url_for('usuarios'))
 
 @app.route('/usuarios/<int:id>/excluir', methods=['POST'])
 @admin_required

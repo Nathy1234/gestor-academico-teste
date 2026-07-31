@@ -50,6 +50,24 @@
             <label>Senha{% if user %} <span style="color:var(--text-muted);font-weight:400">(vazio = manter)</span>{% endif %}</label>
             <input type="password" name="password" {% if not user %}required{% endif %}>
           </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Confirmar senha</label>
+            <input type="password" name="confirmar_senha" {% if not user %}required{% endif %}>
+          </div>
+          {% if user %}
+          <div style="margin-bottom:24px">
+            <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px"
+                    onclick="if(confirm('{{ user.username }} vai precisar trocar a senha no próximo login. Confirmar?')) document.getElementById('redefinirSenhaForm').submit()">
+              Marcar para trocar senha no próximo login
+            </button>
+            <form id="redefinirSenhaForm" method="POST" action="{{ url_for('usuario_redefinir_senha', id=user.id) }}" style="display:none">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            </form>
+            {% if user.must_change_password %}
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Já está marcado — vai trocar no próximo login.</div>
+            {% endif %}
+          </div>
+          {% endif %}
           <div class="form-group" style="margin-bottom:24px">
             <label>Perfil Base</label>
             <select name="role" id="roleSelect" onchange="applyRoleDefaults()">
