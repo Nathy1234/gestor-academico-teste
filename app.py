@@ -3400,6 +3400,96 @@ def _importar_so_disciplinas():
             prev=row
         db.session.commit()
 
+    # PACOTES — matriz (mesmo padrão de pós/profissionalizantes)
+    pacote_courses = Course.query.filter_by(tipo='pacote').all()
+    sheet_pac = next((s for s in wb.sheetnames if s.strip().upper() == 'PACOTE CURSOS'), None)
+    if sheet_pac and pacote_courses:
+        pac_map = {_norm(c.nome): c for c in pacote_courses}
+        pac_cmap = {_nc(c.nome): c for c in pacote_courses}
+        def _mpac(n):
+            if not n: return None
+            if _norm(n) in pac_map: return pac_map[_norm(n)]
+            if _nc(n) in pac_cmap: return pac_cmap[_nc(n)]
+            for sz in [40,35,30,25,20]:
+                for k,c in pac_cmap.items():
+                    if len(_nc(n))>=sz and len(k)>=sz and _nc(n)[:sz]==k[:sz]: return c
+            return None
+
+        def _add_disc_concluida(course_id, ordem, nome, carga, professor=None):
+            db.session.add(Discipline(
+                course_id=course_id, ordem=ordem, nome=nome, carga=carga or None,
+                professor=professor, plataforma_ok=True, plataforma_em=datetime.utcnow()
+            ))
+
+        rows_pac = list(wb[sheet_pac].iter_rows(min_row=1, values_only=True))
+        cur_pac_id = None
+        for row in rows_pac:
+            c10,c11,c12,c14 = _cell(row,10),_cell(row,11),_cell(row,12),_cell(row,14)
+            if not c11:
+                continue
+            if c12.upper() == 'INSERSOR':
+                m = _mpac(c11)
+                cur_pac_id = m.id if m and Discipline.query.filter_by(course_id=m.id).count()==0 else None
+                continue
+            if cur_pac_id and c10.isdigit() and c11.upper() not in ('DISCIPLINAS','CH'):
+                _add_disc_concluida(cur_pac_id, int(c10), c11, f"{c14}h" if c14 else None)
+                total += 1
+        db.session.commit()
+
+        # Pacotes 1-4: breakdown só existe como texto livre na coluna OBS,
+        # curado manualmente (não segue o padrão do bloco lateral).
+        OBS_MATRIZ_MANUAL = {
+            'GAME LAB: COMPUTAÇÃO GRÁFICA, ANIMAÇÃO E PROGRAMAÇÃO': [
+                ('COMPUTAÇÃO GRÁFICA', '20h'),
+                ('ANIMAÇÃO PARA JOGOS: DOMINANDO A ARTE DO MOVIMENTO NO UNIVERSO DIGITAL', '20h'),
+                ('A ARTE DA PROGRAMAÇÃO DE JOGOS', '20h'),
+            ],
+            'CAPACITAÇÃO EM TUTORIA E MEDIAÇÃO PARA O SUCESSO ACADÊMICO': [
+                ('COMPETÊNCIAS DO TUTOR', '40h'),
+                ('IMPULSIONANDO O SUCESSO ACADÊMICO', '20h'),
+            ],
+            'TUTORIA EAD: COMPETÊNCIAS, PRÁTICAS E AÇÕES': [
+                ('EDUCAÇÃO A DISTÂNCIA E TUTORIA', '40h'),
+                ('COMPETÊNCIAS DO TUTOR', '40h'),
+                ('TUTORIA EM AÇÃO', '40h'),
+            ],
+            'APRENDIZAGEM NO ENSINO SUPERIOR: PRÁTICAS E INCLUSÃO': [
+                ('EDUCAÇÃO A DISTÂNCIA E TUTORIA', '40h'),
+                ('TÉCNICAS DE APRENDIZAGEM NO ENSINO SUPERIOR', '40h'),
+                ('PRINCÍPIOS BÁSICOS DO TDAH', '20h'),
+                ('IMPULSIONANDO O SUCESSO ACADÊMICO', '20h'),
+            ],
+        }
+        for nome_pac, discs in OBS_MATRIZ_MANUAL.items():
+            match = next((c for c in pacote_courses if _sim(c.nome, nome_pac)), None)
+            if match and Discipline.query.filter_by(course_id=match.id).count() == 0:
+                for i, (nome_d, carga_d) in enumerate(discs, start=1):
+                    _add_disc_concluida(match.id, i, nome_d, carga_d)
+                    total += 1
+        db.session.commit()
+
+        # Correlação com Rápidos: quando uma disciplina de algum pacote
+        # corresponde a um curso Rápido já cadastrado (mesmo nome), cria uma
+        # disciplina "espelho" nesse Rápido (só se ainda não tiver nenhuma) —
+        # assim o Banco de Disciplinas mostra a ocorrência em Rápido +
+        # Pacote(s) juntos.
+        rapido_courses = Course.query.filter_by(tipo='rapido').all()
+        rapido_cmap = {_nc(c.nome): c for c in rapido_courses}
+        pac_disc_nomes = {}
+        discs_pacotes = (Discipline.query
+                          .join(Course, Discipline.course_id == Course.id)
+                          .filter(Course.tipo == 'pacote').all())
+        for d in discs_pacotes:
+            pac_disc_nomes.setdefault(_nc(d.nome), d.nome)
+
+        for chave, nome_orig in pac_disc_nomes.items():
+            rap = rapido_cmap.get(chave)
+            if rap and Discipline.query.filter_by(course_id=rap.id).count() == 0:
+                carga_rap = f"{rap.horas}h" if rap.horas else None
+                _add_disc_concluida(rap.id, 1, rap.nome, carga_rap)
+                total += 1
+        db.session.commit()
+
     return total
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
