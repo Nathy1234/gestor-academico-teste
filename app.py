@@ -3148,6 +3148,124 @@ def _import_excel():
 
             db.session.commit()
 
+        # ── MATRIZ DOS PACOTES ──────────────────────────────────────────────
+        # Mesmo padrão usado em pós/profissionalizantes: 1 Discipline por item
+        # do pacote. Fonte: aba "PACOTE CURSOS".
+        # - Pacotes 5+: bloco lateral (colunas K:P a partir da lin. 41) — um
+        #   cabeçalho (nome do pacote, com 'INSERSOR' na coluna M) seguido das
+        #   disciplinas/cursos que o compõem.
+        # - Pacotes 1-4: a lista vem em texto livre na coluna OBS (G), sem
+        #   seguir o padrão do bloco lateral — curada manualmente abaixo.
+        pacote_courses = Course.query.filter_by(tipo='pacote').all()
+        sheet_pac = next((s for s in wb.sheetnames if s.strip().upper() == 'PACOTE CURSOS'), None)
+        if sheet_pac and pacote_courses:
+            pac_map = {}
+            pac_map_compact = {}
+            for c in pacote_courses:
+                pac_map[norm_nome(c.nome)] = c
+                pac_map_compact[norm_compact(c.nome)] = c
+
+            def _match_pacote(nome_excel):
+                key = norm_nome(nome_excel)
+                if key in pac_map:
+                    return pac_map[key]
+                ck = norm_compact(nome_excel)
+                if ck in pac_map_compact:
+                    return pac_map_compact[ck]
+                for n in [40, 35, 30, 25, 20]:
+                    for k, c in pac_map_compact.items():
+                        if len(ck) >= n and len(k) >= n and ck[:n] == k[:n]:
+                            return c
+                return None
+
+            def _cellp(row, idx):
+                return str(row[idx] or '').strip() if row and idx < len(row) else ''
+
+            def _add_disc_concluida(course_id, ordem, nome, carga, professor=None):
+                db.session.add(Discipline(
+                    course_id=course_id, ordem=ordem, nome=nome, carga=carga or None,
+                    professor=professor, plataforma_ok=True, plataforma_em=datetime.utcnow()
+                ))
+
+            ws_pac = wb[sheet_pac]
+            rows_pac = list(ws_pac.iter_rows(min_row=1, values_only=True))
+            cur_pac_id = None
+            for row in rows_pac:
+                c10 = _cellp(row, 10)  # nº
+                c11 = _cellp(row, 11)  # nome (cabeçalho ou disciplina)
+                c12 = _cellp(row, 12)  # 'INSERSOR' (cabeçalho) ou insersor real
+                c14 = _cellp(row, 14)  # horas
+
+                if not c11:
+                    continue
+
+                if c12.upper() == 'INSERSOR':
+                    match = _match_pacote(c11)
+                    if match and Discipline.query.filter_by(course_id=match.id).count() == 0:
+                        cur_pac_id = match.id
+                    else:
+                        cur_pac_id = None
+                    continue
+
+                if cur_pac_id and c10.isdigit() and c11.upper() not in ('DISCIPLINAS', 'CH'):
+                    _add_disc_concluida(cur_pac_id, int(c10), c11, f"{c14}h" if c14 else None)
+
+            db.session.commit()
+
+            # Pacotes 1-4: breakdown só existe como texto livre na coluna OBS,
+            # curado manualmente (não segue o padrão do bloco lateral).
+            OBS_MATRIZ_MANUAL = {
+                'GAME LAB: COMPUTAÇÃO GRÁFICA, ANIMAÇÃO E PROGRAMAÇÃO': [
+                    ('COMPUTAÇÃO GRÁFICA', '20h'),
+                    ('ANIMAÇÃO PARA JOGOS: DOMINANDO A ARTE DO MOVIMENTO NO UNIVERSO DIGITAL', '20h'),
+                    ('A ARTE DA PROGRAMAÇÃO DE JOGOS', '20h'),
+                ],
+                'CAPACITAÇÃO EM TUTORIA E MEDIAÇÃO PARA O SUCESSO ACADÊMICO': [
+                    ('COMPETÊNCIAS DO TUTOR', '40h'),
+                    ('IMPULSIONANDO O SUCESSO ACADÊMICO', '20h'),
+                ],
+                'TUTORIA EAD: COMPETÊNCIAS, PRÁTICAS E AÇÕES': [
+                    ('EDUCAÇÃO A DISTÂNCIA E TUTORIA', '40h'),
+                    ('COMPETÊNCIAS DO TUTOR', '40h'),
+                    ('TUTORIA EM AÇÃO', '40h'),
+                ],
+                'APRENDIZAGEM NO ENSINO SUPERIOR: PRÁTICAS E INCLUSÃO': [
+                    ('EDUCAÇÃO A DISTÂNCIA E TUTORIA', '40h'),
+                    ('TÉCNICAS DE APRENDIZAGEM NO ENSINO SUPERIOR', '40h'),
+                    ('PRINCÍPIOS BÁSICOS DO TDAH', '20h'),
+                    ('IMPULSIONANDO O SUCESSO ACADÊMICO', '20h'),
+                ],
+            }
+            for nome_pac, discs in OBS_MATRIZ_MANUAL.items():
+                match = next((c for c in pacote_courses if nome_sim(c.nome, nome_pac)), None)
+                if match and Discipline.query.filter_by(course_id=match.id).count() == 0:
+                    for i, (nome_d, carga_d) in enumerate(discs, start=1):
+                        _add_disc_concluida(match.id, i, nome_d, carga_d)
+            db.session.commit()
+
+            # ── Correlação com Rápidos ────────────────────────────────────
+            # Quando uma disciplina de algum pacote corresponde a um curso
+            # Rápido já cadastrado (mesmo nome), cria uma disciplina "espelho"
+            # nesse Rápido (só se ele ainda não tiver nenhuma) — assim o Banco
+            # de Disciplinas mostra a ocorrência em Rápido + Pacote(s) juntos,
+            # em vez de só aparecer do lado do(s) pacote(s).
+            rapido_courses = Course.query.filter_by(tipo='rapido').all()
+            rapido_map_compact = {norm_compact(c.nome): c for c in rapido_courses}
+            pac_disc_nomes = {}
+            discs_pacotes = (Discipline.query
+                              .join(Course, Discipline.course_id == Course.id)
+                              .filter(Course.tipo == 'pacote').all())
+            for d in discs_pacotes:
+                pac_disc_nomes.setdefault(norm_compact(d.nome), d.nome)
+
+            for chave, nome_orig in pac_disc_nomes.items():
+                rap = rapido_map_compact.get(chave)
+                if rap and Discipline.query.filter_by(course_id=rap.id).count() == 0:
+                    carga_rap = f"{rap.horas}h" if rap.horas else None
+                    _add_disc_concluida(rap.id, 1, rap.nome, carga_rap)
+
+            db.session.commit()
+
         print("[OK] Dados importados com sucesso!")
     except FileNotFoundError:
         print("[INFO] Arquivo Excel nao encontrado.")
