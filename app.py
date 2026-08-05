@@ -1825,6 +1825,113 @@ def ia_chat():
     p = pergunta
     linhas = []
 
+    # ── CONHECIMENTO GERAL: ESTRUTURA DOS CURSOS NA PLATAFORMA ──────────
+    # Baseado no POP 120-01 – Processo de Revisão e Curadoria de Materiais.
+    # Diferente dos blocos abaixo (que consultam o banco do Gestor), este
+    # responde com conhecimento fixo sobre como a Inova Carreira organiza
+    # o conteúdo de cada modalidade — ex: "o que tem dentro de cada disciplina?"
+    if _contem(p, 'dentro de cada disciplina', 'dentro do curso', 'dentro da disciplina',
+               'o que tem no curso', 'conteudo do curso', 'conteúdo do curso',
+               'como e estruturado', 'como é estruturado', 'como funciona a disciplina',
+               'estrutura da disciplina', 'estrutura do curso', 'estrutura dos cursos',
+               'materiais do curso', 'apostila', 'videoaula', 'atividade avaliativa',
+               'quantas questoes', 'quantas questões', 'como e organizado o curso',
+               'como é organizado o curso'):
+        linhas = [
+            "**Estrutura dos cursos na plataforma Inova Carreira:**\n",
+            "📚 **Cursos Rápidos (Livres)** — geralmente 1 disciplina apenas:",
+            "• Apostila em PDF",
+            "• Videoaulas",
+            "• Slides (quando disponíveis)",
+            "• Áudios (quando disponíveis)",
+            "• 1 atividade avaliativa no final, com 10 questões",
+            "• Certificado após aprovação\n",
+            "🎓 **Cursos Profissionalizantes** — geralmente 6 a 8 disciplinas:",
+            "• Apostila, videoaulas, slides e áudios (quando disponíveis) por disciplina",
+            "• Materiais complementares (quando houver)",
+            "• 1 atividade avaliativa com 10 questões por disciplina",
+            "• Certificado após concluir e ser aprovado em todas as disciplinas\n",
+            "💻 **Em qualquer curso**, o aluno encontra: apresentação do curso, conteúdo "
+            "organizado por tópicos/módulos, materiais de estudo (PDF, vídeos, slides e "
+            "áudios, quando disponíveis), atividade avaliativa, resultado da avaliação e "
+            "emissão de certificado (quando atende aos critérios de aprovação).\n",
+            "_Pode haver pequenas diferenças conforme o tipo de curso ou como foi desenvolvido._",
+        ]
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── CONHECIMENTO GERAL: VISÃO GERAL DA PLATAFORMA / MODALIDADES ─────
+    if _contem(p, 'visao geral', 'visão geral', 'sobre a plataforma', 'o que e a inova',
+               'o que é a inova', 'modalidades atendidas', 'quais modalidades',
+               'como funciona a inova carreira', 'como funciona a plataforma'):
+        linhas = [
+            "**Plataforma Inova Carreira — visão geral** (baseado no POP 120-01):\n",
+            "A plataforma contempla diferentes modalidades e demandas acadêmicas: Cursos "
+            "Rápidos, Cursos Profissionalizantes, Pós-Graduação, Eventos, alunos internos "
+            "da Unifatecie e alunos externos. Também atende Educação Corporativa, Práticas "
+            "Conectadas, Projetos em Ambientes Profissionais e eventos institucionais.\n",
+            "O suporte é feito pela Central de Atendimento da Inova Carreira, com "
+            "intermédio da equipe de Inserção quando necessário.\n",
+            "**Ferramentas usadas no processo:**",
+            "• **Articulate** — criação e padronização dos conteúdos em HTML, com "
+            "flexibilidade para alterações em tempo real.",
+            "• **Planner** — controle diário de suporte, reembolsos e melhorias da "
+            "plataforma.",
+            "• **Trello** — monitoramento das demandas da Inserção, feedbacks e "
+            "compartilhamento das disciplinas produzidas com a equipe de Produção de "
+            "Materiais.\n",
+            "🔗 Acesso à plataforma: https://www.inovacarreira.com.br/login",
+        ]
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── CONHECIMENTO GERAL: FERRAMENTAS ESPECÍFICAS ─────────────────────
+    if _contem(p, 'articulate'):
+        return jsonify({'ok': True, 'resposta':
+            "**Articulate** é a ferramenta utilizada para criação, edição e padronização "
+            "dos conteúdos da plataforma Inova Carreira. Os materiais são feitos em "
+            "documentos HTML, o que permite alterações e atualizações em tempo real, com "
+            "mais flexibilidade e padronização visual."})
+    if _contem(p, 'planner'):
+        return jsonify({'ok': True, 'resposta':
+            "**Planner** é usado diariamente para controlar as demandas relacionadas à "
+            "plataforma Inova Carreira: acompanhamento de suporte, solicitações de "
+            "reembolso, melhorias e correções de bugs da plataforma."})
+    if _contem(p, 'trello'):
+        return jsonify({'ok': True, 'resposta':
+            "**Trello** é usado para monitorar as demandas da equipe de Inserção, "
+            "gerenciar feedbacks, acompanhar a plataforma Inova Carreira e compartilhar "
+            "as disciplinas produzidas com a equipe de Produção de Materiais."})
+    if _contem(p, 'curadoria', 'link moodle'):
+        return jsonify({'ok': True, 'resposta':
+            "O **Sistema de Curadoria** é distinto da plataforma Inova Carreira. No "
+            "processo de envio de disciplinas para lá, o formulário de cadastro tem um "
+            "campo \"Link Moodle/Inova\", onde o colaborador insere o link da disciplina "
+            "no Moodle. Esse campo faz parte do sistema de Curadoria e não é uma etapa "
+            "da Inova Carreira."})
+
+    # ── CONHECIMENTO GERAL: PROCESSO DE INSERÇÃO (ABAS DO CADASTRO) ─────
+    if _contem(p, 'abas do curso', 'como cadastrar curso', 'como e inserido',
+               'como é inserido', 'processo de insercao', 'processo de inserção',
+               'modulos e disciplinas', 'módulos e disciplinas', 'como cadastrar disciplina'):
+        linhas = [
+            "**Como os cursos são estruturados na inserção (plataforma Inova Carreira):**\n",
+            "🚀 **Curso Rápido** — 1 módulo com conteúdo e avaliação. Abas:",
+            "• Dados do Curso — nome, categoria e descrição",
+            "• Parâmetros — capa/vídeo, precificação, validades e canais de venda",
+            "• Conteúdo do Curso — módulo, carga horária e aulas",
+            "• Questões — banco de questões objetivas (mín. 1 alternativa certa e 1 "
+            "errada), com prazo de certificação configurável\n",
+            "🎓 **Curso Profissionalizante** — múltiplos módulos e disciplinas. Além das "
+            "abas acima, tem:",
+            "• Módulos — divisões do curso (equivalentes a capítulos)",
+            "• Disciplinas — agrupamento de aulas dentro do módulo, cada uma pode ter um "
+            "instrutor específico",
+            "• Aulas — gerenciador de aulas por disciplina/módulo\n",
+            "🎓 **Pós-Graduação** — segue a mesma estrutura do Profissionalizante, mas "
+            "cada disciplina precisa indicar o professor responsável e sua titulação "
+            "acadêmica.",
+        ]
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
     # ── ESTATÍSTICAS GERAIS ─────────────────────────────
     if _contem(p, 'quantos', 'total', 'quantidade', 'estatistica', 'estatística', 'resumo', 'geral'):
         total = Course.query.count()
