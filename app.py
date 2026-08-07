@@ -828,19 +828,22 @@ def dashboard():
 @app.route('/cursos')
 @login_required
 def cursos():
-    tipo     = request.args.get('tipo','')
-    area     = request.args.get('area','')
-    status   = request.args.get('status','')
-    busca    = request.args.get('q','')
-    insersor = request.args.get('insersor','')
-    lista = _build_cursos_query(tipo, area, status, busca, insersor)
+    tipo      = request.args.get('tipo','')
+    area      = request.args.get('area','')
+    status    = request.args.get('status','')
+    busca     = request.args.get('q','')
+    insersor  = request.args.get('insersor','')
+    horas_min = request.args.get('horas_min','')
+    horas_max = request.args.get('horas_max','')
+    lista = _build_cursos_query(tipo, area, status, busca, insersor, horas_min, horas_max)
     areas  = AREAS_VALIDAS
     insersores = [u.username for u in User.query.order_by(User.username).all()]
     return render_template('cursos.html', cursos=lista, areas=areas, insersores=insersores,
                            filtro_tipo=tipo, filtro_area=area, filtro_status=status,
-                           filtro_insersor=insersor, busca=busca)
+                           filtro_insersor=insersor, busca=busca,
+                           filtro_horas_min=horas_min, filtro_horas_max=horas_max)
 
-def _build_cursos_query(tipo, area, status, busca, insersor):
+def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas_max=''):
     from sqlalchemy import or_ as sql_or, func as sql_func
     q = Course.query
     if tipo:     q = q.filter_by(tipo=tipo)
@@ -855,7 +858,56 @@ def _build_cursos_query(tipo, area, status, busca, insersor):
             sql_func.lower(Course.insersor).like(f'%,{ins},%'),
         ))
     if busca:    q = q.filter(Course.nome.ilike(f'%{busca}%'))
-    return q.order_by(Course.nome).all()
+    lista = q.order_by(Course.nome).all()
+
+    # "horas" é texto livre na planilha (ex.: "180", "20h", "-"), então o
+    # filtro por faixa é feito em Python extraindo o número de cada curso.
+    if horas_min or horas_max:
+        import re as _re_h
+        try: hmin = int(horas_min) if horas_min else None
+        except ValueError: hmin = None
+        try: hmax = int(horas_max) if horas_max else None
+        except ValueError: hmax = None
+        def _horas_num(c):
+            if not c.horas: return None
+            m = _re_h.search(r'\d+', str(c.horas))
+            return int(m.group()) if m else None
+        def _dentro_faixa(c):
+            n = _horas_num(c)
+            if n is None: return False
+            if hmin is not None and n < hmin: return False
+            if hmax is not None and n > hmax: return False
+            return True
+        lista = [c for c in lista if _dentro_faixa(c)]
+
+    return lista
+
+@app.route('/cursos/status-em-lote', methods=['POST'])
+@editor_required
+def cursos_status_em_lote():
+    """Oculta ou ativa vários cursos de uma vez (só altera o campo status —
+    nenhum curso, disciplina ou outro dado é apagado)."""
+    data = request.json or {}
+    ids = data.get('ids', [])
+    novo_status = data.get('status', '')
+    if novo_status not in ('ativo', 'oculto'):
+        return jsonify({'ok': False, 'erro': 'Status inválido.'}), 400
+    if novo_status == 'ativo' and session.get('role') != 'admin':
+        return jsonify({'ok': False, 'erro': 'Somente administradores podem ativar cursos.'}), 403
+    if not ids:
+        return jsonify({'ok': False, 'erro': 'Nenhum curso selecionado.'}), 400
+
+    cursos_sel = Course.query.filter(Course.id.in_(ids)).all()
+    total = 0
+    for c in cursos_sel:
+        if c.status != novo_status:
+            c.status = novo_status
+            total += 1
+    db.session.commit()
+    if total:
+        log_action(session['user_id'], session['username'], 'status_em_lote', 'course', None,
+                   f'{total} curso(s) -> status={novo_status}')
+    return jsonify({'ok': True, 'total': total})
 
 @app.route('/cursos/exportar-excel')
 @login_required
@@ -863,12 +915,14 @@ def cursos_exportar_excel():
     import openpyxl, re
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
-    tipo     = request.args.get('tipo','')
-    area     = request.args.get('area','')
-    status   = request.args.get('status','')
-    busca    = request.args.get('q','')
-    insersor = request.args.get('insersor','')
-    lista = _build_cursos_query(tipo, area, status, busca, insersor)
+    tipo      = request.args.get('tipo','')
+    area      = request.args.get('area','')
+    status    = request.args.get('status','')
+    busca     = request.args.get('q','')
+    insersor  = request.args.get('insersor','')
+    horas_min = request.args.get('horas_min','')
+    horas_max = request.args.get('horas_max','')
+    lista = _build_cursos_query(tipo, area, status, busca, insersor, horas_min, horas_max)
 
     TIPO_LABELS = {
         'pos':'Pós-Graduação','profissionalizante':'Profissionalizante','rapido':'Rápido',
@@ -937,12 +991,14 @@ def cursos_exportar_excel():
 @app.route('/cursos/relatorio')
 @login_required
 def cursos_relatorio():
-    tipo     = request.args.get('tipo','')
-    area     = request.args.get('area','')
-    status   = request.args.get('status','')
-    busca    = request.args.get('q','')
-    insersor = request.args.get('insersor','')
-    lista = _build_cursos_query(tipo, area, status, busca, insersor)
+    tipo      = request.args.get('tipo','')
+    area      = request.args.get('area','')
+    status    = request.args.get('status','')
+    busca     = request.args.get('q','')
+    insersor  = request.args.get('insersor','')
+    horas_min = request.args.get('horas_min','')
+    horas_max = request.args.get('horas_max','')
+    lista = _build_cursos_query(tipo, area, status, busca, insersor, horas_min, horas_max)
     insersores = [u.username for u in User.query.order_by(User.username).all()]
     return render_template('cursos_relatorio.html', cursos=lista,
                            filtro_tipo=tipo, filtro_area=area, filtro_status=status,

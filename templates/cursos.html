@@ -8,12 +8,12 @@
       <div class="page-subtitle">{{ cursos|length }} curso(s) encontrado(s)</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <a href="{{ url_for('cursos_relatorio', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor) }}"
+      <a href="{{ url_for('cursos_relatorio', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor, horas_min=filtro_horas_min, horas_max=filtro_horas_max) }}"
          target="_blank" class="btn btn-secondary" title="Relatório imprimível">
         <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         Relatório
       </a>
-      <a href="{{ url_for('cursos_exportar_excel', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor) }}"
+      <a href="{{ url_for('cursos_exportar_excel', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor, horas_min=filtro_horas_min, horas_max=filtro_horas_max) }}"
          class="btn btn-secondary" style="color:#166534" title="Exportar Excel">
         <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
         Excel
@@ -77,15 +77,37 @@
       <option value="{{ ins }}" {% if filtro_insersor==ins %}selected{% endif %}>{{ ins }}</option>
       {% endfor %}
     </select>
+    <input type="number" name="horas_min" value="{{ filtro_horas_min }}" placeholder="Horas mín." class="filter-select" style="width:100px">
+    <input type="number" name="horas_max" value="{{ filtro_horas_max }}" placeholder="Horas máx." class="filter-select" style="width:100px">
     <button type="submit" class="btn btn-secondary">Filtrar</button>
     <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Limpar</a>
   </form>
+
+  {% if session.role in ['admin','editor'] %}
+  <!-- AÇÕES EM LOTE -->
+  <div id="acoes-lote" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;
+              background:var(--card-bg);border:1px solid var(--border);border-radius:8px">
+    <span id="acoes-lote-contagem" style="font-size:13px;font-weight:600"></span>
+    <button type="button" class="btn btn-sm btn-secondary" style="color:#6366f1" onclick="acaoEmLote('oculto')">
+      Ocultar selecionados
+    </button>
+    {% if session.role == 'admin' %}
+    <button type="button" class="btn btn-sm btn-secondary" style="color:#22c55e" onclick="acaoEmLote('ativo')">
+      Ativar selecionados
+    </button>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-secondary" onclick="limparSelecao()">Cancelar</button>
+  </div>
+  {% endif %}
 
   <div class="card">
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
+            {% if session.role in ['admin','editor'] %}
+            <th style="width:32px"><input type="checkbox" id="chk-todos" onchange="toggleTodos(this)"></th>
+            {% endif %}
             <th>Nome do Curso</th>
             <th>Tipo</th>
             <th>Área</th>
@@ -100,6 +122,9 @@
         <tbody>
           {% for c in cursos %}
           <tr>
+            {% if session.role in ['admin','editor'] %}
+            <td><input type="checkbox" class="chk-curso" value="{{ c.id }}" onchange="atualizaSelecao()"></td>
+            {% endif %}
             <td class="td-name">
               <a href="{{ url_for('curso_detalhe', id=c.id) }}" style="color:var(--text);text-decoration:none;font-weight:500">
                 {{ c.nome[:70] }}{% if c.nome|length > 70 %}…{% endif %}
@@ -124,11 +149,61 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
+          <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
 </div>
+
+<script>
+function toggleTodos(origem) {
+  document.querySelectorAll('.chk-curso').forEach(chk => chk.checked = origem.checked);
+  atualizaSelecao();
+}
+
+function atualizaSelecao() {
+  const marcados = document.querySelectorAll('.chk-curso:checked');
+  const barra = document.getElementById('acoes-lote');
+  const contagem = document.getElementById('acoes-lote-contagem');
+  if (marcados.length > 0) {
+    barra.style.display = 'flex';
+    contagem.textContent = marcados.length + ' curso(s) selecionado(s)';
+  } else {
+    barra.style.display = 'none';
+  }
+  const todos = document.querySelectorAll('.chk-curso');
+  const chkTodos = document.getElementById('chk-todos');
+  if (chkTodos) chkTodos.checked = todos.length > 0 && marcados.length === todos.length;
+}
+
+function limparSelecao() {
+  document.querySelectorAll('.chk-curso').forEach(chk => chk.checked = false);
+  const chkTodos = document.getElementById('chk-todos');
+  if (chkTodos) chkTodos.checked = false;
+  atualizaSelecao();
+}
+
+function acaoEmLote(novoStatus) {
+  const ids = Array.from(document.querySelectorAll('.chk-curso:checked')).map(chk => parseInt(chk.value));
+  if (ids.length === 0) return;
+  const acaoLabel = novoStatus === 'oculto' ? 'ocultar' : 'ativar';
+  if (!confirm('Confirma ' + acaoLabel + ' ' + ids.length + ' curso(s) selecionado(s)?')) return;
+  fetch('/cursos/status-em-lote', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids: ids, status: novoStatus})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      alert(data.total + ' curso(s) atualizado(s)!');
+      location.reload();
+    } else {
+      alert(data.erro || 'Erro ao atualizar cursos.');
+    }
+  });
+}
+</script>
 {% endblock %}
