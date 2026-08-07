@@ -3188,11 +3188,24 @@ def _import_excel():
         prof_courses = Course.query.filter_by(tipo='profissionalizante').all()
         sheet_prof = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
         if sheet_prof and prof_courses:
+            # Preposições que variam entre a lista de cursos e o bloco da
+            # matriz sem mudar o curso (ex.: "ASSISTENTE PARA IMPLANTAÇÃO..."
+            # vs "ASSISTENTE DE IMPLANTAÇÃO...") e a abreviação "IA" — são
+            # ignoradas/unificadas só no último critério de correspondência,
+            # depois que nome exato/prefixo já falharam.
+            _STOPWORDS_PROF = {'DE','DA','DO','DAS','DOS','EM','NO','NA','NOS','NAS',
+                                'PARA','COM','E','A','O','AO','AOS'}
+            def _tokens_prof(s):
+                palavras = _re2.sub(r'\bIA\b', 'INTELIGENCIA ARTIFICIAL', norm_nome(s)).split()
+                return frozenset(w for w in palavras if w not in _STOPWORDS_PROF)
+
             prof_map = {}
             prof_map_compact = {}
+            prof_map_semantico = {}
             for c in prof_courses:
                 prof_map[norm_nome(c.nome)] = c
                 prof_map_compact[norm_compact(c.nome)] = c
+                prof_map_semantico[_tokens_prof(c.nome)] = c
 
             def _match_prof(nome_excel):
                 key = norm_nome(nome_excel)
@@ -3205,6 +3218,9 @@ def _import_excel():
                     for k, c in prof_map_compact.items():
                         if len(ck) >= n and len(k) >= n and ck[:n] == k[:n]:
                             return c
+                tok = _tokens_prof(nome_excel)
+                if tok and tok in prof_map_semantico:
+                    return prof_map_semantico[tok]
                 return None
 
             def _cell(row, idx):
@@ -3469,6 +3485,12 @@ def _importar_so_disciplinas():
     prof_courses = Course.query.filter_by(tipo='profissionalizante').all()
     prof_map = {_norm(c.nome): c for c in prof_courses}
     prof_cmap = {_nc(c.nome): c for c in prof_courses}
+    _STOPWORDS_PROF = {'DE','DA','DO','DAS','DOS','EM','NO','NA','NOS','NAS',
+                        'PARA','COM','E','A','O','AO','AOS'}
+    def _tok_prof(n):
+        palavras = _re2.sub(r'\bIA\b', 'INTELIGENCIA ARTIFICIAL', _norm(n)).split()
+        return frozenset(w for w in palavras if w not in _STOPWORDS_PROF)
+    prof_semantico = {_tok_prof(c.nome): c for c in prof_courses}
     def _mp(n):
         if not n: return None
         if _norm(n) in prof_map: return prof_map[_norm(n)]
@@ -3476,6 +3498,8 @@ def _importar_so_disciplinas():
         for sz in [40,35,30,25,20]:
             for k,c in prof_cmap.items():
                 if len(_nc(n))>=sz and len(k)>=sz and _nc(n)[:sz]==k[:sz]: return c
+        tok = _tok_prof(n)
+        if tok and tok in prof_semantico: return prof_semantico[tok]
         return None
     sheet_p = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
     if sheet_p and prof_courses:
@@ -3648,6 +3672,12 @@ def _corrigir_matriz_profissionalizantes():
 
     prof_map = {_norm(c.nome): c for c in prof_courses}
     prof_cmap = {_nc(c.nome): c for c in prof_courses}
+    _STOPWORDS_PROF = {'DE','DA','DO','DAS','DOS','EM','NO','NA','NOS','NAS',
+                        'PARA','COM','E','A','O','AO','AOS'}
+    def _tok_prof(n):
+        palavras = _re2.sub(r'\bIA\b', 'INTELIGENCIA ARTIFICIAL', _norm(n)).split()
+        return frozenset(w for w in palavras if w not in _STOPWORDS_PROF)
+    prof_semantico = {_tok_prof(c.nome): c for c in prof_courses}
     def _mp(n):
         if not n: return None
         if _norm(n) in prof_map: return prof_map[_norm(n)]
@@ -3655,6 +3685,8 @@ def _corrigir_matriz_profissionalizantes():
         for sz in [40, 35, 30, 25, 20]:
             for k, c in prof_cmap.items():
                 if len(_nc(n)) >= sz and len(k) >= sz and _nc(n)[:sz] == k[:sz]: return c
+        tok = _tok_prof(n)
+        if tok and tok in prof_semantico: return prof_semantico[tok]
         return None
 
     # Preserva o status "na plataforma" por (curso, nome normalizado da disciplina)
