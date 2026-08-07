@@ -2264,25 +2264,49 @@ def admin_migrar_externos():
 @login_required
 def matrizes():
     busca = request.args.get('q', '').strip()
-    filtro_tipo = request.args.get('tipo', '')
+    # Sem "tipo" na URL nenhuma = primeira abertura (link da barra lateral) →
+    # carrega só Profissionalizantes por padrão, pra não buscar tudo de uma
+    # vez. O chip "Todos" manda tipo='' explicitamente pra pedir tudo mesmo.
+    filtro_tipo_param = request.args.get('tipo')
+    filtro_tipo = filtro_tipo_param if filtro_tipo_param is not None else 'profissionalizante'
     filtro_insersor = request.args.get('insersor', '').strip()
     filtro_pendente = request.args.get('pendente', '')
 
-    # Apenas cursos que têm pelo menos uma disciplina
-    from sqlalchemy import exists as sql_exists, or_
-    q = Course.query.filter(
+    import re
+    from sqlalchemy import exists as sql_exists
+
+    # Conjunto completo (sem filtro de tipo/busca/insersor) — usado pros
+    # chips de pendências por tipo e como base pra lista filtrada abaixo.
+    # As disciplinas de todos eles são buscadas numa única query (evita
+    # centenas de consultas, uma por curso).
+    todos_para_chips = Course.query.filter(
         sql_exists().where(Discipline.course_id == Course.id)
-    )
+    ).order_by(Course.tipo, Course.nome).all()
+
+    discs_by_course = {}
+    ids_todos = [c.id for c in todos_para_chips]
+    if ids_todos:
+        for d in (Discipline.query
+                  .filter(Discipline.course_id.in_(ids_todos))
+                  .order_by(Discipline.ordem).all()):
+            discs_by_course.setdefault(d.course_id, []).append(d)
+
+    def _parse_ch(val):
+        if not val:
+            return 0
+        m = re.search(r'\d+', str(val))
+        return int(m.group()) if m else 0
+
+    # Filtra a lista exibida a partir do conjunto completo já carregado
+    todos = todos_para_chips
     if filtro_tipo:
-        q = q.filter_by(tipo=filtro_tipo)
-    todos = q.order_by(Course.tipo, Course.nome).all()
+        todos = [c for c in todos if c.tipo == filtro_tipo]
 
     # Filtrar por busca (nome do curso OU nome da disciplina)
     if busca:
         busca_low = busca.lower()
-        disc_cids = {r[0] for r in db.session.query(Discipline.course_id)
-                     .filter(Discipline.nome.ilike(f'%{busca}%')).all()}
-        todos = [c for c in todos if busca_low in c.nome.lower() or c.id in disc_cids]
+        todos = [c for c in todos if busca_low in c.nome.lower() or
+                 any(busca_low in d.nome.lower() for d in discs_by_course.get(c.id, []))]
 
     # Filtrar por insersor (campo pode ser comma-separated)
     if filtro_insersor:
@@ -2290,16 +2314,9 @@ def matrizes():
         todos = [c for c in todos if c.insersor and
                  any(fi_low == p.strip().lower() for p in c.insersor.split(','))]
 
-    def _parse_ch(val):
-        if not val:
-            return 0
-        import re
-        m = re.search(r'\d+', str(val))
-        return int(m.group()) if m else 0
-
     course_data = []
     for c in todos:
-        discs = Discipline.query.filter_by(course_id=c.id).order_by(Discipline.ordem).all()
+        discs = discs_by_course.get(c.id, [])
         if busca and busca.lower() not in c.nome.lower():
             discs = [d for d in discs if busca.lower() in d.nome.lower()]
         total_ch = sum(_parse_ch(d.carga) for d in discs)
@@ -2311,14 +2328,11 @@ def matrizes():
         course_data = [item for item in course_data
                        if item['ok_count'] < len(item['disciplines'])]
 
-    tipos_disponiveis = [r[0] for r in db.session.query(Course.tipo).join(
-        Discipline, Discipline.course_id == Course.id).distinct().all()]
+    tipos_disponiveis = sorted({c.tipo for c in todos_para_chips})
 
     # Lista de insersores para o filtro (expandindo comma-separated)
     ins_set = set()
-    for c in Course.query.filter(
-        sql_exists().where(Discipline.course_id == Course.id)
-    ).all():
+    for c in todos_para_chips:
         if c.insersor:
             for p in c.insersor.split(','):
                 p = p.strip()
@@ -2329,13 +2343,10 @@ def matrizes():
     total_pendentes = sum(1 for item in course_data
                           if item['ok_count'] < len(item['disciplines']))
 
-    # Pendentes por tipo (apenas cursos com disciplinas, sem filtro atual)
-    todos_para_chips = Course.query.filter(
-        sql_exists().where(Discipline.course_id == Course.id)
-    ).all()
+    # Pendentes por tipo (todos os tipos, sem filtro atual)
     pendentes_por_tipo = {}
     for c in todos_para_chips:
-        discs_c = Discipline.query.filter_by(course_id=c.id).all()
+        discs_c = discs_by_course.get(c.id, [])
         ok_c = sum(1 for d in discs_c if d.plataforma_ok)
         if ok_c < len(discs_c):
             pendentes_por_tipo[c.tipo] = pendentes_por_tipo.get(c.tipo, 0) + 1
@@ -3166,10 +3177,14 @@ def _import_excel():
             db.session.commit()
 
         # ── DISCIPLINAS DOS PROFISSIONALIZANTES ───────────────────────────
-        # Layout: 2 matrizes lado a lado por bloco de linhas
-        # Bloco 1: C9=modulo, C10=ordem, C11=nome, C12=ch
-        # Bloco 2: C14=modulo, C15=ordem, C16=nome, C17=ch
-        # O nome do curso fica na linha ANTES do cabeçalho "DISCIPLINAS"
+        # Layout: 2 matrizes lado a lado — mas os dois blocos NÃO ficam
+        # sincronizados na mesma linha (um curso pode ter mais ou menos
+        # disciplinas que o vizinho), então cada bloco é percorrido de forma
+        # totalmente independente do outro (ver _parse_bloco_prof abaixo).
+        # Bloco 1: C9=modulo/nome do curso, C10=ordem, C11=nome, C12=ch
+        # Bloco 2: C14=modulo/nome do curso, C15=ordem, C16=nome, C17=ch
+        # O nome do curso fica na linha ANTES do cabeçalho "DISCIPLINAS" do
+        # próprio bloco.
         prof_courses = Course.query.filter_by(tipo='profissionalizante').all()
         sheet_prof = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
         if sheet_prof and prof_courses:
@@ -3192,66 +3207,44 @@ def _import_excel():
                             return c
                 return None
 
-            ws_p = wb[sheet_prof]
-            rows_p = list(ws_p.iter_rows(min_row=1, values_only=True))
-            prev_row = None
-            cur1_id = None
-            cur2_id = None
-            mod1 = None
-            mod2 = None
-
             def _cell(row, idx):
                 return str(row[idx] or '').strip() if row and idx < len(row) else ''
 
-            for row in rows_p:
-                c11 = _cell(row, 11)
-                c16 = _cell(row, 16)
+            ws_p = wb[sheet_prof]
+            rows_p = list(ws_p.iter_rows(min_row=1, values_only=True))
 
-                # Linha de cabeçalho: detecta "DISCIPLINAS" em C11 ou C16
-                if c11.upper() == 'DISCIPLINAS' or c16.upper() == 'DISCIPLINAS':
-                    if prev_row is not None:
-                        nome1 = _cell(prev_row, 9)
-                        nome2 = _cell(prev_row, 14)
-                        m1 = _match_prof(nome1) if nome1 else None
-                        m2 = _match_prof(nome2) if nome2 else None
-                        if m1 and Discipline.query.filter_by(course_id=m1.id).count() == 0:
-                            cur1_id = m1.id
-                        else:
-                            cur1_id = None
-                        if m2 and Discipline.query.filter_by(course_id=m2.id).count() == 0:
-                            cur2_id = m2.id
-                        else:
-                            cur2_id = None
-                    mod1 = None
-                    mod2 = None
-                    prev_row = row
-                    continue
+            def _parse_bloco_prof(idx_a, idx_ordem, idx_nome, idx_carga):
+                cur_id = None
+                pendente = None
+                modulo = None
+                for row in rows_p:
+                    c_a = _cell(row, idx_a)
+                    c_o = _cell(row, idx_ordem)
+                    c_n = _cell(row, idx_nome)
+                    c_c = _cell(row, idx_carga)
 
-                # Bloco 1: C10=ordem (número), C11=nome disciplina, C12=carga
-                c9  = _cell(row, 9)
-                c10 = _cell(row, 10)
-                c12 = _cell(row, 12)
-                if c9.startswith('Mód'):
-                    mod1 = c9
-                if c10.isdigit() and c11 and c11.upper() not in ('DISCIPLINAS', 'CH') and cur1_id:
-                    db.session.add(Discipline(
-                        course_id=cur1_id, modulo=mod1,
-                        ordem=int(c10), nome=c11, carga=c12 or None
-                    ))
+                    if c_n.upper() == 'DISCIPLINAS':
+                        m = _match_prof(pendente) if pendente else None
+                        cur_id = m.id if m and Discipline.query.filter_by(course_id=m.id).count() == 0 else None
+                        modulo = None
+                        pendente = None
+                        continue
 
-                # Bloco 2: C15=ordem (número), C16=nome disciplina, C17=carga
-                c14 = _cell(row, 14)
-                c15 = _cell(row, 15)
-                c17 = _cell(row, 17)
-                if c14.startswith('Mód'):
-                    mod2 = c14
-                if c15.isdigit() and c16 and c16.upper() not in ('DISCIPLINAS', 'CH') and cur2_id:
-                    db.session.add(Discipline(
-                        course_id=cur2_id, modulo=mod2,
-                        ordem=int(c15), nome=c16, carga=c17 or None
-                    ))
+                    if c_a and not c_a.startswith('Mód') and not c_n:
+                        pendente = c_a
+                        continue
 
-                prev_row = row
+                    if c_a.startswith('Mód'):
+                        modulo = c_a
+
+                    if c_o.isdigit() and c_n and c_n.upper() not in ('DISCIPLINAS', 'CH') and cur_id:
+                        db.session.add(Discipline(
+                            course_id=cur_id, modulo=modulo,
+                            ordem=int(c_o), nome=c_n, carga=c_c or None
+                        ))
+
+            _parse_bloco_prof(9, 10, 11, 12)    # Bloco 1
+            _parse_bloco_prof(14, 15, 16, 17)   # Bloco 2
 
             db.session.commit()
 
@@ -3486,25 +3479,43 @@ def _importar_so_disciplinas():
         return None
     sheet_p = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
     if sheet_p and prof_courses:
+        # Os 2 blocos lado a lado da planilha NÃO ficam sincronizados na
+        # mesma linha, então cada bloco é percorrido de forma independente
+        # (ver mesmo comentário em _import_excel).
         rows_p = list(wb[sheet_p].iter_rows(min_row=1, values_only=True))
-        prev = None; c1id=c2id=None; m1=m2=None
-        for row in rows_p:
-            c11,c16 = _cell(row,11), _cell(row,16)
-            if c11.upper()=='DISCIPLINAS' or c16.upper()=='DISCIPLINAS':
-                if prev:
-                    r1=_mp(_cell(prev,9)); r2=_mp(_cell(prev,14))
-                    c1id = r1.id if r1 and Discipline.query.filter_by(course_id=r1.id).count()==0 else None
-                    c2id = r2.id if r2 and Discipline.query.filter_by(course_id=r2.id).count()==0 else None
-                m1=m2=None; prev=row; continue
-            c9,c10,c12 = _cell(row,9),_cell(row,10),_cell(row,12)
-            if c9.startswith('Mód'): m1=c9
-            if c10.isdigit() and c11 and c11.upper() not in ('DISCIPLINAS','CH') and c1id:
-                db.session.add(Discipline(course_id=c1id,modulo=m1,ordem=int(c10),nome=c11,carga=c12 or None)); total+=1
-            c14,c15,c17 = _cell(row,14),_cell(row,15),_cell(row,17)
-            if c14.startswith('Mód'): m2=c14
-            if c15.isdigit() and c16 and c16.upper() not in ('DISCIPLINAS','CH') and c2id:
-                db.session.add(Discipline(course_id=c2id,modulo=m2,ordem=int(c15),nome=c16,carga=c17 or None)); total+=1
-            prev=row
+
+        def _parse_bloco_prof_topup(idx_a, idx_ordem, idx_nome, idx_carga):
+            nonlocal total
+            cur_id = None
+            pendente = None
+            modulo = None
+            for row in rows_p:
+                c_a = _cell(row, idx_a)
+                c_o = _cell(row, idx_ordem)
+                c_n = _cell(row, idx_nome)
+                c_c = _cell(row, idx_carga)
+
+                if c_n.upper() == 'DISCIPLINAS':
+                    m = _mp(pendente) if pendente else None
+                    cur_id = m.id if m and Discipline.query.filter_by(course_id=m.id).count() == 0 else None
+                    modulo = None
+                    pendente = None
+                    continue
+
+                if c_a and not c_a.startswith('Mód') and not c_n:
+                    pendente = c_a
+                    continue
+
+                if c_a.startswith('Mód'):
+                    modulo = c_a
+
+                if c_o.isdigit() and c_n and c_n.upper() not in ('DISCIPLINAS', 'CH') and cur_id:
+                    db.session.add(Discipline(course_id=cur_id, modulo=modulo,
+                        ordem=int(c_o), nome=c_n, carga=c_c or None))
+                    total += 1
+
+        _parse_bloco_prof_topup(9, 10, 11, 12)
+        _parse_bloco_prof_topup(14, 15, 16, 17)
         db.session.commit()
 
     # PACOTES — matriz (mesmo padrão de pós/profissionalizantes)
@@ -3598,6 +3609,120 @@ def _importar_so_disciplinas():
         db.session.commit()
 
     return total
+
+
+def _corrigir_matriz_profissionalizantes():
+    """Reconstrói do zero a matriz de TODOS os cursos Profissionalizantes.
+
+    Corrige um bug de importação: os 2 blocos lado a lado da planilha
+    "PROFISSIONALIZANTES INOVA" não ficam sincronizados na mesma linha (um
+    curso pode ter mais ou menos disciplinas que o vizinho), e a extração
+    antiga tratava o cabeçalho "DISCIPLINAS" de qualquer um dos blocos como
+    ponto de sincronização dos dois — quando os blocos não coincidiam, um
+    bloco "roubava" o nome de curso do outro e a matriz saía incompleta
+    (em alguns casos com só 1 disciplina, em vez de 6 a 8).
+
+    Como o import normal (_importar_so_disciplinas) só preenche cursos que
+    ainda não têm nenhuma disciplina, ele nunca corrigiria os que já tinham
+    uma matriz (mesmo que errada) — por isso este reparo apaga e reconstrói
+    todos, preservando o status "na plataforma" das disciplinas que baterem
+    pelo nome.
+    """
+    import re as _re2, unicodedata as _ud2, openpyxl as _opx
+    excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
+    if not os.path.exists(excel_path):
+        raise FileNotFoundError('Arquivo Excel não encontrado.')
+    wb = _opx.load_workbook(excel_path)
+
+    def _norm(s):
+        s = _re2.sub(r'\s+', ' ', str(s).upper().strip())
+        return _re2.sub(r'\s+', ' ',
+               ''.join(c for c in _ud2.normalize('NFKD', s) if not _ud2.combining(c))).strip()
+    def _nc(s): return _re2.sub(r'\s+', '', _norm(s))
+    def _cell(row, idx): return str(row[idx] or '').strip() if row and idx < len(row) else ''
+
+    prof_courses = Course.query.filter_by(tipo='profissionalizante').all()
+    sheet_p = next((s for s in wb.sheetnames if 'PROFISSIONALIZANTE' in s.upper()), None)
+    if not sheet_p or not prof_courses:
+        return 0
+
+    prof_map = {_norm(c.nome): c for c in prof_courses}
+    prof_cmap = {_nc(c.nome): c for c in prof_courses}
+    def _mp(n):
+        if not n: return None
+        if _norm(n) in prof_map: return prof_map[_norm(n)]
+        if _nc(n) in prof_cmap: return prof_cmap[_nc(n)]
+        for sz in [40, 35, 30, 25, 20]:
+            for k, c in prof_cmap.items():
+                if len(_nc(n)) >= sz and len(k) >= sz and _nc(n)[:sz] == k[:sz]: return c
+        return None
+
+    # Preserva o status "na plataforma" por (curso, nome normalizado da disciplina)
+    status_preservado = {}
+    for c in prof_courses:
+        for d in Discipline.query.filter_by(course_id=c.id).all():
+            if d.plataforma_ok:
+                status_preservado[(c.id, _norm(d.nome))] = d.plataforma_em
+        Discipline.query.filter_by(course_id=c.id).delete(synchronize_session=False)
+    db.session.commit()
+    db.session.expire_all()
+
+    rows_p = list(wb[sheet_p].iter_rows(min_row=1, values_only=True))
+    total = 0
+
+    def _parse_bloco(idx_a, idx_ordem, idx_nome, idx_carga):
+        nonlocal total
+        cur_id = None
+        pendente = None
+        modulo = None
+        for row in rows_p:
+            c_a = _cell(row, idx_a)
+            c_o = _cell(row, idx_ordem)
+            c_n = _cell(row, idx_nome)
+            c_c = _cell(row, idx_carga)
+
+            if c_n.upper() == 'DISCIPLINAS':
+                m = _mp(pendente) if pendente else None
+                cur_id = m.id if m else None
+                modulo = None
+                pendente = None
+                continue
+
+            if c_a and not c_a.startswith('Mód') and not c_n:
+                pendente = c_a
+                continue
+
+            if c_a.startswith('Mód'):
+                modulo = c_a
+
+            if c_o.isdigit() and c_n and c_n.upper() not in ('DISCIPLINAS', 'CH') and cur_id:
+                em = status_preservado.get((cur_id, _norm(c_n)))
+                db.session.add(Discipline(
+                    course_id=cur_id, modulo=modulo, ordem=int(c_o), nome=c_n,
+                    carga=c_c or None, plataforma_ok=bool(em), plataforma_em=em
+                ))
+                total += 1
+
+    _parse_bloco(9, 10, 11, 12)
+    _parse_bloco(14, 15, 16, 17)
+    db.session.commit()
+    return total
+
+
+@app.route('/admin/corrigir-matriz-profissionalizantes', methods=['POST'])
+@admin_required
+def admin_corrigir_matriz_profissionalizantes():
+    """Reconstrói a matriz de todos os Profissionalizantes a partir do Excel,
+    corrigindo cursos que ficaram com matriz incompleta pelo bug de
+    desalinhamento entre os 2 blocos da planilha. Preserva o status "na
+    plataforma" já marcado."""
+    try:
+        total = _corrigir_matriz_profissionalizantes()
+        flash(f'Matriz de Profissionalizantes reconstruída — {total} disciplina(s).', 'success')
+    except Exception as e:
+        flash(f'Erro ao corrigir matriz: {e}', 'danger')
+    return redirect(url_for('dashboard'))
+
 
 # ─── INIT ──────────────────────────────────────────────────────────────────────
 

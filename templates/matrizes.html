@@ -51,7 +51,7 @@
   <!-- CHIPS DE TIPO COM INDICADOR DE PENDÊNCIAS -->
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
     {% set t_ativo = (filtro_tipo == '') %}
-    <a href="{{ url_for('matrizes', insersor=filtro_insersor, q=busca, pendente=filtro_pendente) }}"
+    <a href="{{ url_for('matrizes', tipo='', insersor=filtro_insersor, q=busca, pendente=filtro_pendente) }}"
        style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:{% if t_ativo %}600{% else %}400{% endif %};
               text-decoration:none;border:1.5px solid {% if t_ativo %}var(--accent){% else %}var(--border){% endif %};
               background:{% if t_ativo %}var(--accent){% else %}var(--card-bg){% endif %};
