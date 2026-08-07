@@ -3256,7 +3256,8 @@ def _import_excel():
                     if c_o.isdigit() and c_n and c_n.upper() not in ('DISCIPLINAS', 'CH') and cur_id:
                         db.session.add(Discipline(
                             course_id=cur_id, modulo=modulo,
-                            ordem=int(c_o), nome=c_n, carga=c_c or None
+                            ordem=int(c_o), nome=c_n, carga=c_c or None,
+                            plataforma_ok=True, plataforma_em=datetime.utcnow()
                         ))
 
             _parse_bloco_prof(9, 10, 11, 12)    # Bloco 1
@@ -3535,7 +3536,8 @@ def _importar_so_disciplinas():
 
                 if c_o.isdigit() and c_n and c_n.upper() not in ('DISCIPLINAS', 'CH') and cur_id:
                     db.session.add(Discipline(course_id=cur_id, modulo=modulo,
-                        ordem=int(c_o), nome=c_n, carga=c_c or None))
+                        ordem=int(c_o), nome=c_n, carga=c_c or None,
+                        plataforma_ok=True, plataforma_em=datetime.utcnow()))
                     total += 1
 
         _parse_bloco_prof_topup(9, 10, 11, 12)
@@ -3649,8 +3651,8 @@ def _corrigir_matriz_profissionalizantes():
     Como o import normal (_importar_so_disciplinas) só preenche cursos que
     ainda não têm nenhuma disciplina, ele nunca corrigiria os que já tinham
     uma matriz (mesmo que errada) — por isso este reparo apaga e reconstrói
-    todos, preservando o status "na plataforma" das disciplinas que baterem
-    pelo nome.
+    a matriz (só as disciplinas, nenhum outro dado é tocado), já marcando
+    tudo como concluído na plataforma.
     """
     import re as _re2, unicodedata as _ud2, openpyxl as _opx
     excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
@@ -3689,12 +3691,9 @@ def _corrigir_matriz_profissionalizantes():
         if tok and tok in prof_semantico: return prof_semantico[tok]
         return None
 
-    # Preserva o status "na plataforma" por (curso, nome normalizado da disciplina)
-    status_preservado = {}
+    # Apaga só as disciplinas desses cursos (nenhum outro dado é alterado)
+    # pra reconstruir a matriz do zero com o parser corrigido.
     for c in prof_courses:
-        for d in Discipline.query.filter_by(course_id=c.id).all():
-            if d.plataforma_ok:
-                status_preservado[(c.id, _norm(d.nome))] = d.plataforma_em
         Discipline.query.filter_by(course_id=c.id).delete(synchronize_session=False)
     db.session.commit()
     db.session.expire_all()
@@ -3728,10 +3727,9 @@ def _corrigir_matriz_profissionalizantes():
                 modulo = c_a
 
             if c_o.isdigit() and c_n and c_n.upper() not in ('DISCIPLINAS', 'CH') and cur_id:
-                em = status_preservado.get((cur_id, _norm(c_n)))
                 db.session.add(Discipline(
                     course_id=cur_id, modulo=modulo, ordem=int(c_o), nome=c_n,
-                    carga=c_c or None, plataforma_ok=bool(em), plataforma_em=em
+                    carga=c_c or None, plataforma_ok=True, plataforma_em=datetime.utcnow()
                 ))
                 total += 1
 
