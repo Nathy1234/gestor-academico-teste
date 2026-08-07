@@ -83,19 +83,17 @@
     <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Limpar</a>
   </form>
 
-  {% if session.role in ['admin','editor'] %}
-  <!-- AÇÕES EM LOTE -->
+  {% if session.role == 'admin' %}
+  <!-- AÇÕES EM LOTE (só admin) -->
   <div id="acoes-lote" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;
               background:var(--card-bg);border:1px solid var(--border);border-radius:8px">
     <span id="acoes-lote-contagem" style="font-size:13px;font-weight:600"></span>
     <button type="button" class="btn btn-sm btn-secondary" style="color:#6366f1" onclick="acaoEmLote('oculto')">
       Ocultar selecionados
     </button>
-    {% if session.role == 'admin' %}
     <button type="button" class="btn btn-sm btn-secondary" style="color:#22c55e" onclick="acaoEmLote('ativo')">
       Ativar selecionados
     </button>
-    {% endif %}
     <button type="button" class="btn btn-sm btn-secondary" onclick="limparSelecao()">Cancelar</button>
   </div>
   {% endif %}
@@ -105,7 +103,7 @@
       <table>
         <thead>
           <tr>
-            {% if session.role in ['admin','editor'] %}
+            {% if session.role == 'admin' %}
             <th style="width:32px"><input type="checkbox" id="chk-todos" onchange="toggleTodos(this)"></th>
             {% endif %}
             <th>Nome do Curso</th>
@@ -122,7 +120,7 @@
         <tbody>
           {% for c in cursos %}
           <tr>
-            {% if session.role in ['admin','editor'] %}
+            {% if session.role == 'admin' %}
             <td><input type="checkbox" class="chk-curso" value="{{ c.id }}" onchange="atualizaSelecao()"></td>
             {% endif %}
             <td class="td-name">

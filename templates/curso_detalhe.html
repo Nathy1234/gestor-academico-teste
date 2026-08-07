@@ -111,6 +111,7 @@
       <div class="card" style="margin-bottom:20px">
         <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
           <div class="card-title">Matriz Curricular — {{ disc|length }} disciplina(s)</div>
+          {% if session.role == 'admin' %}
           <div style="display:flex;gap:8px">
             {% if ok_count < disc|length %}
             <button type="button" onclick="marcarTodas({{ c.id }}, true)"
@@ -125,6 +126,7 @@
             </button>
             {% endif %}
           </div>
+          {% endif %}
         </div>
         <div class="card-body" style="padding:0">
           <div class="matrix-wrap" style="border:none;border-radius:0">

@@ -883,17 +883,17 @@ def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas
     return lista
 
 @app.route('/cursos/status-em-lote', methods=['POST'])
-@editor_required
+@login_required
 def cursos_status_em_lote():
-    """Oculta ou ativa vários cursos de uma vez (só altera o campo status —
-    nenhum curso, disciplina ou outro dado é apagado)."""
+    """Oculta ou ativa vários cursos de uma vez — só admin (só altera o
+    campo status, nenhum curso, disciplina ou outro dado é apagado)."""
+    if session.get('role') != 'admin':
+        return jsonify({'ok': False, 'erro': 'Somente administradores podem realizar ações em lote.'}), 403
     data = request.json or {}
     ids = data.get('ids', [])
     novo_status = data.get('status', '')
     if novo_status not in ('ativo', 'oculto'):
         return jsonify({'ok': False, 'erro': 'Status inválido.'}), 400
-    if novo_status == 'ativo' and session.get('role') != 'admin':
-        return jsonify({'ok': False, 'erro': 'Somente administradores podem ativar cursos.'}), 403
     if not ids:
         return jsonify({'ok': False, 'erro': 'Nenhum curso selecionado.'}), 400
 
@@ -1562,6 +1562,8 @@ def disciplina_toggle(disc_id):
 @app.route('/curso/<int:course_id>/disciplinas/marcar-todas', methods=['POST'])
 @login_required
 def disciplinas_marcar_todas(course_id):
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Acesso negado'}), 403
     marcar = request.json.get('marcar', True)
     discs = Discipline.query.filter_by(course_id=course_id).all()
     now = datetime.utcnow()
