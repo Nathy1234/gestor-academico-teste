@@ -81,12 +81,16 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Venda por (eventos)</label>
+            <label>Venda por</label>
             <select name="venda_modalidade">
               <option value="">— Não se aplica —</option>
-              <option value="link" {% if curso and curso.venda_modalidade=='link' %}selected{% endif %}>Link</option>
-              <option value="site" {% if curso and curso.venda_modalidade=='site' %}selected{% endif %}>Site</option>
+              {% for o in venda_opcoes %}
+              <option value="{{ o.label }}" {% if curso and curso.venda_modalidade==o.label %}selected{% endif %}>{{ o.label }}</option>
+              {% endfor %}
             </select>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('video_presets') }}" style="font-size:11px;color:var(--text-muted)" target="_blank">Gerenciar opções →</a>
+            {% endif %}
           </div>
           <div class="form-group">
             <label>Data de Finalização (eventos)</label>
@@ -199,6 +203,8 @@
         </div>
         <div style="padding:10px 16px;color:var(--text-muted);font-size:12px">
           Cadastre quantos links precisar (ex.: capa do site, banner de divulgação, imagem para redes sociais) — descreva cada um para saber onde usar.
+          O 🗑️ remove só essa linha; para gravar as linhas preenchidas, use o botão
+          <strong>{% if curso %}Salvar Alterações{% else %}Criar Curso{% endif %}</strong> no rodapé da página — ele salva o curso inteiro de uma vez.
         </div>
       </div>
     </div>
@@ -225,7 +231,8 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:10px;justify-content:flex-end">
+    <div style="display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;
+                background:var(--bg);padding:14px 0;margin-top:-14px;border-top:1px solid var(--border)">
       <a href="{{ url_for('matrizes') if request.args.get('from') == 'matrizes' else url_for('cursos') }}" class="btn btn-secondary">Cancelar</a>
       <button type="submit" class="btn btn-primary">
         {% if curso %}Salvar Alterações{% else %}Criar Curso{% endif %}

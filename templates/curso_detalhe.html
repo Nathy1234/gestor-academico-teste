@@ -86,11 +86,13 @@
               <div class="detail-value">{{ c.limite_parcelas }}</div>
             </div>
             {% endif %}
-            {% if c.tipo == 'evento' %}
+            {% if c.venda_modalidade %}
             <div class="detail-field">
               <div class="detail-label">Venda por</div>
-              <div class="detail-value">{{ {'link':'Link','site':'Site'}.get(c.venda_modalidade, '—') }}</div>
+              <div class="detail-value">{{ c.venda_modalidade }}</div>
             </div>
+            {% endif %}
+            {% if c.tipo == 'evento' %}
             <div class="detail-field">
               <div class="detail-label">Data de Finalização</div>
               <div class="detail-value">{{ c.data_finalizacao.strftime('%d/%m/%Y') if c.data_finalizacao else '—' }}</div>

@@ -261,7 +261,7 @@ class Course(db.Model):
     dono          = db.Column(db.Text)        # para cursos terceiros
     ano           = db.Column(db.String(10))  # ano de criação/edição do curso
     extra_data    = db.Column(db.Text)        # JSON com dados extras (matriz, disciplinas, etc.)
-    venda_modalidade = db.Column(db.String(10))  # 'link' ou 'site' — só relevante p/ tipo=evento
+    venda_modalidade = db.Column(db.String(100))  # rótulo livre (Link, Site, ...) — vale p/ qualquer tipo de curso
     data_finalizacao = db.Column(db.Date)         # data de término — só relevante p/ tipo=evento
     link_video       = db.Column(db.Text)         # vídeo exibido na página de venda
     limite_parcelas  = db.Column(db.String(10))   # limite de parcelas — sobretudo cursos de pós
@@ -384,6 +384,13 @@ class VideoPreset(db.Model):
     id     = db.Column(db.Integer, primary_key=True)
     label  = db.Column(db.String(200), nullable=False)
     url    = db.Column(db.Text, nullable=False)
+    ordem  = db.Column(db.Integer, default=0)
+
+class VendaModalidadeOpcao(db.Model):
+    """Opções de 'Venda por' (Link, Site, ...) — editável pelo admin, não
+    fica fixo em Link/Site; vale pra curso de qualquer tipo, não só eventos."""
+    id     = db.Column(db.Integer, primary_key=True)
+    label  = db.Column(db.String(100), nullable=False)
     ordem  = db.Column(db.Integer, default=0)
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
@@ -1110,8 +1117,9 @@ def curso_novo():
         return redirect(url_for('curso_detalhe', id=c.id))
     usuarios = User.query.order_by(User.username).all()
     video_presets = VideoPreset.query.order_by(VideoPreset.ordem).all()
+    venda_opcoes = VendaModalidadeOpcao.query.order_by(VendaModalidadeOpcao.ordem).all()
     return render_template('curso_form.html', curso=None, tipos=TIPOS_CURSO, areas=AREAS_VALIDAS,
-                           usuarios=usuarios, video_presets=video_presets)
+                           usuarios=usuarios, video_presets=video_presets, venda_opcoes=venda_opcoes)
 
 @app.route('/cursos/<int:id>')
 @login_required
@@ -1216,8 +1224,9 @@ def curso_editar(id):
     tipos = ['pos','profissionalizante','rapido','pacote','terceiros','evento','pratica_conectada','pratica_estagio','projeto_ambiental','ggbr','integra_edu']
     usuarios = User.query.order_by(User.username).all()
     video_presets = VideoPreset.query.order_by(VideoPreset.ordem).all()
+    venda_opcoes = VendaModalidadeOpcao.query.order_by(VendaModalidadeOpcao.ordem).all()
     return render_template('curso_form.html', curso=c, disc=disc, disc_json=disc_json,
-                           imagens_json=imagens_json, video_presets=video_presets,
+                           imagens_json=imagens_json, video_presets=video_presets, venda_opcoes=venda_opcoes,
                            tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
 
 @app.route('/cursos/<int:id>/arquivar', methods=['POST'])
@@ -3037,18 +3046,29 @@ def arquivar_logs_antigos():
 @admin_required
 def video_presets():
     if request.method == 'POST':
-        label = request.form.get('label', '').strip()
-        url = request.form.get('url', '').strip()
-        if label and url:
-            maior_ordem = db.session.query(db.func.max(VideoPreset.ordem)).scalar() or 0
-            db.session.add(VideoPreset(label=label, url=url, ordem=maior_ordem + 1))
-            db.session.commit()
-            flash('Link de vídeo adicionado!', 'success')
+        if request.form.get('form_tipo') == 'venda_modalidade':
+            label = request.form.get('venda_label', '').strip()
+            if label:
+                maior_ordem = db.session.query(db.func.max(VendaModalidadeOpcao.ordem)).scalar() or 0
+                db.session.add(VendaModalidadeOpcao(label=label, ordem=maior_ordem + 1))
+                db.session.commit()
+                flash('Opção de "Venda por" adicionada!', 'success')
+            else:
+                flash('Preencha o nome da opção.', 'danger')
         else:
-            flash('Preencha a descrição e o link.', 'danger')
+            label = request.form.get('label', '').strip()
+            url = request.form.get('url', '').strip()
+            if label and url:
+                maior_ordem = db.session.query(db.func.max(VideoPreset.ordem)).scalar() or 0
+                db.session.add(VideoPreset(label=label, url=url, ordem=maior_ordem + 1))
+                db.session.commit()
+                flash('Link de vídeo adicionado!', 'success')
+            else:
+                flash('Preencha a descrição e o link.', 'danger')
         return redirect(url_for('video_presets'))
     presets = VideoPreset.query.order_by(VideoPreset.ordem).all()
-    return render_template('video_presets.html', presets=presets)
+    venda_opcoes = VendaModalidadeOpcao.query.order_by(VendaModalidadeOpcao.ordem).all()
+    return render_template('video_presets.html', presets=presets, venda_opcoes=venda_opcoes)
 
 @app.route('/admin/video-presets/<int:id>/excluir', methods=['POST'])
 @admin_required
@@ -3057,6 +3077,15 @@ def video_preset_excluir(id):
     db.session.delete(p)
     db.session.commit()
     flash('Link de vídeo removido.', 'success')
+    return redirect(url_for('video_presets'))
+
+@app.route('/admin/venda-modalidades/<int:id>/excluir', methods=['POST'])
+@admin_required
+def venda_modalidade_excluir(id):
+    o = VendaModalidadeOpcao.query.get_or_404(id)
+    db.session.delete(o)
+    db.session.commit()
+    flash('Opção de "Venda por" removida.', 'success')
     return redirect(url_for('video_presets'))
 
 @app.route('/api/eventos/pendentes-ocultar')
@@ -3629,6 +3658,12 @@ def seed_data():
             VideoPreset(label='Pós (Jorge)', url='https://youtu.be/0SAlaoAdIc4', ordem=3),
         ])
         db.session.commit()
+    if VendaModalidadeOpcao.query.count() == 0:
+        db.session.add_all([
+            VendaModalidadeOpcao(label='Link', ordem=1),
+            VendaModalidadeOpcao(label='Site', ordem=2),
+        ])
+        db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -3994,7 +4029,7 @@ def _run_migrations():
         ("course",     "dono",             "TEXT"),
         ("course",     "ano",              "VARCHAR(10)"),
         ("course",     "extra_data",       "TEXT"),
-        ("course",     "venda_modalidade", "VARCHAR(10)"),
+        ("course",     "venda_modalidade", "VARCHAR(100)"),
         ("course",     "data_finalizacao", "DATE"),
         ("course",     "link_video",       "TEXT"),
         ("course",     "limite_parcelas",  "VARCHAR(10)"),
@@ -4012,6 +4047,17 @@ def _run_migrations():
                 else:
                     sql = f'ALTER TABLE {table} ADD COLUMN {col} {dtype}'
                 conn.execute(db.text(sql))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        # venda_modalidade nasceu VARCHAR(10) (só "link"/"site"); agora aceita
+        # opções com nome livre e mais longo, então alarga a coluna existente
+        if is_pg:
+            try:
+                conn.execute(db.text('ALTER TABLE course ALTER COLUMN venda_modalidade TYPE VARCHAR(100)'))
                 conn.commit()
             except Exception:
                 try:
