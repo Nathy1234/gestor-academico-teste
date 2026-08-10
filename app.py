@@ -429,6 +429,21 @@ def log_action(user_id, username, action, entity, entity_id, detail=''):
     db.session.add(entry)
     db.session.commit()
 
+def _resumo_mudancas(antes, depois, labels):
+    """Compara os valores de campos simples antes/depois de uma edição e monta
+    um texto tipo 'Campo: "antigo" -> "novo"; ...' pra usar no histórico —
+    em vez de só registrar que algo foi editado, mostra o que mudou."""
+    partes = []
+    for campo, label in labels.items():
+        va = '' if antes.get(campo) is None else str(antes.get(campo))
+        vn = '' if depois.get(campo) is None else str(depois.get(campo))
+        if va.strip() == vn.strip():
+            continue
+        va_show = (va.strip() or '—')[:60]
+        vn_show = (vn.strip() or '—')[:60]
+        partes.append(f'{label}: "{va_show}" → "{vn_show}"')
+    return '; '.join(partes)
+
 BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
 
 def _serializar_valor(v):
@@ -1056,11 +1071,22 @@ def curso_detalhe(id):
     extra = json.loads(c.extra_data) if c.extra_data else {}
     return render_template('curso_detalhe.html', c=c, disc=disc, logs=logs, extra=extra)
 
+CAMPOS_CURSO_LABEL = {
+    'nome': 'Nome', 'tipo': 'Tipo', 'area': 'Área', 'horas': 'Carga Horária',
+    'meses': 'Duração', 'valor': 'Valor', 'link_venda': 'Link de Venda',
+    'descricao': 'Descrição da Página de Venda', 'obs': 'Observações',
+    'status': 'Status', 'cupom': 'Cupom', 'dono': 'Dono/Professor',
+    'ano': 'Ano', 'insersor': 'Insersor',
+}
+
 @app.route('/cursos/<int:id>/editar', methods=['GET','POST'])
 @editor_required
 def curso_editar(id):
     c = Course.query.get_or_404(id)
     if request.method == 'POST':
+        antes = {campo: getattr(c, campo) for campo in CAMPOS_CURSO_LABEL}
+        n_imagens_antes = len((json.loads(c.extra_data) if c.extra_data else {}).get('imagens', []))
+        n_disc_antes = Discipline.query.filter_by(course_id=id).count()
         old_nome = c.nome
         d = request.form
         c.nome=d['nome']; c.tipo=d['tipo']; c.area=d.get('area','')
@@ -1107,7 +1133,18 @@ def curso_editar(id):
                 )
                 db.session.add(dd)
         db.session.commit()
-        log_action(session['user_id'], session['username'], 'editar', 'course', id, f'{old_nome} → {c.nome}')
+        depois = {campo: getattr(c, campo) for campo in CAMPOS_CURSO_LABEL}
+        detalhe = _resumo_mudancas(antes, depois, CAMPOS_CURSO_LABEL)
+        n_disc_depois = Discipline.query.filter_by(course_id=id).count()
+        extras = []
+        if n_imagens_antes != len(imagens):
+            extras.append(f'Imagens/Links de Capa: {n_imagens_antes} → {len(imagens)}')
+        if n_disc_antes != n_disc_depois:
+            extras.append(f'Disciplinas: {n_disc_antes} → {n_disc_depois}')
+        if extras:
+            detalhe = (detalhe + '; ' if detalhe else '') + '; '.join(extras)
+        log_action(session['user_id'], session['username'], 'editar', 'course', id,
+                   detalhe or 'Nenhum campo alterado')
         flash('Curso atualizado!', 'success')
         if d.get('from_page') == 'matrizes':
             return redirect(url_for('matrizes'))
@@ -2903,9 +2940,10 @@ def backup_restaurar_upload():
 
 def arquivar_logs_antigos():
     """Arquiva por e-mail e remove da tabela ativa os logs de auditoria com mais
-    de 6 meses — não perde o histórico, só tira da tabela usada no dia a dia
-    para o sistema não ficar sobrecarregado."""
-    limite = datetime.utcnow() - timedelta(days=180)
+    de 1 mês — não perde o histórico (ele continua tanto no e-mail de arquivo
+    quanto dentro dos backups diários completos), só tira da tabela usada no
+    dia a dia para o sistema não ficar sobrecarregado."""
+    limite = datetime.utcnow() - timedelta(days=30)
     antigos = AuditLog.query.filter(AuditLog.timestamp < limite).all()
     if not antigos:
         return 0
@@ -2924,8 +2962,9 @@ def arquivar_logs_antigos():
         enviar_email_com_anexo(
             destino,
             f'Logs arquivados — Gestor Acadêmico — {ts}',
-            f'{len(antigos)} registro(s) de histórico com mais de 6 meses foram arquivados e removidos '
-            'da tabela ativa para não sobrecarregar o sistema. O anexo contém todos eles em JSON.',
+            f'{len(antigos)} registro(s) de histórico com mais de 1 mês foram arquivados e removidos '
+            'da tabela ativa para não sobrecarregar o sistema. O anexo contém todos eles em JSON — '
+            'e eles também continuam preservados nos backups diários completos.',
             conteudo, fname,
         )
 
