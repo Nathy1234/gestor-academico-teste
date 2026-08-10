@@ -422,6 +422,19 @@ textarea { resize: vertical; min-height: 80px; }
 .btn-del-row:hover { background: #fee2e2; }
 .btn-del-row svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
 
+/* ── IMAGENS DO CURSO ── */
+.img-row {
+  display: grid; grid-template-columns: 1fr 1.4fr 40px;
+  gap: 8px; padding: 8px 16px; align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.img-row:last-child { border-bottom: none; }
+.img-row.header {
+  background: var(--surface-2);
+  font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em;
+}
+.img-row input { padding: 5px 8px; font-size: 12px; }
+
 /* ── DETAIL ── */
 .detail-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
 .detail-field { margin-bottom: 16px; }

@@ -1015,11 +1015,15 @@ def curso_novo():
         # matrix fields passed as JSON string
         if d.get('disciplinas_json'):
             extra['disciplinas'] = json.loads(d['disciplinas_json'])
+        imagens = [img for img in json.loads(d.get('imagens_json','[]') or '[]')
+                   if img.get('url','').strip()]
+        if imagens:
+            extra['imagens'] = imagens
         c = Course(
             nome=d['nome'], tipo=d['tipo'], area=d.get('area',''),
             horas=d.get('horas',''), meses=d.get('meses',''), valor=d.get('valor',''),
             link_venda=d.get('link_venda',''), descricao=d.get('descricao',''),
-            link_imagem=d.get('link_imagem',''), insersor=','.join(d.getlist('insersores')) or session['username'],
+            link_imagem=imagens[0]['url'] if imagens else '', insersor=','.join(d.getlist('insersores')) or session['username'],
             obs=d.get('obs',''), status=d.get('status','em_edicao'),
             ano=d.get('ano',''), cupom=d.get('cupom',''), dono=d.get('dono',''),
             extra_data=json.dumps(extra, ensure_ascii=False),
@@ -1062,7 +1066,14 @@ def curso_editar(id):
         c.nome=d['nome']; c.tipo=d['tipo']; c.area=d.get('area','')
         c.horas=d.get('horas',''); c.meses=d.get('meses',''); c.valor=d.get('valor','')
         c.link_venda=d.get('link_venda',''); c.descricao=d.get('descricao','')
-        c.link_imagem=d.get('link_imagem',''); c.obs=d.get('obs','')
+        c.obs=d.get('obs','')
+        imagens = [img for img in json.loads(d.get('imagens_json','[]') or '[]')
+                   if img.get('url','').strip()]
+        extra_atual = json.loads(c.extra_data) if c.extra_data else {}
+        if imagens: extra_atual['imagens'] = imagens
+        else: extra_atual.pop('imagens', None)
+        c.extra_data = json.dumps(extra_atual, ensure_ascii=False)
+        c.link_imagem = imagens[0]['url'] if imagens else ''
         novo_status = d.get('status', c.status)
         # Somente admin pode publicar (ativo); colaboradores podem marcar como finalizado no máximo
         if novo_status == 'ativo' and session.get('role') != 'admin':
@@ -1105,9 +1116,12 @@ def curso_editar(id):
     disc_json = [{'modulo': d.modulo, 'ordem': d.ordem, 'nome': d.nome, 'carga': d.carga,
                   'professor': d.professor, 'titulacao': d.titulacao, 'cod_moodle': d.cod_moodle}
                  for d in disc]
+    extra_atual = json.loads(c.extra_data) if c.extra_data else {}
+    imagens_json = extra_atual.get('imagens') or ([{'url': c.link_imagem, 'descricao': ''}] if c.link_imagem else [])
     tipos = ['pos','profissionalizante','rapido','pacote','terceiros','evento','pratica_conectada','pratica_estagio','projeto_ambiental','ggbr','integra_edu']
     usuarios = User.query.order_by(User.username).all()
     return render_template('curso_form.html', curso=c, disc=disc, disc_json=disc_json,
+                           imagens_json=imagens_json,
                            tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
 
 @app.route('/cursos/<int:id>/arquivar', methods=['POST'])
