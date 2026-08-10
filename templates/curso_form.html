@@ -18,6 +18,7 @@
   <form method="POST" id="courseForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="disciplinas_json" id="disciplinas_json" value="">
+    <input type="hidden" name="imagens_json" id="imagens_json" value="">
     <input type="hidden" name="from_page" value="{{ request.args.get('from', '') }}">
 
     <div class="card" style="margin-bottom:20px">
@@ -135,10 +136,6 @@
             <input type="text" name="dono" value="{{ curso.dono if curso else '' }}" placeholder="Nome do responsável externo">
           </div>
           <div class="form-group full">
-            <label>Link da Imagem/Capa</label>
-            <input type="text" name="link_imagem" value="{{ curso.link_imagem if curso else '' }}" placeholder="URL da imagem ou SharePoint">
-          </div>
-          <div class="form-group full">
             <label>Descrição da Página de Venda</label>
             <textarea name="descricao" rows="4" placeholder="Texto da página de venda...">{{ curso.descricao if curso else '' }}</textarea>
           </div>
@@ -146,6 +143,28 @@
             <label>Observações</label>
             <textarea name="obs" rows="2" placeholder="Observações internas...">{{ curso.obs if curso else '' }}</textarea>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMAGENS / LINKS DE CAPA -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div class="card-title">Imagens / Links de Capa</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addImagem()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Adicionar Link
+        </button>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="matrix-wrap" style="border:none;border-radius:0">
+          <div class="img-row header">
+            <div>Descrição</div><div>URL da Imagem / SharePoint / Drive</div><div></div>
+          </div>
+          <div id="imagensBody"></div>
+        </div>
+        <div style="padding:10px 16px;color:var(--text-muted);font-size:12px">
+          Cadastre quantos links precisar (ex.: capa do site, banner de divulgação, imagem para redes sociais) — descreva cada um para saber onde usar.
         </div>
       </div>
     </div>
@@ -194,6 +213,12 @@ const mapped = existingDisc.map(d => ({
   cod_moodle: d.cod_moodle || ''
 }));
 initMatrix(mapped);
+
+// Initialize imagens/links de capa with existing data (mínimo 3 linhas para preencher)
+const existingImgs = {{ imagens_json|tojson if imagens_json else '[]' }};
+const imgsInit = existingImgs.map(i => ({ descricao: i.descricao || '', url: i.url || '' }));
+while (imgsInit.length < 3) imgsInit.push({ descricao: '', url: '' });
+initImagens(imgsInit);
 
 // Watch matrix changes to show/hide empty message
 const origRender = renderMatrix;

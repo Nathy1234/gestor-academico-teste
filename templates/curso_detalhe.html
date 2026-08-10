@@ -181,10 +181,17 @@
             <div class="detail-label">Insersor</div>
             <div class="detail-value">{{ c.insersor or '—' }}</div>
           </div>
-          {% if c.link_imagem %}
+          {% set imagens = extra.imagens if extra and extra.imagens else ([{'url': c.link_imagem, 'descricao': ''}] if c.link_imagem else []) %}
+          {% if imagens %}
           <div class="detail-field" style="margin-top:14px">
-            <div class="detail-label">Link da Imagem/Capa</div>
-            <div class="detail-value"><a href="{{ c.link_imagem }}" target="_blank" style="font-size:12px">Ver imagem</a></div>
+            <div class="detail-label">Imagens / Links de Capa</div>
+            <div class="detail-value" style="display:flex;flex-direction:column;gap:4px">
+              {% for img in imagens %}
+              {% if img.url %}
+              <a href="{{ img.url }}" target="_blank" style="font-size:12px">{{ img.descricao or 'Ver imagem' }}{% if img.descricao %} — Ver{% endif %}</a>
+              {% endif %}
+              {% endfor %}
+            </div>
           </div>
           {% endif %}
         </div>

@@ -118,6 +118,43 @@ function updateHidden() {
   if (h) h.value = JSON.stringify(disciplines);
 }
 
+// ── IMAGENS / LINKS DE CAPA ────────────────────────────────────────
+let imagens = [];
+
+function initImagens(existing) {
+  imagens = existing && existing.length ? existing : [];
+  renderImagens();
+}
+
+function renderImagens() {
+  const body = document.getElementById('imagensBody');
+  if (!body) return;
+  body.innerHTML = imagens.map((img, i) => `
+    <div class="img-row">
+      <input type="text" value="${(img.descricao||'').replace(/"/g,'&quot;')}" placeholder="Ex: Capa do site, Banner Instagram..." oninput="updateImg(${i},'descricao',this.value)">
+      <input type="text" value="${(img.url||'').replace(/"/g,'&quot;')}" placeholder="https://..." oninput="updateImg(${i},'url',this.value)">
+      <button type="button" class="btn-del-row" onclick="removeImg(${i})" title="Remover linha">
+        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    </div>
+  `).join('');
+  updateImagensHidden();
+}
+
+function updateImg(i, key, val) { imagens[i][key] = val; updateImagensHidden(); }
+function removeImg(i) { imagens.splice(i, 1); renderImagens(); }
+
+function addImagem() {
+  imagens.push({ descricao:'', url:'' });
+  renderImagens();
+  document.getElementById('imagensBody')?.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function updateImagensHidden() {
+  const h = document.getElementById('imagens_json');
+  if (h) h.value = JSON.stringify(imagens);
+}
+
 // ── CONFIRM ACTIONS ──────────────────────────────────────────────
 document.addEventListener('click', e => {
   const btn = e.target.closest('[data-confirm]');
