@@ -265,6 +265,7 @@ class Course(db.Model):
     data_finalizacao = db.Column(db.Date)         # data de término — só relevante p/ tipo=evento
     link_video       = db.Column(db.Text)         # vídeo exibido na página de venda
     limite_parcelas  = db.Column(db.String(10))   # limite de parcelas — sobretudo cursos de pós
+    via_formulario   = db.Column(db.Boolean, default=False)  # veio do formulário público de solicitação
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -641,8 +642,11 @@ def inject_notificacoes():
 
     # Eventos com data de finalização vencendo — só quem pode editar cursos vê
     eventos_pendentes = []
+    solicitacoes_pendentes = []
     if u.role in ('admin', 'editor'):
         eventos_pendentes = _eventos_pendentes_ocultar()
+        solicitacoes_pendentes = Course.query.filter_by(via_formulario=True, status='em_edicao')\
+            .order_by(Course.created_at.desc()).all()
 
     return {
         'notif_count': len(pendentes),
@@ -651,6 +655,8 @@ def inject_notificacoes():
         'admin_finalizado_count': len(admin_finalizado),
         'eventos_pendentes': eventos_pendentes,
         'eventos_pendentes_count': len(eventos_pendentes),
+        'solicitacoes_pendentes': solicitacoes_pendentes,
+        'solicitacoes_pendentes_count': len(solicitacoes_pendentes),
         'can_cupons': u.can_manage_cupons(),
         'can_reembolsos': u.can_manage_reembolsos(),
         'can_historico': u.can_view_historico(),
@@ -741,6 +747,57 @@ def resetar_senha(token):
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+# ─── FORMULÁRIO PÚBLICO DE SOLICITAÇÃO (sem login) ──────────────────────────
+# Link pra mandar pra quem pede criação de evento — preenche e cai direto
+# como um curso rascunho (em_edicao) no sistema, sem precisar de conta.
+
+@app.route('/solicitar/evento', methods=['GET', 'POST'])
+@limiter.limit("8 per hour", methods=['POST'])
+def solicitar_evento():
+    if request.method == 'POST':
+        d = request.form
+        nome = d.get('nome', '').strip()
+        if not nome:
+            flash('Preencha ao menos o nome do evento.', 'danger')
+            return render_template('solicitar_evento.html')
+
+        tem_cupom = d.get('tem_cupom', '')
+        cupom_pct = d.get('cupom_percentual', '').strip()
+        cronograma = d.get('cronograma', '').strip()
+        data_certificado = d.get('data_certificado', '').strip()
+        banco_questoes = d.get('banco_questoes', '')
+
+        obs_partes = [
+            f'Solicitado via formulário público em {datetime.now().strftime("%d/%m/%Y %H:%M")}.',
+            f'Solicitante: {d.get("solicitante_nome","").strip() or "—"} ({d.get("solicitante_contato","").strip() or "—"})',
+            '',
+            f'Cupom: {"Sim — " + cupom_pct + "%" if tem_cupom == "sim" else ("Não" if tem_cupom == "nao" else "—")}',
+            f'Data prevista p/ emissão do certificado: {data_certificado or "—"}',
+            f'Banco de questões: {"Sim" if banco_questoes == "sim" else ("Não" if banco_questoes == "nao" else "—")}',
+        ]
+        if cronograma:
+            obs_partes += ['', 'Cronograma informado:', cronograma]
+
+        extra = {}
+        capa_url = d.get('capa_url', '').strip()
+        if capa_url:
+            extra['imagens'] = [{'descricao': 'Capa sugerida pelo solicitante', 'url': capa_url}]
+
+        c = Course(
+            nome=nome, tipo='evento', status='em_edicao',
+            horas=d.get('horas', '').strip(), valor=d.get('valor', '').strip(),
+            data_finalizacao=_parse_data_form(d.get('prazo_entrega', '')),
+            link_imagem=capa_url, obs='\n'.join(obs_partes),
+            extra_data=json.dumps(extra, ensure_ascii=False),
+            via_formulario=True,
+        )
+        db.session.add(c)
+        db.session.commit()
+        log_action(None, d.get('solicitante_nome', '').strip() or 'solicitação externa',
+                   'criar_via_formulario', 'course', c.id, c.nome)
+        return render_template('solicitar_evento.html', enviado=True)
+    return render_template('solicitar_evento.html')
 
 @app.route('/minha-conta', methods=['GET','POST'])
 @login_required
@@ -1129,7 +1186,8 @@ def curso_detalhe(id):
     logs = AuditLog.query.filter_by(entity='course', entity_id=id)\
                          .order_by(AuditLog.timestamp.desc()).all()
     extra = json.loads(c.extra_data) if c.extra_data else {}
-    return render_template('curso_detalhe.html', c=c, disc=disc, logs=logs, extra=extra)
+    cupom_obj = Coupon.query.filter_by(nome=c.cupom).first() if c.cupom else None
+    return render_template('curso_detalhe.html', c=c, disc=disc, logs=logs, extra=extra, cupom_obj=cupom_obj)
 
 CAMPOS_CURSO_LABEL = {
     'nome': 'Nome', 'tipo': 'Tipo', 'area': 'Área', 'horas': 'Carga Horária',
@@ -2892,6 +2950,16 @@ def _perms_from_form(d):
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
+@app.route('/usuarios/<int:id>/redefinir-senha', methods=['POST'])
+@admin_required
+def usuario_redefinir_senha(id):
+    u = User.query.get_or_404(id)
+    u.must_change_password = True
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'redefinir_senha', 'user', id, u.username)
+    flash(f'"{u.username}" precisará trocar a senha no próximo login.', 'success')
+    return redirect(url_for('usuarios'))
+
 @app.route('/usuarios/<int:id>/excluir', methods=['POST'])
 @admin_required
 def usuario_excluir(id):
@@ -4033,6 +4101,7 @@ def _run_migrations():
         ("course",     "data_finalizacao", "DATE"),
         ("course",     "link_video",       "TEXT"),
         ("course",     "limite_parcelas",  "VARCHAR(10)"),
+        ("course",     "via_formulario",   "BOOLEAN DEFAULT false"),
         ("discipline", "cod_moodle",       "VARCHAR(50)"),
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),

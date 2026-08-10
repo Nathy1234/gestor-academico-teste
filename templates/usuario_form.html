@@ -63,6 +63,17 @@
             </select>
             <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Personalize com as permissões ao lado.</div>
           </div>
+          {% if user %}
+          <div style="margin-bottom:24px">
+            <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px"
+                    onclick="marcarTrocaSenha({{ user.id }}, '{{ user.username }}')">
+              Marcar para trocar senha no próximo login
+            </button>
+            {% if user.must_change_password %}
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Já está marcado — vai trocar no próximo login.</div>
+            {% endif %}
+          </div>
+          {% endif %}
           <div style="display:flex;gap:10px">
             <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
             <button type="submit" class="btn btn-primary">Salvar</button>
@@ -188,6 +199,12 @@
 </style>
 
 <script>
+function marcarTrocaSenha(userId, username) {
+  if (!confirm(`${username} vai precisar trocar a senha no próximo login. Confirmar?`)) return;
+  fetch(`/usuarios/${userId}/redefinir-senha`, { method: 'POST' })
+    .then(() => location.reload());
+}
+
 const EDITOR_DEFAULTS = {
   cursos_editar: true, cursos_excluir: false,
   cupons_gerenciar: true, reembolsos_gerenciar: true,

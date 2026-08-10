@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solicitar Evento — Gestor Acadêmico</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ versao }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function() {
+      const t = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+<div style="max-width:720px;margin:0 auto;padding:32px 20px 60px">
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="font-weight:700;font-size:20px">Gestor Acadêmico</div>
+    <div style="color:var(--text-muted);font-size:13px">Solicitação de Criação de Evento</div>
+  </div>
+
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+      <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if enviado %}
+  <div class="card" style="text-align:center;padding:40px 24px">
+    <div style="font-size:40px;margin-bottom:12px">✅</div>
+    <div style="font-weight:700;font-size:18px;margin-bottom:8px">Solicitação recebida!</div>
+    <div style="color:var(--text-muted);font-size:14px">
+      Os dados já caíram no sistema como rascunho. A equipe vai revisar e publicar o evento.
+      Você pode fechar esta página.
+    </div>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Dados do Evento</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
+        Preencha o que souber — o que ficar em branco a equipe completa depois.
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Seu nome</label>
+            <input type="text" name="solicitante_nome" placeholder="Quem está pedindo">
+          </div>
+          <div class="form-group">
+            <label>Seu e-mail ou WhatsApp</label>
+            <input type="text" name="solicitante_contato" placeholder="Pra equipe falar com você se precisar">
+          </div>
+          <div class="form-group full">
+            <label>Nome do Evento *</label>
+            <input type="text" name="nome" required placeholder="Nome completo do evento">
+          </div>
+          <div class="form-group full">
+            <label>Capa (760x480px) — se já tiver uma pronta, cole o link aqui</label>
+            <input type="url" name="capa_url" placeholder="https://... (opcional — pode deixar em branco e a equipe providencia)">
+          </div>
+          <div class="form-group">
+            <label>Quantas horas</label>
+            <input type="text" name="horas" placeholder="Ex: 20h">
+          </div>
+          <div class="form-group">
+            <label>Valor</label>
+            <input type="text" name="valor" placeholder="Ex: 297">
+          </div>
+          <div class="form-group">
+            <label>Vai ter cupom?</label>
+            <select name="tem_cupom">
+              <option value="">— Não sei —</option>
+              <option value="sim">Sim</option>
+              <option value="nao">Não</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Se sim, qual a porcentagem?</label>
+            <input type="text" name="cupom_percentual" placeholder="Ex: 10">
+          </div>
+          <div class="form-group full">
+            <label>Se tiver cronograma, copie e cole aqui</label>
+            <textarea name="cronograma" rows="6" placeholder="Cole o cronograma do evento..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Data prevista para emissão do certificado</label>
+            <input type="date" name="data_certificado">
+          </div>
+          <div class="form-group">
+            <label>Vai ter banco de questões?</label>
+            <select name="banco_questoes">
+              <option value="">— Não sei —</option>
+              <option value="sim">Sim</option>
+              <option value="nao">Não</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>Prazo para entrega/finalização desse evento</label>
+            <input type="date" name="prazo_entrega">
+          </div>
+        </div>
+        <div style="margin-top:20px;text-align:right">
+          <button type="submit" class="btn btn-primary">Enviar Solicitação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -10,6 +10,25 @@
   </div>
 
   <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Formulário de Solicitação de Evento</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+        Mande esse link pra quem precisa pedir um evento novo — a pessoa preenche sem precisar de login,
+        e os dados já entram no sistema como rascunho (aparece no sino de notificações pra você revisar).
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="linkSolicitarEvento" readonly value="{{ request.url_root.rstrip('/') }}{{ url_for('solicitar_evento') }}"
+               style="flex:1;font-size:13px" onclick="this.select()">
+        <button type="button" class="btn btn-secondary" onclick="
+          navigator.clipboard.writeText(document.getElementById('linkSolicitarEvento').value);
+          this.textContent='Copiado!'; setTimeout(()=>this.textContent='Copiar link', 1500);">
+          Copiar link
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
     <div class="card-header"><div class="card-title">Links de Vídeo da Página de Venda</div></div>
     <div class="card-body">
       <form method="POST" class="form-grid">
