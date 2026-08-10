@@ -206,7 +206,7 @@
             <div class="log-dot"></div>
             <div>
               <div class="log-action">{{ log.username }} — {{ log.action }}</div>
-              <div class="log-meta">{{ log.timestamp.strftime('%d/%m/%Y %H:%M') }}{% if log.detail %} · {{ log.detail[:50] }}{% endif %}</div>
+              <div class="log-meta">{{ log.timestamp.strftime('%d/%m/%Y %H:%M') }}{% if log.detail %} · {{ log.detail }}{% endif %}</div>
             </div>
           </div>
           {% else %}
