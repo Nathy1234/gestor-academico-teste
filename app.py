@@ -858,7 +858,7 @@ def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas
             sql_func.lower(Course.insersor).like(f'%,{ins},%'),
         ))
     if busca:    q = q.filter(Course.nome.ilike(f'%{busca}%'))
-    lista = q.order_by(Course.nome).all()
+    lista = q.order_by(Course.created_at.desc(), Course.id.desc()).all()
 
     # "horas" é texto livre na planilha (ex.: "180", "20h", "-"), então o
     # filtro por faixa é feito em Python extraindo o número de cada curso.
