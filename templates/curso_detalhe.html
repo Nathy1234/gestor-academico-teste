@@ -11,7 +11,7 @@
         <a href="{{ url_for('cursos', tipo=c.tipo) }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cursos</a>
         {% endif %}
         <span class="badge badge-{{ c.tipo }}">{{ c.tipo|replace('_',' ')|title }}</span>
-        <span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span>
+        <span class="badge badge-{{ c.status }}">{{ c.status_label }}</span>
       </div>
       <div class="page-title">{{ c.nome }}</div>
       <div class="page-subtitle">Inserido por {{ c.insersor or '—' }} em {{ c.created_at.strftime('%d/%m/%Y') }}</div>
@@ -80,12 +80,35 @@
               <div class="detail-label">Dono / Professor</div>
               <div class="detail-value">{{ c.dono or '—' }}</div>
             </div>
+            {% if c.limite_parcelas %}
+            <div class="detail-field">
+              <div class="detail-label">Limite de Parcelas</div>
+              <div class="detail-value">{{ c.limite_parcelas }}</div>
+            </div>
+            {% endif %}
+            {% if c.tipo == 'evento' %}
+            <div class="detail-field">
+              <div class="detail-label">Venda por</div>
+              <div class="detail-value">{{ {'link':'Link','site':'Site'}.get(c.venda_modalidade, '—') }}</div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-label">Data de Finalização</div>
+              <div class="detail-value">{{ c.data_finalizacao.strftime('%d/%m/%Y') if c.data_finalizacao else '—' }}</div>
+            </div>
+            {% endif %}
           </div>
 
           {% if c.link_venda %}
           <div class="detail-field" style="margin-top:16px">
             <div class="detail-label">Link da Página de Venda</div>
             <div class="detail-value"><a href="{{ c.link_venda }}" target="_blank">{{ c.link_venda }}</a></div>
+          </div>
+          {% endif %}
+
+          {% if c.link_video %}
+          <div class="detail-field" style="margin-top:16px">
+            <div class="detail-label">Link do Vídeo</div>
+            <div class="detail-value"><a href="{{ c.link_video }}" target="_blank">{{ c.link_video }}</a></div>
           </div>
           {% endif %}
 

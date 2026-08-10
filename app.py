@@ -261,9 +261,21 @@ class Course(db.Model):
     dono          = db.Column(db.Text)        # para cursos terceiros
     ano           = db.Column(db.String(10))  # ano de criação/edição do curso
     extra_data    = db.Column(db.Text)        # JSON com dados extras (matriz, disciplinas, etc.)
+    venda_modalidade = db.Column(db.String(10))  # 'link' ou 'site' — só relevante p/ tipo=evento
+    data_finalizacao = db.Column(db.Date)         # data de término — só relevante p/ tipo=evento
+    link_video       = db.Column(db.Text)         # vídeo exibido na página de venda
+    limite_parcelas  = db.Column(db.String(10))   # limite de parcelas — sobretudo cursos de pós
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    @property
+    def status_label(self):
+        """Rótulo exibido nos badges — para eventos ativos, mostra 'Em
+        Andamento' em vez de 'Ativo' (mesmo status internamente)."""
+        if self.tipo == 'evento' and self.status == 'ativo':
+            return 'Em Andamento'
+        return (self.status or '').replace('_', ' ').title()
 
 class Discipline(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
@@ -365,7 +377,35 @@ class BackupRecord(db.Model):
     tipo       = db.Column(db.String(20), default='auto')  # auto, manual
     conteudo   = db.Column(db.LargeBinary)  # o .zip do backup, guardado no próprio banco
 
+class VideoPreset(db.Model):
+    """Links de vídeo usados com frequência na página de venda dos cursos
+    (institucional, dos profissionalizantes/rápidos, da pós etc.) — editável
+    pelo admin em vez de fixo no código, pra poder trocar quando precisar."""
+    id     = db.Column(db.Integer, primary_key=True)
+    label  = db.Column(db.String(200), nullable=False)
+    url    = db.Column(db.Text, nullable=False)
+    ordem  = db.Column(db.Integer, default=0)
+
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
+
+def _parse_data_form(valor):
+    """Converte string 'YYYY-MM-DD' de um <input type=date> em date. Vazio -> None."""
+    valor = (valor or '').strip()
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(valor, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+def _eventos_pendentes_ocultar():
+    """Eventos 'em andamento' (status=ativo) cuja data de finalização já
+    chegou ou é amanhã — precisam ser ocultados manualmente da plataforma."""
+    limite = date.today() + timedelta(days=1)
+    return Course.query.filter(
+        Course.tipo == 'evento', Course.status == 'ativo',
+        Course.data_finalizacao != None, Course.data_finalizacao <= limite
+    ).order_by(Course.data_finalizacao).all()
 
 def hash_pw(pw): return generate_password_hash(pw)
 
@@ -592,11 +632,18 @@ def inject_notificacoes():
         admin_finalizado = Course.query.filter_by(status='finalizado')\
             .order_by(Course.updated_at.desc()).limit(15).all()
 
+    # Eventos com data de finalização vencendo — só quem pode editar cursos vê
+    eventos_pendentes = []
+    if u.role in ('admin', 'editor'):
+        eventos_pendentes = _eventos_pendentes_ocultar()
+
     return {
         'notif_count': len(pendentes),
         'notif_list': notif_list,
         'admin_finalizado': admin_finalizado,
         'admin_finalizado_count': len(admin_finalizado),
+        'eventos_pendentes': eventos_pendentes,
+        'eventos_pendentes_count': len(eventos_pendentes),
         'can_cupons': u.can_manage_cupons(),
         'can_reembolsos': u.can_manage_reembolsos(),
         'can_historico': u.can_view_historico(),
@@ -976,7 +1023,7 @@ def cursos_exportar_excel():
             curso.nome,
             TIPO_LABELS.get(curso.tipo, curso.tipo),
             curso.area or '',
-            curso.status.replace('_',' ').title(),
+            curso.status_label,
             curso.horas or '',
             curso.meses or '',
             curso.valor or '',
@@ -1041,6 +1088,9 @@ def curso_novo():
             link_imagem=imagens[0]['url'] if imagens else '', insersor=','.join(d.getlist('insersores')) or session['username'],
             obs=d.get('obs',''), status=d.get('status','em_edicao'),
             ano=d.get('ano',''), cupom=d.get('cupom',''), dono=d.get('dono',''),
+            venda_modalidade=d.get('venda_modalidade','') or None,
+            data_finalizacao=_parse_data_form(d.get('data_finalizacao','')),
+            link_video=d.get('link_video',''), limite_parcelas=d.get('limite_parcelas',''),
             extra_data=json.dumps(extra, ensure_ascii=False),
             created_by=session['user_id']
         )
@@ -1059,7 +1109,9 @@ def curso_novo():
         flash('Curso criado com sucesso!', 'success')
         return redirect(url_for('curso_detalhe', id=c.id))
     usuarios = User.query.order_by(User.username).all()
-    return render_template('curso_form.html', curso=None, tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
+    video_presets = VideoPreset.query.order_by(VideoPreset.ordem).all()
+    return render_template('curso_form.html', curso=None, tipos=TIPOS_CURSO, areas=AREAS_VALIDAS,
+                           usuarios=usuarios, video_presets=video_presets)
 
 @app.route('/cursos/<int:id>')
 @login_required
@@ -1077,6 +1129,8 @@ CAMPOS_CURSO_LABEL = {
     'descricao': 'Descrição da Página de Venda', 'obs': 'Observações',
     'status': 'Status', 'cupom': 'Cupom', 'dono': 'Dono/Professor',
     'ano': 'Ano', 'insersor': 'Insersor',
+    'venda_modalidade': 'Venda por', 'data_finalizacao': 'Data de Finalização',
+    'link_video': 'Link do Vídeo', 'limite_parcelas': 'Limite de Parcelas',
 }
 
 @app.route('/cursos/<int:id>/editar', methods=['GET','POST'])
@@ -1100,6 +1154,10 @@ def curso_editar(id):
         else: extra_atual.pop('imagens', None)
         c.extra_data = json.dumps(extra_atual, ensure_ascii=False)
         c.link_imagem = imagens[0]['url'] if imagens else ''
+        c.venda_modalidade = d.get('venda_modalidade','') or None
+        c.data_finalizacao = _parse_data_form(d.get('data_finalizacao',''))
+        c.link_video = d.get('link_video','')
+        c.limite_parcelas = d.get('limite_parcelas','')
         novo_status = d.get('status', c.status)
         # Somente admin pode publicar (ativo); colaboradores podem marcar como finalizado no máximo
         if novo_status == 'ativo' and session.get('role') != 'admin':
@@ -1157,8 +1215,9 @@ def curso_editar(id):
     imagens_json = extra_atual.get('imagens') or ([{'url': c.link_imagem, 'descricao': ''}] if c.link_imagem else [])
     tipos = ['pos','profissionalizante','rapido','pacote','terceiros','evento','pratica_conectada','pratica_estagio','projeto_ambiental','ggbr','integra_edu']
     usuarios = User.query.order_by(User.username).all()
+    video_presets = VideoPreset.query.order_by(VideoPreset.ordem).all()
     return render_template('curso_form.html', curso=c, disc=disc, disc_json=disc_json,
-                           imagens_json=imagens_json,
+                           imagens_json=imagens_json, video_presets=video_presets,
                            tipos=TIPOS_CURSO, areas=AREAS_VALIDAS, usuarios=usuarios)
 
 @app.route('/cursos/<int:id>/arquivar', methods=['POST'])
@@ -2601,7 +2660,7 @@ def matrizes_exportar_excel():
             curso.nome,
             TIPO_LABELS.get(curso.tipo, curso.tipo),
             curso.area or '',
-            curso.status.replace('_',' ').title(),
+            curso.status_label,
             f'{total_ch}h' if total_ch else (curso.horas or ''),
             curso.meses or '',
             curso.valor or '',
@@ -2647,7 +2706,7 @@ def matrizes_exportar_excel():
                 curso.nome,
                 TIPO_LABELS.get(curso.tipo, curso.tipo),
                 curso.area or '',
-                curso.status.replace('_',' ').title(),
+                curso.status_label,
                 curso.insersor or '',
                 d.modulo or '',
                 d.ordem,
@@ -2973,6 +3032,52 @@ def arquivar_logs_antigos():
         db.session.delete(a)
     db.session.commit()
     return qtd
+
+@app.route('/admin/video-presets', methods=['GET', 'POST'])
+@admin_required
+def video_presets():
+    if request.method == 'POST':
+        label = request.form.get('label', '').strip()
+        url = request.form.get('url', '').strip()
+        if label and url:
+            maior_ordem = db.session.query(db.func.max(VideoPreset.ordem)).scalar() or 0
+            db.session.add(VideoPreset(label=label, url=url, ordem=maior_ordem + 1))
+            db.session.commit()
+            flash('Link de vídeo adicionado!', 'success')
+        else:
+            flash('Preencha a descrição e o link.', 'danger')
+        return redirect(url_for('video_presets'))
+    presets = VideoPreset.query.order_by(VideoPreset.ordem).all()
+    return render_template('video_presets.html', presets=presets)
+
+@app.route('/admin/video-presets/<int:id>/excluir', methods=['POST'])
+@admin_required
+def video_preset_excluir(id):
+    p = VideoPreset.query.get_or_404(id)
+    db.session.delete(p)
+    db.session.commit()
+    flash('Link de vídeo removido.', 'success')
+    return redirect(url_for('video_presets'))
+
+@app.route('/api/eventos/pendentes-ocultar')
+@login_required
+def api_eventos_pendentes_ocultar():
+    """Consultado via JS (a cada 30 min) pra disparar a notificação do
+    navegador lembrando de ocultar eventos que já terminaram/terminam amanhã."""
+    u = User.query.get(session['user_id'])
+    if not u or u.role not in ('admin', 'editor'):
+        return jsonify({'eventos': []})
+    hoje = date.today()
+    eventos = _eventos_pendentes_ocultar()
+    return jsonify({'eventos': [
+        {
+            'id': e.id, 'nome': e.nome,
+            'data_finalizacao': e.data_finalizacao.isoformat(),
+            'vencido': e.data_finalizacao <= hoje,
+            'url': url_for('curso_editar', id=e.id),
+        }
+        for e in eventos
+    ]})
 
 @app.route('/cron/backup')
 def cron_backup():
@@ -3517,6 +3622,13 @@ def seed_data():
         db.session.commit()
     if Course.query.count() == 0:
         _import_excel()
+    if VideoPreset.query.count() == 0:
+        db.session.add_all([
+            VideoPreset(label='Institucional', url='https://youtube.com/watch?v=xeKs2wZgL40', ordem=1),
+            VideoPreset(label='Profissionalizantes / Rápidos', url='https://youtu.be/lT_Ii3nPXfc/', ordem=2),
+            VideoPreset(label='Pós (Jorge)', url='https://youtu.be/0SAlaoAdIc4', ordem=3),
+        ])
+        db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -3882,6 +3994,10 @@ def _run_migrations():
         ("course",     "dono",             "TEXT"),
         ("course",     "ano",              "VARCHAR(10)"),
         ("course",     "extra_data",       "TEXT"),
+        ("course",     "venda_modalidade", "VARCHAR(10)"),
+        ("course",     "data_finalizacao", "DATE"),
+        ("course",     "link_video",       "TEXT"),
+        ("course",     "limite_parcelas",  "VARCHAR(10)"),
         ("discipline", "cod_moodle",       "VARCHAR(50)"),
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),

@@ -104,7 +104,12 @@ function renderMatrix() {
 }
 
 function updateDisc(i, key, val) { disciplines[i][key] = val; updateHidden(); }
-function removeDisc(i) { disciplines.splice(i, 1); renderMatrix(); }
+function removeDisc(i) {
+  const d = disciplines[i];
+  if (d && d.nome && d.nome.trim() && !confirm(`Remover a disciplina "${d.nome}"?`)) return;
+  disciplines.splice(i, 1);
+  renderMatrix();
+}
 
 function addDisc() {
   disciplines.unshift({ modulo:'', ordem: 1, nome:'', carga:'', professor:'', titulacao:'' });
@@ -142,7 +147,13 @@ function renderImagens() {
 }
 
 function updateImg(i, key, val) { imagens[i][key] = val; updateImagensHidden(); }
-function removeImg(i) { imagens.splice(i, 1); renderImagens(); }
+function removeImg(i) {
+  const img = imagens[i];
+  const temConteudo = img && ((img.url && img.url.trim()) || (img.descricao && img.descricao.trim()));
+  if (temConteudo && !confirm('Remover este link de imagem?')) return;
+  imagens.splice(i, 1);
+  renderImagens();
+}
 
 function addImagem() {
   imagens.push({ descricao:'', url:'' });
@@ -168,3 +179,47 @@ document.querySelectorAll('.alert').forEach(a => {
   setTimeout(() => a.style.opacity = '0', 3500);
   setTimeout(() => a.remove(), 4000);
 });
+
+// ── EVENTOS: NOTIFICAÇÃO DE FINALIZAÇÃO ──────────────────────────
+// Avisa (notificação do navegador) 1 dia antes e no dia em que um evento
+// "em andamento" finaliza, lembrando de ocultá-lo da plataforma — continua
+// avisando a cada 30 min enquanto ele não for ocultado manualmente.
+function _formatarDataBR(iso) {
+  const [ano, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+
+function _dispararNotificacoesEventos(eventos) {
+  eventos.forEach(ev => {
+    const dataFmt = _formatarDataBR(ev.data_finalizacao);
+    const msg = ev.vencido
+      ? `"${ev.nome}" já terminou (${dataFmt}) — oculte da plataforma.`
+      : `"${ev.nome}" finaliza amanhã (${dataFmt}) — prepare para ocultar.`;
+    try {
+      new Notification('Evento para ocultar', { body: msg, tag: 'evento-ocultar-' + ev.id });
+    } catch (e) { /* navegador sem suporte a Notification, ignora */ }
+  });
+}
+
+function checarEventosPendentes() {
+  fetch('/api/eventos/pendentes-ocultar')
+    .then(r => r.ok ? r.json() : { eventos: [] })
+    .then(data => {
+      const eventos = data.eventos || [];
+      if (!eventos.length || !('Notification' in window)) return;
+      if (Notification.permission === 'granted') {
+        _dispararNotificacoesEventos(eventos);
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission().then(perm => {
+          if (perm === 'granted') _dispararNotificacoesEventos(eventos);
+        });
+      }
+    })
+    .catch(() => {});
+}
+
+// Só roda em páginas logadas (o sino de notificações só existe no layout logado)
+if (document.getElementById('notifBtn')) {
+  checarEventosPendentes();
+  setInterval(checarEventosPendentes, 30 * 60 * 1000);
+}
