@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.0.8'
+VERSAO = '1.0.9'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -871,7 +871,7 @@ def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas
             sql_func.lower(Course.insersor).like(f'%,{ins},%'),
         ))
     if busca:    q = q.filter(Course.nome.ilike(f'%{busca}%'))
-    lista = q.order_by(Course.nome).all()
+    lista = q.order_by(Course.created_at.desc(), Course.id.desc()).all()
 
     # "horas" é texto livre na planilha (ex.: "180", "20h", "-"), então o
     # filtro por faixa é feito em Python extraindo o número de cada curso.
