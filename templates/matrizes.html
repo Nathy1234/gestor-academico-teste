@@ -148,7 +148,7 @@
             </span>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">
               <span class="badge badge-{{ c.tipo }}" style="font-size:10px">{{ tipo_labels.get(c.tipo, c.tipo) }}</span>
-              <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status|replace('_',' ')|title }}</span>
+              <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status_label }}</span>
               {% if total_ch > 0 or c.horas %}
               <span style="font-size:11px;color:var(--text-muted)">· {{ total_ch ~ 'h' if total_ch > 0 else c.horas }}</span>
               {% endif %}

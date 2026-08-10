@@ -69,20 +69,51 @@
               </option>
               {% endfor %}
               {% if session.role == 'admin' %}
-              <option value="ativo" {% if curso and curso.status=='ativo' %}selected{% endif %}>Ativo (publicado)</option>
+              <option value="ativo" id="statusAtivoOption" {% if curso and curso.status=='ativo' %}selected{% endif %}>Ativo (publicado)</option>
               <option value="externo" {% if curso and curso.status=='externo' %}selected{% endif %}>Externo / Fora da Plataforma</option>
               {% else %}
                 {% if curso and curso.status == 'ativo' %}
-                <option value="ativo" selected disabled>Ativo — somente admin pode alterar</option>
+                <option value="ativo" selected disabled>{% if curso.tipo=='evento' %}Em Andamento{% else %}Ativo{% endif %} — somente admin pode alterar</option>
                 {% elif curso and curso.status == 'externo' %}
                 <option value="externo" selected disabled>Externo — somente admin pode alterar</option>
                 {% endif %}
               {% endif %}
             </select>
           </div>
+          <div class="form-group">
+            <label>Venda por (eventos)</label>
+            <select name="venda_modalidade">
+              <option value="">— Não se aplica —</option>
+              <option value="link" {% if curso and curso.venda_modalidade=='link' %}selected{% endif %}>Link</option>
+              <option value="site" {% if curso and curso.venda_modalidade=='site' %}selected{% endif %}>Site</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Data de Finalização (eventos)</label>
+            <input type="date" name="data_finalizacao"
+                   value="{{ curso.data_finalizacao.isoformat() if curso and curso.data_finalizacao else '' }}">
+          </div>
           <div class="form-group full">
             <label>Link da Página de Venda</label>
             <input type="url" name="link_venda" value="{{ curso.link_venda if curso else '' }}" placeholder="https://www.inovacarreira.com.br/...">
+          </div>
+          <div class="form-group">
+            <label>Link do Vídeo da Página de Venda</label>
+            <select id="videoPresetSelect" onchange="if(this.value) document.getElementsByName('link_video')[0].value = this.value">
+              <option value="">— Escolher um link salvo —</option>
+              {% for vp in video_presets %}
+              <option value="{{ vp.url }}" {% if curso and curso.link_video==vp.url %}selected{% endif %}>{{ vp.label }}</option>
+              {% endfor %}
+            </select>
+            <input type="url" name="link_video" value="{{ curso.link_video if curso else '' }}"
+                   placeholder="https://youtu.be/..." style="margin-top:6px">
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('video_presets') }}" style="font-size:11px;color:var(--text-muted)" target="_blank">Gerenciar links salvos →</a>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label>Limite de Parcelas (Pós, caso haja)</label>
+            <input type="text" name="limite_parcelas" value="{{ curso.limite_parcelas if curso else '' }}" placeholder="Ex: 12x">
           </div>
           <div class="form-group">
             <label>Insersor(es)</label>
@@ -150,7 +181,10 @@
     <!-- IMAGENS / LINKS DE CAPA -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div class="card-title">Imagens / Links de Capa</div>
+        <div>
+          <div class="card-title">Imagens / Links de Capa</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Tamanho recomendado da capa que aparece na página de venda: <strong>760x480px</strong></div>
+        </div>
         <button type="button" class="btn btn-secondary btn-sm" onclick="addImagem()">
           <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Adicionar Link
@@ -228,6 +262,16 @@ renderMatrix = function() {
   if (empty) empty.style.display = disciplines.length ? 'none' : 'block';
 };
 renderMatrix();
+
+// Rótulo do status "ativo" muda pra "Em Andamento" quando o tipo é evento
+function atualizarLabelStatusAtivo() {
+  const tipoSel = document.querySelector('select[name="tipo"]');
+  const opt = document.getElementById('statusAtivoOption');
+  if (!tipoSel || !opt) return;
+  opt.textContent = tipoSel.value === 'evento' ? 'Em Andamento (publicado)' : 'Ativo (publicado)';
+}
+document.querySelector('select[name="tipo"]')?.addEventListener('change', atualizarLabelStatusAtivo);
+atualizarLabelStatusAtivo();
 
 function toggleInsDropdown() {
   const d = document.getElementById('insDropdown');

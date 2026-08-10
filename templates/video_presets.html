@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Links de Vídeo — Gestor{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Links de Vídeo da Página de Venda</div>
+      <div class="page-subtitle">Opções que aparecem pra escolher no campo "Link do Vídeo" ao criar/editar um curso</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Adicionar novo link</div></div>
+    <div class="card-body">
+      <form method="POST" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label>Descrição</label>
+          <input type="text" name="label" placeholder="Ex: Institucional, Pós, Profissionalizantes..." required>
+        </div>
+        <div class="form-group">
+          <label>Link do vídeo</label>
+          <input type="url" name="url" placeholder="https://youtu.be/..." required>
+        </div>
+        <div class="form-group" style="align-self:flex-end">
+          <button type="submit" class="btn btn-primary">Adicionar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Descrição</th><th>Link</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for p in presets %}
+          <tr>
+            <td class="td-name">{{ p.label }}</td>
+            <td><a href="{{ p.url }}" target="_blank">{{ p.url }}</a></td>
+            <td style="white-space:nowrap">
+              <form method="POST" action="{{ url_for('video_preset_excluir', id=p.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-danger"
+                  data-confirm="Remover o link de vídeo &quot;{{ p.label }}&quot;? Cursos que já usam esse link continuam com ele salvo, só sai da lista de opções rápidas.">
+                  Excluir
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum link cadastrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

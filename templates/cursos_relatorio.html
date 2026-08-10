@@ -166,7 +166,7 @@
         <td style="font-weight:600;max-width:280px">{{ c.nome }}</td>
         <td><span class="badge">{{ tipo_labels.get(c.tipo, c.tipo) }}</span></td>
         <td style="font-size:10px;color:#475569">{{ c.area or '—' }}</td>
-        <td><span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span></td>
+        <td><span class="badge badge-{{ c.status }}">{{ c.status_label }}</span></td>
         <td style="white-space:nowrap">{{ c.horas or '—' }}</td>
         <td style="white-space:nowrap">{% if c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</td>
         <td style="font-size:11px">{{ c.insersor or '—' }}</td>

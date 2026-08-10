@@ -104,7 +104,7 @@
              onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text)'">
             {{ c.nome }}
           </a>
-          <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status.replace('_',' ').title() }}</span>
+          <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status_label }}</span>
           <span class="badge badge-{{ c.tipo }}" style="font-size:10px">{{ tipo_label.get(c.tipo, c.tipo) }}</span>
           {% if c.area %}<span style="font-size:11px;color:var(--text-muted)">· {{ c.area }}</span>{% endif %}
         </div>

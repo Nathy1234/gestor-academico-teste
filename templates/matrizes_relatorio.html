@@ -193,7 +193,7 @@
         <div class="course-name">{{ c.nome }}</div>
         <div class="course-badges" style="margin-top:5px">
           <span class="badge">{{ tipo_labels.get(c.tipo, c.tipo) }}</span>
-          <span class="badge badge-{{ c.status }}">{{ c.status|replace('_',' ')|title }}</span>
+          <span class="badge badge-{{ c.status }}">{{ c.status_label }}</span>
           {% if c.area %}<span class="badge" style="background:#f0fdf4;color:#166534">{{ c.area }}</span>{% endif %}
         </div>
       </div>
