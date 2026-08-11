@@ -8,7 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from markupsafe import Markup, escape
 from datetime import datetime, timedelta, date
 from functools import wraps
-import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
+import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd, re as _re
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -48,18 +48,26 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.3.1'
+VERSAO = '1.3.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
 def inject_versao():
     return {'versao': VERSAO, 'no_ar_desde': NO_AR_DESDE}
 
-@app.template_filter('obs_formatada')
-def obs_formatada(texto):
-    """Renderiza texto livre como HTML: linhas com TAB (coladas de uma
-    planilha) viram uma tabela de verdade; o resto vira parágrafos.
-    Todo conteúdo é escapado — texto pode vir de formulário público."""
+_RE_NEGRITO = _re.compile(r'\*\*(.+?)\*\*')
+
+def _aplica_negrito(texto_ja_escapado):
+    """Troca **trecho** (já escapado) por <strong>trecho</strong>. Só mexe
+    em texto que já passou por escape(), então é seguro — não introduz tag nova."""
+    return _RE_NEGRITO.sub(r'<strong>\1</strong>', texto_ja_escapado)
+
+@app.template_filter('texto_formatado')
+def texto_formatado(texto):
+    """Renderiza texto livre (descrição, observações) como HTML: linhas com
+    TAB (coladas de uma planilha) viram uma tabela de verdade, **negrito**
+    vira <strong>, o resto vira parágrafos. Todo conteúdo é escapado antes
+    de qualquer substituição — texto pode vir de formulário público."""
     if not texto:
         return Markup('')
     linhas = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
@@ -69,7 +77,7 @@ def obs_formatada(texto):
 
     def fecha_paragrafo():
         if paragrafo_atual:
-            html = '<br>'.join(str(escape(l)) for l in paragrafo_atual)
+            html = '<br>'.join(_aplica_negrito(str(escape(l))) for l in paragrafo_atual)
             blocos.append('<p class="obs-paragrafo">' + html + '</p>')
             paragrafo_atual.clear()
 
@@ -77,7 +85,7 @@ def obs_formatada(texto):
         if tabela_atual:
             linhas_html = []
             for linha in tabela_atual:
-                celulas = ''.join('<td>' + str(escape(c.strip())) + '</td>' for c in linha.split('\t'))
+                celulas = ''.join('<td>' + _aplica_negrito(str(escape(c.strip()))) + '</td>' for c in linha.split('\t'))
                 linhas_html.append('<tr>' + celulas + '</tr>')
             blocos.append('<table class="obs-tabela">' + ''.join(linhas_html) + '</table>')
             tabela_atual.clear()

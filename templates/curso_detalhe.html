@@ -142,14 +142,14 @@
           {% if c.descricao %}
           <div class="info-section">
             <div class="info-section-title">Descrição da Página de Venda</div>
-            <div class="info-section-body" style="white-space:pre-wrap;line-height:1.6">{{ c.descricao }}</div>
+            <div class="info-section-body obs-conteudo">{{ c.descricao|texto_formatado }}</div>
           </div>
           {% endif %}
 
           {% if c.obs %}
           <div class="info-section">
             <div class="info-section-title">Observações</div>
-            <div class="info-section-body obs-conteudo">{{ c.obs|obs_formatada }}</div>
+            <div class="info-section-body obs-conteudo">{{ c.obs|texto_formatado }}</div>
           </div>
           {% endif %}
         </div>

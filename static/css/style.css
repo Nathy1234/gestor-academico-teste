@@ -400,6 +400,20 @@ input:focus, select:focus, textarea:focus {
 }
 textarea { resize: vertical; min-height: 80px; }
 
+/* ── FORM SECTION (divisória visual pros blocos de texto livre no formulário) ── */
+.form-section { margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--border); }
+.form-section-title { font-size: 14px; font-weight: 600; color: var(--text); text-transform: none; letter-spacing: normal; }
+
+/* ── EDITOR TOOLBAR (negrito + colar planilha) ── */
+.editor-toolbar { display: flex; align-items: center; gap: 8px; margin: 2px 0 2px; }
+.editor-btn {
+  width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text); cursor: pointer; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center; transition: background var(--transition);
+}
+.editor-btn:hover { background: var(--surface-2); }
+.editor-hint { font-size: 11px; color: var(--text-muted); }
+
 .pw-wrap { position: relative; }
 .pw-wrap input[type=password], .pw-wrap input[type=text] { width: 100%; padding-right: 38px; }
 .pw-toggle {

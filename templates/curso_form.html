@@ -97,8 +97,8 @@
             <input type="date" name="data_finalizacao"
                    value="{{ curso.data_finalizacao.isoformat() if curso and curso.data_finalizacao else '' }}">
           </div>
-          <div class="form-group full">
-            <label>Link da Página de Venda</label>
+          <div class="form-group full form-section">
+            <label class="form-section-title">Link da Página de Venda</label>
             <input type="url" name="link_venda" value="{{ curso.link_venda if curso else '' }}" placeholder="https://www.inovacarreira.com.br/...">
           </div>
           <div class="form-group">
@@ -170,13 +170,21 @@
             <label>Dono / Professor (para terceiros)</label>
             <input type="text" name="dono" value="{{ curso.dono if curso else '' }}" placeholder="Nome do responsável externo">
           </div>
-          <div class="form-group full">
-            <label>Descrição da Página de Venda</label>
-            <textarea name="descricao" rows="4" placeholder="Texto da página de venda...">{{ curso.descricao if curso else '' }}</textarea>
+          <div class="form-group full form-section">
+            <label class="form-section-title">Descrição da Página de Venda</label>
+            <div class="editor-toolbar">
+              <button type="button" class="editor-btn" onclick="formatarNegrito('campo_descricao')" title="Negrito no trecho selecionado"><b>N</b></button>
+              <span class="editor-hint">selecione um trecho e clique em N pra negrito · cole células de uma planilha aqui pra virar tabela</span>
+            </div>
+            <textarea name="descricao" id="campo_descricao" rows="4" placeholder="Texto da página de venda..." onpaste="colarComoTabela(event)">{{ curso.descricao if curso else '' }}</textarea>
           </div>
-          <div class="form-group full">
-            <label>Observações</label>
-            <textarea name="obs" rows="4" placeholder="Observações internas... (dica: copie colunas de uma planilha/Excel e cole aqui — elas viram uma tabela na tela do curso)">{{ curso.obs if curso else '' }}</textarea>
+          <div class="form-group full form-section">
+            <label class="form-section-title">Observações</label>
+            <div class="editor-toolbar">
+              <button type="button" class="editor-btn" onclick="formatarNegrito('campo_obs')" title="Negrito no trecho selecionado"><b>N</b></button>
+              <span class="editor-hint">selecione um trecho e clique em N pra negrito · cole células de uma planilha aqui pra virar tabela</span>
+            </div>
+            <textarea name="obs" id="campo_obs" rows="4" placeholder="Observações internas..." onpaste="colarComoTabela(event)">{{ curso.obs if curso else '' }}</textarea>
           </div>
         </div>
       </div>
@@ -295,5 +303,48 @@ document.addEventListener('click', e => {
     dd.style.display = 'none';
   }
 });
+
+// Negrito: envolve o trecho selecionado com **, igual a tela de detalhe interpreta
+function formatarNegrito(id) {
+  const ta = document.getElementById(id);
+  if (!ta) return;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const selecionado = ta.value.slice(start, end);
+  let novoTexto, novoStart, novoEnd;
+  if (selecionado.length >= 4 && selecionado.startsWith('**') && selecionado.endsWith('**')) {
+    novoTexto = selecionado.slice(2, -2);
+    novoStart = start;
+    novoEnd = start + novoTexto.length;
+  } else {
+    const conteudo = selecionado || 'texto';
+    novoTexto = '**' + conteudo + '**';
+    novoStart = start + 2;
+    novoEnd = novoStart + conteudo.length;
+  }
+  ta.setRangeText(novoTexto, start, end, 'end');
+  ta.focus();
+  ta.setSelectionRange(novoStart, novoEnd);
+}
+
+// Cola uma tabela de verdade (Excel/Sheets) como texto separado por TAB,
+// pra tela de detalhe reconhecer e desenhar como tabela. Se o que foi
+// colado não é uma tabela, deixa o navegador colar como texto normal.
+function colarComoTabela(e) {
+  const html = e.clipboardData && e.clipboardData.getData('text/html');
+  if (!html || !/<table/i.test(html)) return;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tabela = doc.querySelector('table');
+  if (!tabela) return;
+  const linhas = Array.from(tabela.querySelectorAll('tr')).map(tr =>
+    Array.from(tr.querySelectorAll('td,th'))
+      .map(cel => cel.textContent.replace(/\r?\n+/g, ' — ').replace(/[ \t]+/g, ' ').trim())
+      .join('\t')
+  ).filter(linha => linha.replace(/\t/g, '').length > 0);
+  if (!linhas.length) return;
+  e.preventDefault();
+  const ta = e.target;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  ta.setRangeText(linhas.join('\n'), start, end, 'end');
+}
 </script>
 {% endblock %}
