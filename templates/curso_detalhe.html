@@ -80,7 +80,7 @@
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><div class="card-title">Informações do Curso</div></div>
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:26px 20px">
             <div class="detail-field">
               <div class="detail-label">Área</div>
               <div class="detail-value">{{ c.area or '—' }}</div>
@@ -126,30 +126,30 @@
           </div>
 
           {% if c.link_venda %}
-          <div class="detail-field" style="margin-top:16px">
-            <div class="detail-label">Link da Página de Venda</div>
-            <div class="detail-value"><a href="{{ c.link_venda }}" target="_blank">{{ c.link_venda }}</a></div>
+          <div class="info-section">
+            <div class="info-section-title">Link da Página de Venda</div>
+            <div class="info-section-body"><a href="{{ c.link_venda }}" target="_blank">{{ c.link_venda }}</a></div>
           </div>
           {% endif %}
 
           {% if c.link_video %}
-          <div class="detail-field" style="margin-top:16px">
-            <div class="detail-label">Link do Vídeo</div>
-            <div class="detail-value"><a href="{{ c.link_video }}" target="_blank">{{ c.link_video }}</a></div>
+          <div class="info-section">
+            <div class="info-section-title">Link do Vídeo</div>
+            <div class="info-section-body"><a href="{{ c.link_video }}" target="_blank">{{ c.link_video }}</a></div>
           </div>
           {% endif %}
 
           {% if c.descricao %}
-          <div class="detail-field" style="margin-top:16px">
-            <div class="detail-label">Descrição da Página de Venda</div>
-            <div class="detail-value" style="white-space:pre-wrap;font-size:13px;line-height:1.6;color:var(--text-muted)">{{ c.descricao }}</div>
+          <div class="info-section">
+            <div class="info-section-title">Descrição da Página de Venda</div>
+            <div class="info-section-body" style="white-space:pre-wrap;line-height:1.6">{{ c.descricao }}</div>
           </div>
           {% endif %}
 
           {% if c.obs %}
-          <div class="detail-field" style="margin-top:16px">
-            <div class="detail-label">Observações</div>
-            <div class="detail-value" style="white-space:pre-wrap;font-size:13px;color:var(--text-muted)">{{ c.obs }}</div>
+          <div class="info-section">
+            <div class="info-section-title">Observações</div>
+            <div class="info-section-body obs-conteudo">{{ c.obs|obs_formatada }}</div>
           </div>
           {% endif %}
         </div>

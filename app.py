@@ -5,6 +5,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from markupsafe import Markup, escape
 from datetime import datetime, timedelta, date
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
@@ -47,12 +48,53 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.3.0'
+VERSAO = '1.3.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
 def inject_versao():
     return {'versao': VERSAO, 'no_ar_desde': NO_AR_DESDE}
+
+@app.template_filter('obs_formatada')
+def obs_formatada(texto):
+    """Renderiza texto livre como HTML: linhas com TAB (coladas de uma
+    planilha) viram uma tabela de verdade; o resto vira parágrafos.
+    Todo conteúdo é escapado — texto pode vir de formulário público."""
+    if not texto:
+        return Markup('')
+    linhas = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    blocos = []
+    tabela_atual = []
+    paragrafo_atual = []
+
+    def fecha_paragrafo():
+        if paragrafo_atual:
+            html = '<br>'.join(str(escape(l)) for l in paragrafo_atual)
+            blocos.append('<p class="obs-paragrafo">' + html + '</p>')
+            paragrafo_atual.clear()
+
+    def fecha_tabela():
+        if tabela_atual:
+            linhas_html = []
+            for linha in tabela_atual:
+                celulas = ''.join('<td>' + str(escape(c.strip())) + '</td>' for c in linha.split('\t'))
+                linhas_html.append('<tr>' + celulas + '</tr>')
+            blocos.append('<table class="obs-tabela">' + ''.join(linhas_html) + '</table>')
+            tabela_atual.clear()
+
+    for linha in linhas:
+        if '\t' in linha:
+            fecha_paragrafo()
+            tabela_atual.append(linha)
+        elif linha.strip() == '':
+            fecha_tabela()
+            fecha_paragrafo()
+        else:
+            fecha_tabela()
+            paragrafo_atual.append(linha)
+    fecha_tabela()
+    fecha_paragrafo()
+    return Markup(''.join(blocos))
 
 AREAS_VALIDAS = [
     'EDUCAÇÃO', 'SAÚDE', 'NEGÓCIOS', 'TECNOLOGIA',

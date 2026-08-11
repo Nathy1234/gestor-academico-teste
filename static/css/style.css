@@ -449,9 +449,25 @@ textarea { resize: vertical; min-height: 80px; }
 /* ── DETAIL ── */
 .detail-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
 .detail-field { margin-bottom: 16px; }
-.detail-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.detail-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
 .detail-value { font-size: 14px; }
 .detail-value a { color: var(--primary); word-break: break-all; }
+
+/* ── INFO SECTION (blocos de texto livre — descrição, observações, links) ── */
+.info-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.info-section-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+.info-section-body {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 16px; font-size: 13px; color: var(--text-muted);
+}
+.info-section-body a { color: var(--primary); word-break: break-all; }
+
+/* ── OBSERVAÇÕES: parágrafos + tabelas coladas de planilha ── */
+.obs-conteudo { display: flex; flex-direction: column; gap: 10px; }
+.obs-paragrafo { line-height: 1.6; }
+.obs-tabela { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.obs-tabela td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; }
+.obs-tabela tr:first-child td { font-weight: 600; color: var(--text); background: var(--surface); }
 
 /* ── ALERTS ── */
 .alert {
