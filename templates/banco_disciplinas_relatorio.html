@@ -29,8 +29,8 @@
       font-size: 13px; font-weight: 500; font-family: inherit;
       transition: all .15s; display: flex; align-items: center; gap: 6px;
     }
-    .toolbar-btn.primary { background: #f55000; color: #fff; }
-    .toolbar-btn.primary:hover { background: #ee4a00; }
+    .toolbar-btn.primary { background: #f2780d; color: #fff; }
+    .toolbar-btn.primary:hover { background: #d9640a; }
     .toolbar-btn.secondary {
       background: rgba(255,255,255,.12); color: #fff;
       border: 1px solid rgba(255,255,255,.2);
@@ -46,7 +46,7 @@
 
     /* ── CABEÇALHO DO RELATÓRIO ── */
     .report-header {
-      border-bottom: 3px solid #f55000;
+      border-bottom: 3px solid #f2780d;
       padding-bottom: 16px;
       margin-bottom: 24px;
     }
@@ -55,7 +55,7 @@
     }
     .report-logo-icon {
       width: 40px; height: 40px;
-      background: linear-gradient(135deg, #f55000, #ee4a00);
+      background: linear-gradient(135deg, #f2780d, #d9640a);
       border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
     }
@@ -68,7 +68,7 @@
       font-size: 12px; color: #78716c;
     }
     .report-meta span { display: flex; align-items: center; gap: 4px; }
-    .report-meta strong { color: #f55000; }
+    .report-meta strong { color: #f2780d; }
 
     /* ── SUMÁRIO ── */
     .summary-grid {
@@ -76,10 +76,10 @@
       margin-bottom: 28px;
     }
     .summary-card {
-      background: #fff3ec; border: 1px solid #ffcfb8; border-radius: 8px;
+      background: #fff4ea; border: 1px solid #ffd4b0; border-radius: 8px;
       padding: 14px 16px;
     }
-    .summary-card .num { font-size: 28px; font-weight: 700; color: #f55000; line-height: 1; }
+    .summary-card .num { font-size: 28px; font-weight: 700; color: #f2780d; line-height: 1; }
     .summary-card .lbl { font-size: 11px; color: #78716c; margin-top: 4px; }
 
     /* ── TABELA PRINCIPAL ── */
@@ -91,15 +91,15 @@
       break-inside: avoid;
     }
     .disc-header {
-      background: #fff3ec;
-      border-left: 4px solid #f55000;
+      background: #fff4ea;
+      border-left: 4px solid #f2780d;
       padding: 10px 14px;
       display: flex; align-items: center; justify-content: space-between;
     }
     .disc-name { font-weight: 700; font-size: 13px; color: #1a110a; }
     .disc-count {
       font-size: 11px; font-weight: 600;
-      background: #f55000; color: #fff;
+      background: #f2780d; color: #fff;
       padding: 2px 9px; border-radius: 20px;
     }
 
@@ -125,7 +125,7 @@
     }
     .tipo-badge.profissionalizante { background: #dbeafe; color: #1e40af; }
     .tipo-badge.rapido            { background: #dcfce7; color: #15803d; }
-    .tipo-badge.pacote            { background: #fff3ec; color: #c23e00; }
+    .tipo-badge.pacote            { background: #fff4ea; color: #b35700; }
     .tipo-badge.evento            { background: #fce7f3; color: #9d174d; }
     .tipo-badge.terceiros         { background: #f5f5f4; color: #57534e; }
 
@@ -147,7 +147,7 @@
       @page {
         size: A4; margin: 15mm 12mm 12mm;
       }
-      .report-header { border-bottom-color: #f55000; }
+      .report-header { border-bottom-color: #f2780d; }
     }
   </style>
 </head>
@@ -247,7 +247,7 @@
             {% else %}—{% endif %}
           </td>
           <td style="color:#78716c;font-size:11px">{{ curso.area if curso and curso.area else '—' }}</td>
-          <td style="font-weight:600;color:#f55000">{{ d.carga or '—' }}</td>
+          <td style="font-weight:600;color:#f2780d">{{ d.carga or '—' }}</td>
           <td style="color:#78716c;font-size:11px">{{ d.modulo or '—' }}</td>
           <td style="color:#78716c;font-size:11px">{{ d.professor or '—' }}</td>
         </tr>

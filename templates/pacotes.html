@@ -31,7 +31,7 @@
       <form method="POST" action="{{ url_for('admin_migrar_externos') }}"
             onsubmit="return confirm('Mover todos os cursos com status EXTERNO para a categoria PACOTE?\n\nEssa ação vai alterar o tipo deles para Pacote e o status para Ativo.')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#f55000">
+        <button type="submit" class="btn btn-secondary" style="color:#f2780d">
           Migrar Externos → Pacotes
         </button>
       </form>

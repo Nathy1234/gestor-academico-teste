@@ -24,12 +24,12 @@
          onmouseover="this.style.borderColor='var(--primary)';this.style.boxShadow='var(--shadow-md)'"
          onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='var(--shadow)'">
       <!-- topo colorido -->
-      <div style="height:4px;background:linear-gradient(90deg,var(--primary),#ee4a00)"></div>
+      <div style="height:4px;background:linear-gradient(90deg,var(--primary),#d9640a)"></div>
       <div style="padding:16px">
         <!-- identidade -->
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
           <div style="width:42px;height:42px;border-radius:50%;flex-shrink:0;
-                      background:linear-gradient(135deg,var(--primary),#ee4a00);
+                      background:linear-gradient(135deg,var(--primary),#d9640a);
                       color:#fff;font-size:16px;font-weight:700;
                       display:flex;align-items:center;justify-content:center">
             {{ u.username[0]|upper }}
@@ -63,7 +63,7 @@
             <div style="flex:{{ s.ativos }};background:#16a34a" title="{{ s.ativos }} ativos"></div>
             {% endif %}
             {% if s.em_edicao > 0 %}
-            <div style="flex:{{ s.em_edicao }};background:#f55000" title="{{ s.em_edicao }} em edição"></div>
+            <div style="flex:{{ s.em_edicao }};background:#f2780d" title="{{ s.em_edicao }} em edição"></div>
             {% endif %}
             {% if s.finalizado > 0 %}
             <div style="flex:{{ s.finalizado }};background:#6366f1" title="{{ s.finalizado }} finalizados"></div>
@@ -84,7 +84,7 @@
             {% endif %}
             {% if s.em_edicao > 0 %}
             <span style="font-size:11px;display:flex;align-items:center;gap:3px">
-              <span style="width:8px;height:8px;border-radius:50%;background:#f55000;display:inline-block"></span>
+              <span style="width:8px;height:8px;border-radius:50%;background:#f2780d;display:inline-block"></span>
               <strong>{{ s.em_edicao }}</strong> em edição
             </span>
             {% endif %}
