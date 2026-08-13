@@ -32,11 +32,8 @@
     {% for s,label,cor in [('','Todos os status','#64748b'),('ativo','Ativos','#22c55e'),('em_edicao','Em Edição','#eab308'),('finalizado','Finalizados','#3b82f6'),('descontinuado','Arquivados','#94a3b8'),('oculto','Ocultos','#6366f1')] %}
     {% set sativo = (filtro_status == s) %}
     <a href="{{ url_for('cursos', tipo=filtro_tipo, area=filtro_area, status=s, q=busca) }}"
-       style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:{% if sativo %}600{% else %}400{% endif %};
-              text-decoration:none;border:1.5px solid {{ cor }};
-              background:{% if sativo %}{{ cor }}{% else %}transparent{% endif %};
-              color:{% if sativo %}#fff{% else %}{{ cor }}{% endif %}">
-      {% if sativo %}&#10003;&nbsp;{% endif %}{{ label }}
+       class="filter-chip{% if sativo %} is-active{% endif %}" style="--fc:{{ cor }}">
+      {% if sativo %}&#10003;&nbsp;{% endif %}{{ label }} <span class="fc-count">{{ contagem_status.get(s, 0) }}</span>
     </a>
     {% endfor %}
   </div>
@@ -46,10 +43,7 @@
     {% for t in [('','Todos'),('pos','Pós-Graduação'),('profissionalizante','Profissionalizante'),('rapido','Rápido'),('pacote','Pacote'),('terceiros','Terceiros'),('evento','Evento'),('pratica_conectada','Prática Conectada'),('pratica_estagio','Prática Estágio'),('projeto_ambiental','Proj. Ambiental'),('ggbr','GGBR'),('integra_edu','Integra Edu')] %}
     {% set ativo = (filtro_tipo == t[0]) %}
     <a href="{{ url_for('cursos', tipo=t[0], area=filtro_area, status=filtro_status, q=busca) }}"
-       style="padding:5px 14px;border-radius:20px;font-size:13px;font-weight:{% if ativo %}600{% else %}400{% endif %};
-              text-decoration:none;border:1.5px solid {% if ativo %}var(--accent){% else %}var(--border){% endif %};
-              background:{% if ativo %}var(--accent){% else %}var(--card-bg){% endif %};
-              color:{% if ativo %}#fff{% else %}var(--text){% endif %}">
+       class="filter-chip{% if ativo %} is-active{% endif %}">
       {% if ativo %}&#10003;&nbsp;{% endif %}{{ t[1] }}
     </a>
     {% endfor %}
@@ -86,7 +80,7 @@
   {% if session.role == 'admin' %}
   <!-- AÇÕES EM LOTE (só admin) -->
   <div id="acoes-lote" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;
-              background:var(--card-bg);border:1px solid var(--border);border-radius:8px">
+              background:var(--surface);border:1px solid var(--border);border-radius:8px">
     <span id="acoes-lote-contagem" style="font-size:13px;font-weight:600"></span>
     <button type="button" class="btn btn-sm btn-secondary" style="color:#6366f1" onclick="acaoEmLote('oculto')">
       Ocultar selecionados
