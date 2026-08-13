@@ -46,7 +46,7 @@
     .badge-descontinuado { background: #f1f5f9; color: #64748b; }
     .badge-oculto { background: #ede9fe; color: #5b21b6; }
     .badge-finalizado { background: #dbeafe; color: #1d4ed8; }
-    .badge-externo { background: #ffedd5; color: #c2410c; }
+    .badge-externo { background: #ffe4d3; color: #c23e00; }
 
     @media print {
       .toolbar, .filters { display: none !important; }
@@ -138,7 +138,7 @@
     <div class="sc"><div class="sv" style="color:#1d4ed8">{{ ns.finalizados }}</div><div class="sl">Finalizados</div></div>
     <div class="sc"><div class="sv" style="color:#64748b">{{ ns.desc }}</div><div class="sl">Arquivados</div></div>
     {% if ns.externos > 0 %}
-    <div class="sc"><div class="sv" style="color:#c2410c">{{ ns.externos }}</div><div class="sl">Externos</div></div>
+    <div class="sc"><div class="sv" style="color:#c23e00">{{ ns.externos }}</div><div class="sl">Externos</div></div>
     {% endif %}
     <div class="sc"><div class="sv" style="color:#5b21b6">{{ ns.ocultos }}</div><div class="sl">Ocultos</div></div>
   </div>

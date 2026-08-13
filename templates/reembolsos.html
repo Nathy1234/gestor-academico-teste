@@ -50,9 +50,9 @@
   {% set pendentes = contagem.sem_solic1 + contagem.sem_solic2 + contagem.sem_aprovacao + contagem.sem_exclusao %}
   {% if pendentes > 0 %}
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-    {% for key,label,cor in [('sem_solic1','Aguarda 1ª Solicitação','#ef4444'),('sem_solic2','Aguarda 2ª Solicitação','#f97316'),('sem_aprovacao','Aguarda Aprovação','#eab308'),('sem_exclusao','Aguarda Exclusão do Curso','#6366f1')] %}
+    {% for key,label,cor in [('sem_solic1','Aguarda 1ª Solicitação','#ef4444'),('sem_solic2','Aguarda 2ª Solicitação','#f55000'),('sem_aprovacao','Aguarda Aprovação','#eab308'),('sem_exclusao','Aguarda Exclusão do Curso','#6366f1')] %}
     <a href="{{ url_for('reembolsos', pendencia=key) }}" style="text-decoration:none;
-       background:var(--card-bg);border:1px solid var(--border);border-left:4px solid {{ cor }};
+       background:var(--surface);border:1px solid var(--border);border-left:4px solid {{ cor }};
        border-radius:8px;padding:14px 16px;display:block;
        {% if f_pend==key %}box-shadow:0 0 0 2px {{ cor }}40{% endif %}">
       <div style="font-size:22px;font-weight:700;color:{{ cor }}">{{ contagem[key] }}</div>
@@ -62,7 +62,7 @@
   </div>
   {% endif %}
   {% if contagem.concluido > 0 %}
-  <div style="background:var(--card-bg);border:1px solid var(--border);border-left:4px solid #22c55e;border-radius:8px;padding:10px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
+  <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid #22c55e;border-radius:8px;padding:10px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
     <span style="font-weight:700;color:#22c55e">{{ contagem.concluido }}</span>
     <span style="font-size:13px;color:var(--text-muted)">reembolso(s) concluído(s)</span>
   </div>
@@ -94,7 +94,7 @@
           {% for r in items %}
           {% set pend = r.pendencia %}
           {% if pend[0] == 'sem_solic1' %}{% set badge_color = '#ef4444' %}
-          {% elif pend[0] == 'sem_solic2' %}{% set badge_color = '#f97316' %}
+          {% elif pend[0] == 'sem_solic2' %}{% set badge_color = '#f55000' %}
           {% elif pend[0] == 'sem_aprovacao' %}{% set badge_color = '#eab308' %}
           {% elif pend[0] == 'sem_exclusao' %}{% set badge_color = '#6366f1' %}
           {% else %}{% set badge_color = '#22c55e' %}{% endif %}
@@ -136,7 +136,7 @@
                           {{ (r.pix or '')|tojson }},
                           {{ (r.email_destino or '')|tojson }})"
                         class="btn btn-sm"
-                        style="background:#fff7ed;color:#f97316;border:1px solid #fed7aa;padding:4px 8px"
+                        style="background:#fff3ec;color:#f55000;border:1px solid #ffcfb8;padding:4px 8px"
                         title="Gerar e-mail de reembolso">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>

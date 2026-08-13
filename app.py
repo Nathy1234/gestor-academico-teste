@@ -964,10 +964,24 @@ def cursos():
     lista = _build_cursos_query(tipo, area, status, busca, insersor, horas_min, horas_max)
     areas  = AREAS_VALIDAS
     insersores = [u.username for u in User.query.order_by(User.username).all()]
+    contagem_status = _contagem_cursos_por_status(tipo, area, busca)
     return render_template('cursos.html', cursos=lista, areas=areas, insersores=insersores,
                            filtro_tipo=tipo, filtro_area=area, filtro_status=status,
+                           contagem_status=contagem_status,
                            filtro_insersor=insersor, busca=busca,
                            filtro_horas_min=horas_min, filtro_horas_max=horas_max)
+
+def _contagem_cursos_por_status(tipo, area, busca):
+    """Quantos cursos existem em cada status, respeitando tipo/área/busca
+    atuais (os mesmos filtros que os chips de status preservam ao trocar
+    de aba) — usado pro contador ao lado de cada chip em /cursos."""
+    q = db.session.query(Course.status, db.func.count(Course.id))
+    if tipo:  q = q.filter(Course.tipo == tipo)
+    if area:  q = q.filter(Course.area == area)
+    if busca: q = q.filter(Course.nome.ilike(f'%{busca}%'))
+    contagem = dict(q.group_by(Course.status).all())
+    contagem[''] = sum(contagem.values())
+    return contagem
 
 def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas_max=''):
     from sqlalchemy import or_ as sql_or, func as sql_func

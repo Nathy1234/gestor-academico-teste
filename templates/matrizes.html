@@ -53,8 +53,8 @@
     {% set t_ativo = (filtro_tipo == '') %}
     <a href="{{ url_for('matrizes', tipo='', insersor=filtro_insersor, q=busca, pendente=filtro_pendente) }}"
        style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:{% if t_ativo %}600{% else %}400{% endif %};
-              text-decoration:none;border:1.5px solid {% if t_ativo %}var(--accent){% else %}var(--border){% endif %};
-              background:{% if t_ativo %}var(--accent){% else %}var(--card-bg){% endif %};
+              text-decoration:none;border:1.5px solid {% if t_ativo %}var(--primary){% else %}var(--border){% endif %};
+              background:{% if t_ativo %}var(--primary){% else %}var(--surface){% endif %};
               color:{% if t_ativo %}#fff{% else %}var(--text){% endif %}">
       {% if t_ativo %}&#10003;&nbsp;{% endif %}Todos
     </a>
@@ -64,8 +64,8 @@
     <a href="{{ url_for('matrizes', tipo=t, insersor=filtro_insersor, q=busca, pendente=filtro_pendente) }}"
        style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:{% if t_sel %}600{% else %}400{% endif %};
               text-decoration:none;
-              border:1.5px solid {% if t_sel %}var(--accent){% elif pend_t > 0 %}#f59e0b{% else %}var(--border){% endif %};
-              background:{% if t_sel %}var(--accent){% elif pend_t > 0 %}rgba(251,191,36,.12){% else %}var(--card-bg){% endif %};
+              border:1.5px solid {% if t_sel %}var(--primary){% elif pend_t > 0 %}#f59e0b{% else %}var(--border){% endif %};
+              background:{% if t_sel %}var(--primary){% elif pend_t > 0 %}rgba(251,191,36,.12){% else %}var(--surface){% endif %};
               color:{% if t_sel %}#fff{% elif pend_t > 0 %}#92400e{% else %}var(--text){% endif %}">
       {% if t_sel %}&#10003;&nbsp;{% endif %}{{ tipo_labels.get(t, t) }}
       {% if pend_t > 0 and not t_sel %}

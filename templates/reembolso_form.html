@@ -61,8 +61,8 @@
         <span style="font-size:13px;color:#22c55e;font-weight:500">Este reembolso será marcado como <strong>Concluído</strong> independente das datas preenchidas.</span>
       </div>
 
-      <div id="datas-pendentes-aviso" style="display:{% if not (item and item.concluido_manual) %}flex{% else %}none{% endif %};align-items:center;gap:10px;background:#f9731615;border:1px solid #f9731640;border-radius:8px;padding:10px 14px;margin-bottom:12px">
-        <span style="color:#f97316;font-size:15px">⚠</span>
+      <div id="datas-pendentes-aviso" style="display:{% if not (item and item.concluido_manual) %}flex{% else %}none{% endif %};align-items:center;gap:10px;background:#f5500015;border:1px solid #f5500040;border-radius:8px;padding:10px 14px;margin-bottom:12px">
+        <span style="color:#f55000;font-size:15px">⚠</span>
         <span style="font-size:12px;color:var(--text-muted)">Preencha <strong>todas as datas</strong> para que o reembolso seja concluído automaticamente, ou marque a opção acima.</span>
       </div>
 
@@ -167,10 +167,10 @@
 
       <!-- BOTÃO GERAR E-MAIL -->
       {% if item %}
-      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin-bottom:20px">
+      <div style="background:#fff3ec;border:1px solid #ffcfb8;border-radius:10px;padding:16px 20px;margin-bottom:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
           <div>
-            <div style="font-weight:600;font-size:13px;color:#c2410c;margin-bottom:4px">
+            <div style="font-weight:600;font-size:13px;color:#c23e00;margin-bottom:4px">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                    style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:4px">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -193,12 +193,12 @@
               </button>
             </form>
             <button type="button" onclick="gerarEmailForm()"
-                    style="white-space:nowrap;background:#f97316;color:#fff;border:none;border-radius:8px;
+                    style="white-space:nowrap;background:#f55000;color:#fff;border:none;border-radius:8px;
                            padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;
                            display:flex;align-items:center;gap:8px;
-                           box-shadow:0 2px 8px rgba(249,115,22,.3);transition:all .15s"
-                    onmouseover="this.style.background='#ea580c';this.style.transform='translateY(-1px)'"
-                    onmouseout="this.style.background='#f97316';this.style.transform=''">
+                           box-shadow:0 2px 8px rgba(245,80,0,.3);transition:all .15s"
+                    onmouseover="this.style.background='#ee4a00';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.background='#f55000';this.style.transform=''">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                    style="width:15px;height:15px">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
