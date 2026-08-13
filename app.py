@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.0.3'
+VERSAO = '1.1.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -940,6 +940,27 @@ def dashboard():
             'pend_disc': pend_disc_ins,
         })
 
+    # Série mensal (últimos 6 meses) de cursos cadastrados, pro gráfico do painel —
+    # respeita o mesmo filtro de insersor usado nos KPIs acima.
+    def _primeiro_dia_mes(d, meses_atras):
+        m = d.month - meses_atras
+        y = d.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        while m > 12:
+            m -= 12
+            y += 1
+        return datetime(y, m, 1)
+
+    hoje = datetime.utcnow()
+    serie_mensal = []
+    for i in range(5, -1, -1):
+        ini = _primeiro_dia_mes(hoje, i)
+        fim = _primeiro_dia_mes(hoje, i - 1)
+        qtd = q_base.filter(Course.created_at >= ini, Course.created_at < fim).count()
+        serie_mensal.append({'label': ini.strftime('%b'), 'qtd': qtd})
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
@@ -947,7 +968,7 @@ def dashboard():
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u,
-        cursos_ins_stats=cursos_ins_stats)
+        cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
