@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.4.0'
+VERSAO = '1.4.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -679,8 +679,10 @@ def inject_notificacoes():
     q = db.session.query(Discipline, Course)\
         .join(Course, Discipline.course_id == Course.id)\
         .filter(Discipline.plataforma_ok == False)\
-        .filter(Course.status.notin_(['descontinuado']))\
-        .filter(Course.insersor != None, Course.insersor != '')
+        .filter(Course.status.notin_(['descontinuado']))
+    if u.role != 'admin':
+        # Sem insersor não há responsável a notificar
+        q = q.filter(Course.insersor != None, Course.insersor != '')
     rows = q.order_by(Course.nome, Discipline.ordem).all()
     if u.role != 'admin':
         # Filtra em Python (não em SQL) para reconhecer também as iniciais
@@ -980,6 +982,22 @@ def dashboard():
 
     insersores = responsaveis_atuais() if is_admin else []
 
+    # Total real de disciplinas pendentes (conta também cursos sem insersor
+    # atribuído — o quadro por pessoa acima não os contabiliza, porque não
+    # tem a quem atribuir a linha).
+    ids_base = [r[0] for r in q_base.with_entities(Course.id).all()]
+    discs_pendentes_lista = []
+    total_disc_pendentes = 0
+    if ids_base:
+        total_disc_pendentes = Discipline.query.filter(
+            Discipline.course_id.in_(ids_base), Discipline.plataforma_ok == False
+        ).count()
+        discs_pendentes_lista = (db.session.query(Discipline, Course)
+            .join(Course, Discipline.course_id == Course.id)
+            .filter(Discipline.course_id.in_(ids_base), Discipline.plataforma_ok == False)
+            .order_by(Course.nome, Discipline.ordem)
+            .limit(10).all())
+
     # Card: cursos por responsável (insersor)
     cursos_ins_stats = []
     nomes_ins = responsaveis_atuais() if is_admin else [u.username]
@@ -1031,7 +1049,8 @@ def dashboard():
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u,
-        cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal)
+        cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
+        total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -2499,15 +2518,14 @@ def matrizes():
     filtro_pendente = request.args.get('pendente', '')
 
     import re
-    from sqlalchemy import exists as sql_exists
 
     # Conjunto completo (sem filtro de tipo/busca/insersor) — usado pros
     # chips de pendências por tipo e como base pra lista filtrada abaixo.
     # As disciplinas de todos eles são buscadas numa única query (evita
-    # centenas de consultas, uma por curso).
-    todos_para_chips = Course.query.filter(
-        sql_exists().where(Discipline.course_id == Course.id)
-    ).order_by(Course.tipo, Course.nome).all()
+    # centenas de consultas, uma por curso). Inclui cursos sem nenhuma
+    # disciplina ainda (ex: curso novo) pra eles aparecerem na Matriz
+    # esperando a grade ser cadastrada, em vez de sumir da lista.
+    todos_para_chips = Course.query.order_by(Course.tipo, Course.nome).all()
 
     discs_by_course = {}
     ids_todos = [c.id for c in todos_para_chips]

@@ -201,8 +201,16 @@
     <!-- ANDAMENTO DA PLATAFORMA -->
     <div class="card">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div class="card-title">
-          {% if is_admin %}Andamento — Plataforma (Equipe){% else %}Meu Andamento — Plataforma{% endif %}
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="card-title">
+            {% if is_admin %}Andamento — Plataforma (Equipe){% else %}Meu Andamento — Plataforma{% endif %}
+          </div>
+          {% if total_disc_pendentes > 0 %}
+          <span style="background:#fff4ea;color:#b35700;border:1px solid #ffd4b0;
+                       padding:2px 9px;border-radius:20px;font-weight:700;font-size:11px">
+            {{ total_disc_pendentes }} sem marcar
+          </span>
+          {% endif %}
         </div>
         <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
       </div>
@@ -285,6 +293,32 @@
           <span>Concluídas: <strong style="color:#15803d">{{ total_conc }}</strong></span>
           {% if total_pend > 0 %}
           <span>Pendentes: <strong style="color:#b35700">{{ total_pend }}</strong></span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if discs_pendentes_lista %}
+        <div style="border-top:1px solid var(--border)">
+          {% for d, c in discs_pendentes_lista %}
+          <a href="{{ url_for('curso_detalhe', id=c.id) }}"
+             style="display:flex;align-items:center;gap:10px;padding:8px 16px;
+                    border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)"
+             onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+            <span style="width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0"></span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ d.nome or 'Disciplina sem nome' }}
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ c.nome }}
+              </div>
+            </div>
+          </a>
+          {% endfor %}
+          {% if total_disc_pendentes > discs_pendentes_lista|length %}
+          <a href="{{ url_for('matrizes', pendente='1') }}"
+             style="display:block;text-align:center;padding:8px;font-size:12px;color:var(--primary);text-decoration:none">
+            Ver todas as {{ total_disc_pendentes }} pendentes →
+          </a>
           {% endif %}
         </div>
         {% endif %}

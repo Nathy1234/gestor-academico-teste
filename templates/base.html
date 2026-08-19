@@ -391,10 +391,9 @@
       {% endfor %}
     {% endwith %}
 
+    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ versao }}"></script>
     {% block content %}{% endblock %}
   </main>
 </div>
-
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ versao }}"></script>
 </body>
 </html>
