@@ -196,22 +196,30 @@
   </div>
 
   <!-- SEÇÃO INOVA ───────────────────────────────
-       Tudo daqui até o fim de "LINHA 2" é o catálogo/operação do INOVA
-       (cursos, pós, financeiro). O ERP Moodle (equipe externa de inserção
-       de conteúdo) tem seção própria, visualmente separada, mais abaixo. -->
-  <div style="display:flex;align-items:center;gap:8px;margin:4px 0 12px">
-    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--primary);
-                 background:var(--primary-light);padding:3px 10px;border-radius:20px">INOVA</span>
-    <span style="font-size:12px;color:var(--text-muted)">Catálogo de cursos, matrizes e financeiro</span>
+       Tudo daqui até o fim é o catálogo/operação do INOVA (cursos, pós,
+       financeiro), com o ERP Moodle (equipe externa) misturado como mais
+       um card do mesmo grid — visualmente separado (borda tracejada azul),
+       mas na mesma área arrastável. Os cards abaixo podem ser reorganizados
+       livremente; a ordem escolhida é salva na conta do usuário. -->
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0 12px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--primary);
+                   background:var(--primary-light);padding:3px 10px;border-radius:20px">INOVA</span>
+      <span style="font-size:12px;color:var(--text-muted)">Catálogo de cursos, matrizes e financeiro — arraste os cards para reorganizar</span>
+    </div>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="restaurarOrdemPadraoDashboard()">
+      <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      Ordem padrão
+    </button>
   </div>
 
-  <!-- LINHA 2: ANDAMENTO + TIPOS ──────────────── -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div class="dash-draggable-grid" id="dashGrid">
 
     <!-- ANDAMENTO DA PLATAFORMA -->
-    <div class="card">
+    <div class="dash-block card" data-block-id="andamento_plataforma">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
         <div class="card-title">
+          <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
           {% if is_admin %}Andamento — Plataforma (Equipe){% else %}Meu Andamento — Plataforma{% endif %}
         </div>
         <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
@@ -302,9 +310,10 @@
     </div>
 
     <!-- CURSOS POR RESPONSÁVEL (INSERSOR) -->
-    <div class="card" style="margin-bottom:16px">
+    <div class="dash-block card" data-block-id="cursos_responsavel">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
         <div class="card-title">
+          <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
           {% if is_admin %}Cursos por Responsável{% else %}Meus Cursos{% endif %}
         </div>
         <a href="{{ url_for('cursos') }}" class="btn btn-sm btn-secondary">Ver todos →</a>
@@ -382,9 +391,12 @@
     </div>
 
     <!-- CURSOS POR TIPO -->
-    <div class="card">
+    <div class="dash-block card" data-block-id="distribuicao_tipo">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div class="card-title">Distribuição por Tipo</div>
+        <div class="card-title">
+          <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
+          Distribuição por Tipo
+        </div>
         <span style="font-size:11px;color:var(--text-muted)">{{ total }} cursos</span>
       </div>
       <div class="card-body">
@@ -433,24 +445,21 @@
         </div>
       </div>
     </div>
-  </div>
 
-  {% if can_erp_moodle %}
-  <!-- SEÇÃO ERP MOODLE ──────────────────────────
-       Propositalmente com visual bem diferente (azul, borda tracejada) do
-       resto do dashboard, que é tudo INOVA — pra ninguém confundir as duas
-       coisas. Isto aqui é o acompanhamento manual da equipe de inserção de
-       materiais, sem ligação com o catálogo de cursos acima. -->
-  <div style="display:flex;align-items:center;gap:8px;margin:20px 0 12px">
-    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#1d4ed8;
-                 background:#dbeafe;padding:3px 10px;border-radius:20px">ERP MOODLE</span>
-    <span style="font-size:12px;color:var(--text-muted)">Inserção de conteúdo — equipe externa, separado do INOVA</span>
-  </div>
-  <div class="card" style="border:1.5px dashed #93c5fd;margin-bottom:16px">
-    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border-bottom:1px solid #bfdbfe">
-      <div class="card-title" style="color:#1d4ed8">Andamento — Inserção Moodle</div>
-      <a href="{{ url_for('erp_moodle') }}" class="btn btn-sm btn-secondary">Ver tudo →</a>
-    </div>
+    {% if can_erp_moodle %}
+    <!-- ERP MOODLE — propositalmente com visual bem diferente (azul, borda
+         tracejada) do resto do dashboard, que é tudo INOVA — pra ninguém
+         confundir as duas coisas. Acompanhamento manual da equipe de
+         inserção de materiais, sem ligação com o catálogo de cursos acima. -->
+    <div class="dash-block card" data-block-id="erp_moodle" style="border:1.5px dashed #93c5fd">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border-bottom:1px solid #bfdbfe">
+        <div class="card-title" style="color:#1d4ed8;display:flex;align-items:center;gap:8px">
+          <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;background:#dbeafe;padding:2px 8px;border-radius:20px">ERP MOODLE</span>
+          Andamento — Inserção Moodle
+        </div>
+        <a href="{{ url_for('erp_moodle') }}" class="btn btn-sm btn-secondary">Ver tudo →</a>
+      </div>
     <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
       <div style="display:flex;gap:20px">
         <div>
@@ -486,16 +495,15 @@
         {% endif %}
       </div>
     </div>
-  </div>
-  {% endif %}
-
-  <!-- LINHA 3: ATIVIDADE + ATALHOS ─────────────── -->
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:16px">
+    {% endif %}
 
     <!-- ATIVIDADE RECENTE -->
-    <div class="card">
+    <div class="dash-block card" data-block-id="atividade_recente">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-        <div class="card-title">Atividade Recente</div>
+        <div class="card-title">
+          <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
+          Atividade Recente
+        </div>
         <a href="{{ url_for('historico') }}" class="btn btn-sm btn-secondary">Ver histórico →</a>
       </div>
       <div style="padding:4px 0;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
@@ -524,13 +532,15 @@
       </div>
     </div>
 
-    <!-- ATALHOS RÁPIDOS -->
-    <div style="display:flex;flex-direction:column;gap:16px">
-
-      <!-- ACESSO RÁPIDO -->
-      <div class="card">
-        <div class="card-header"><div class="card-title">Acesso Rápido</div></div>
-        <div class="card-body" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+    <!-- ACESSO RÁPIDO -->
+    <div class="dash-block card" data-block-id="acesso_rapido">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
+          Acesso Rápido
+        </div>
+      </div>
+      <div class="card-body" style="padding:12px;display:flex;flex-direction:column;gap:8px">
           <a href="{{ url_for('cursos', tipo='pos') }}"
              style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
                     text-decoration:none;color:var(--text);background:var(--surface-2);
@@ -588,13 +598,17 @@
           </a>
         </div>
       </div>
+    </div>
 
-      <!-- BACKUP INFO -->
-      {% if ultimo_bk %}
-      <div class="card">
+    <!-- BACKUP INFO -->
+    {% if ultimo_bk %}
+    <div class="dash-block card" data-block-id="ultimo_backup">
         <div class="card-body" style="padding:14px 16px">
           <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
-                      color:var(--text-muted);margin-bottom:8px">Último Backup</div>
+                      color:var(--text-muted);margin-bottom:8px">
+            <span class="dash-handle" title="Arraste para reorganizar">⠿</span>
+            Último Backup
+          </div>
           <div style="display:flex;align-items:center;gap:8px">
             <div style="width:34px;height:34px;background:#f0fdf4;border-radius:8px;
                         display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -618,11 +632,106 @@
             Backup automático: diário
           </div>
         </div>
-      </div>
-      {% endif %}
-
     </div>
+    {% endif %}
+
   </div>
 
 </div>
+
+<style>
+.dash-draggable-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+.dash-block { cursor: default; }
+.dash-block a, .dash-block button, .dash-block input, .dash-block select, .dash-block textarea {
+  -webkit-user-drag: none;
+}
+.dash-handle {
+  cursor: grab; color: var(--text-muted); font-size: 14px; margin-right: 2px;
+  user-select: none; display: inline-block;
+}
+.dash-handle:active { cursor: grabbing; }
+.dash-block.dash-dragging { opacity: .4; }
+.dash-block.dash-drop-target { outline: 2px dashed var(--primary); outline-offset: 3px; border-radius: 12px; }
+</style>
+
+<script>
+(function() {
+  const grid = document.getElementById('dashGrid');
+  if (!grid) return;
+  const savedOrder = {{ dashboard_layout|tojson }};
+
+  // Aplica a ordem salva na conta (se houver) reposicionando os blocos no DOM
+  if (savedOrder.length) {
+    const blocos = {};
+    grid.querySelectorAll('.dash-block').forEach(b => { blocos[b.dataset.blockId] = b; });
+    savedOrder.forEach(id => { if (blocos[id]) grid.appendChild(blocos[id]); });
+  }
+
+  let arrastando = null;
+
+  grid.querySelectorAll('.dash-block').forEach(bloco => {
+    bloco.setAttribute('draggable', 'true');
+
+    bloco.addEventListener('dragstart', () => {
+      arrastando = bloco;
+      bloco.classList.add('dash-dragging');
+    });
+
+    bloco.addEventListener('dragend', () => {
+      bloco.classList.remove('dash-dragging');
+      grid.querySelectorAll('.dash-drop-target').forEach(b => b.classList.remove('dash-drop-target'));
+      arrastando = null;
+      salvarOrdemDashboard();
+    });
+
+    bloco.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!arrastando || arrastando === bloco) return;
+      grid.querySelectorAll('.dash-drop-target').forEach(b => b.classList.remove('dash-drop-target'));
+      bloco.classList.add('dash-drop-target');
+    });
+
+    bloco.addEventListener('dragleave', () => {
+      bloco.classList.remove('dash-drop-target');
+    });
+
+    bloco.addEventListener('drop', e => {
+      e.preventDefault();
+      bloco.classList.remove('dash-drop-target');
+      if (!arrastando || arrastando === bloco) return;
+      const todos = Array.from(grid.querySelectorAll('.dash-block'));
+      const posArrastando = todos.indexOf(arrastando);
+      const posAlvo = todos.indexOf(bloco);
+      if (posArrastando < posAlvo) {
+        bloco.after(arrastando);
+      } else {
+        bloco.before(arrastando);
+      }
+    });
+  });
+
+  function salvarOrdemDashboard() {
+    const ordem = Array.from(grid.querySelectorAll('.dash-block')).map(b => b.dataset.blockId);
+    fetch('/api/dashboard-layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: ordem }),
+    });
+  }
+
+  window.restaurarOrdemPadraoDashboard = function() {
+    fetch('/api/dashboard-layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: [] }),
+    }).then(() => location.reload());
+  };
+})();
+</script>
 {% endblock %}

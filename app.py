@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.4.0'
+VERSAO = '1.5.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -198,6 +198,7 @@ class User(db.Model):
     must_change_password = db.Column(db.Boolean, default=False)
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
+    dashboard_layout = db.Column(db.Text)  # JSON: ordem dos cards do dashboard escolhida pelo usuário
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_perm(self, key):
@@ -1050,6 +1051,11 @@ def dashboard():
     erp_cursos_rodando = sum(1 for _, pend in erp_por_curso if pend == 0)
     erp_recentes = ErpMoodleItem.query.order_by(ErpMoodleItem.updated_at.desc()).limit(5).all()
 
+    try:
+        dashboard_layout = json.loads(u.dashboard_layout) if u.dashboard_layout else []
+    except (ValueError, TypeError):
+        dashboard_layout = []
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
@@ -1059,7 +1065,8 @@ def dashboard():
         is_admin=is_admin, usuario_atual=u,
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
-        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando)
+        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando,
+        dashboard_layout=dashboard_layout)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -3509,6 +3516,26 @@ def ferramenta_abrir(id):
     t = ExternalTool.query.get_or_404(id)
     return render_template('ferramenta_abrir.html', tool=t)
 
+DASHBOARD_BLOCOS_VALIDOS = {
+    'andamento_plataforma', 'cursos_responsavel', 'distribuicao_tipo',
+    'erp_moodle', 'atividade_recente', 'acesso_rapido', 'ultimo_backup',
+}
+
+@app.route('/api/dashboard-layout', methods=['POST'])
+@login_required
+def api_dashboard_layout():
+    """Salva a ordem em que o usuário arrastou os cards do dashboard.
+    Fica gravada na própria conta — vale em qualquer aparelho que ele logar."""
+    data = request.get_json(silent=True) or {}
+    ordem = data.get('order', [])
+    if not isinstance(ordem, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    ordem = [b for b in ordem if b in DASHBOARD_BLOCOS_VALIDOS]
+    u = User.query.get(session['user_id'])
+    u.dashboard_layout = json.dumps(ordem) if ordem else None
+    db.session.commit()
+    return jsonify({'ok': True})
+
 @app.route('/api/eventos/pendentes-ocultar')
 @login_required
 def api_eventos_pendentes_ocultar():
@@ -4085,6 +4112,12 @@ def seed_data():
             VendaModalidadeOpcao(label='Site', ordem=2),
         ])
         db.session.commit()
+    if ExternalTool.query.count() == 0:
+        db.session.add_all([
+            ExternalTool(label='Kronos', url='https://kronoslabtecie.web.app/', ordem=1),
+            ExternalTool(label='Sistema Curadoria', url='https://sistema-curadoria.vercel.app/', ordem=2),
+        ])
+        db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -4490,7 +4523,7 @@ def _run_migrations():
         # tabela "user" precisa de aspas pois é palavra reservada em alguns DBs
         for col, dtype in [("permissoes", "TEXT DEFAULT '{}' "), ("email", "VARCHAR(200)"),
                            ("must_change_password", "BOOLEAN DEFAULT false"),
-                           ("nome", "VARCHAR(200)")]:
+                           ("nome", "VARCHAR(200)"), ("dashboard_layout", "TEXT")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
