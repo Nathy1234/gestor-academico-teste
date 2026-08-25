@@ -8,6 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from datetime import datetime, timedelta, date
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd
+import requests as _requests
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -47,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.5.0'
+VERSAO = '1.5.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -445,6 +446,8 @@ class ExternalTool(db.Model):
     label      = db.Column(db.String(150), nullable=False)
     url        = db.Column(db.Text, nullable=False)
     ordem      = db.Column(db.Integer, default=0)
+    embeddable        = db.Column(db.Boolean)  # None = ainda não verificado
+    embeddable_checado_em = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
@@ -3465,6 +3468,31 @@ def venda_modalidade_excluir(id):
 # X-Frame-Options / Content-Security-Policy: frame-ancestors) — isso é uma
 # proteção do próprio site contra clickjacking e não tem como ser contornada
 # por aqui; nesses casos a tela mostra um aviso com link pra abrir em nova aba.
+# A verificação é feita pelo SERVIDOR (olhando o cabeçalho de verdade que o
+# site manda) — não dá pra confiar em "esperar um tempo e ver se carregou"
+# no navegador, porque isso dá falso positivo em sites só um pouco lentos.
+
+def _verifica_embeddable(url):
+    """Confere se um site permite ser exibido em iframe, olhando os
+    cabeçalhos X-Frame-Options e Content-Security-Policy da resposta.
+    Retorna True (permite), False (bloqueia) ou None (não deu pra checar —
+    site fora do ar, timeout etc; nesse caso tentamos o iframe mesmo assim)."""
+    try:
+        r = _requests.get(url, timeout=6, allow_redirects=True,
+                           headers={'User-Agent': 'Mozilla/5.0 (compatible; GestorAcademico/1.0)'})
+    except _requests.RequestException:
+        return None
+    xfo = (r.headers.get('X-Frame-Options') or '').strip().upper()
+    if xfo in ('DENY', 'SAMEORIGIN'):
+        return False
+    csp = r.headers.get('Content-Security-Policy') or ''
+    for diretiva in csp.split(';'):
+        diretiva = diretiva.strip()
+        if diretiva.lower().startswith('frame-ancestors'):
+            valor = diretiva[len('frame-ancestors'):].strip()
+            if valor and '*' not in valor:
+                return False
+    return True
 
 @app.route('/ferramentas')
 @login_required
@@ -3514,6 +3542,13 @@ def ferramenta_excluir(id):
 @login_required
 def ferramenta_abrir(id):
     t = ExternalTool.query.get_or_404(id)
+    # Recheca de tempos em tempos (1 dia) — o site pode mudar de política.
+    precisa_checar = (t.embeddable_checado_em is None or
+                       datetime.utcnow() - t.embeddable_checado_em > timedelta(days=1))
+    if precisa_checar:
+        t.embeddable = _verifica_embeddable(t.url)
+        t.embeddable_checado_em = datetime.utcnow()
+        db.session.commit()
     return render_template('ferramenta_abrir.html', tool=t)
 
 DASHBOARD_BLOCOS_VALIDOS = {
@@ -4489,6 +4524,8 @@ def _run_migrations():
         ("course",     "limite_parcelas",  "VARCHAR(10)"),
         ("course",     "via_formulario",   "BOOLEAN DEFAULT false"),
         ("course",     "categoria",        "VARCHAR(30) DEFAULT 'INOVA'"),
+        ("external_tool", "embeddable",             "BOOLEAN"),
+        ("external_tool", "embeddable_checado_em",  "TIMESTAMP"),
         ("discipline", "cod_moodle",       "VARCHAR(50)"),
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),

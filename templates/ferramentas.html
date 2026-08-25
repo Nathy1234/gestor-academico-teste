@@ -37,7 +37,7 @@
     <div class="table-wrapper">
       {% if tools %}
       <table>
-        <thead><tr><th>Nome</th><th>Link</th>{% if session.role=='admin' %}<th></th>{% endif %}</tr></thead>
+        <thead><tr><th>Nome</th><th>Link</th><th>Abre aqui dentro?</th>{% if session.role=='admin' %}<th></th>{% endif %}</tr></thead>
         <tbody>
           {% for t in tools %}
           <tr>
@@ -48,6 +48,15 @@
               </a>
             </td>
             <td style="font-size:12px;color:var(--text-muted);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.url }}</td>
+            <td>
+              {% if t.embeddable == False %}
+              <span class="badge badge-descontinuado" title="O próprio site bloqueia ser exibido em iframe">Não — abre em nova aba</span>
+              {% elif t.embeddable == True %}
+              <span class="badge badge-ativo">Sim</span>
+              {% else %}
+              <span style="font-size:11px;color:var(--text-muted)">Confere ao abrir</span>
+              {% endif %}
+            </td>
             {% if session.role == 'admin' %}
             <td style="white-space:nowrap">
               <button type="button" class="btn btn-sm btn-secondary" onclick="editarFerramenta({{ t.id }}, {{ t.label|tojson }}, {{ t.url|tojson }})">Editar</button>

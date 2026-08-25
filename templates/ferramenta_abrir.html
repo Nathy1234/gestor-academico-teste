@@ -13,41 +13,30 @@
     </a>
   </div>
 
-  <div style="flex:1;min-height:0;position:relative">
-    <iframe src="{{ tool.url }}" id="ferramentaFrame"
-            style="width:100%;height:100%;min-height:520px;border:1px solid var(--border);border-radius:12px;background:var(--surface)"
-            referrerpolicy="no-referrer-when-downgrade"></iframe>
-    <div id="avisoBloqueio" style="display:none;position:absolute;inset:0;border-radius:12px;
-                background:var(--surface);border:1px solid var(--border);
-                align-items:center;justify-content:center;flex-direction:column;gap:12px;text-align:center;padding:24px">
-      <svg viewBox="0 0 24 24" style="width:32px;height:32px;fill:none;stroke:#b35700;stroke-width:2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <div style="font-size:14px;font-weight:600">Este site não carregou aqui dentro</div>
-      <div style="font-size:12px;color:var(--text-muted);max-width:360px">
-        Alguns sistemas bloqueiam deliberadamente ser exibidos dentro de outra página, por segurança
-        (proteção contra clickjacking). Use o botão abaixo pra abrir normalmente.
+  {% if tool.embeddable == False %}
+  <!-- Confirmado pelo servidor (cabeçalho X-Frame-Options / CSP do próprio
+       site) que ele não permite ser embutido — nem tentamos o iframe, pra
+       não mostrar uma caixa em branco sem explicação. -->
+  <div class="card" style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px">
+    <div style="text-align:center;max-width:380px">
+      <svg viewBox="0 0 24 24" style="width:36px;height:36px;fill:none;stroke:#b35700;stroke-width:2;margin-bottom:12px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px">O {{ tool.label }} não permite ser aberto aqui dentro</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">
+        O próprio site manda um cabeçalho de segurança (proteção contra clickjacking) bloqueando
+        ser exibido dentro de outra página, em qualquer site — não é algo que dê pra contornar por aqui.
       </div>
-      <a href="{{ tool.url }}" target="_blank" rel="noopener" class="btn btn-primary">Abrir em nova aba</a>
+      <a href="{{ tool.url }}" target="_blank" rel="noopener" class="btn btn-primary">Abrir {{ tool.label }} em nova aba</a>
     </div>
   </div>
+  {% else %}
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px">
+    <iframe src="{{ tool.url }}" id="ferramentaFrame"
+            style="width:100%;flex:1;min-height:480px;border:1px solid var(--border);border-radius:12px;background:var(--surface)"
+            referrerpolicy="no-referrer-when-downgrade"></iframe>
+    <div style="font-size:11px;color:var(--text-muted);text-align:center">
+      Não carregou? <a href="{{ tool.url }}" target="_blank" rel="noopener" style="color:var(--primary)">Abra {{ tool.label }} em nova aba</a>.
+    </div>
+  </div>
+  {% endif %}
 </div>
-
-<script>
-// Não dá pra detectar com certeza, via JS, que um iframe de outra origem foi
-// bloqueado (X-Frame-Options/CSP) — o navegador só mostra a página em branco,
-// sem disparar erro nenhum pro nosso lado. Então usamos um sinal aproximado:
-// se depois de um tempo o iframe não tiver disparado 'load' nem alterado de
-// tamanho, mostramos o aviso com a alternativa de abrir em nova aba.
-(function() {
-  const frame = document.getElementById('ferramentaFrame');
-  const aviso = document.getElementById('avisoBloqueio');
-  let carregouTarde = false;
-  frame.addEventListener('load', () => {
-    if (carregouTarde) aviso.style.display = 'none'; // carregou depois do aviso: esconde de novo
-  });
-  setTimeout(() => {
-    carregouTarde = true;
-    aviso.style.display = 'flex';
-  }, 6000);
-})();
-</script>
 {% endblock %}
