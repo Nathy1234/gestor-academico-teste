@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.5.1'
+VERSAO = '1.5.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -3536,6 +3536,21 @@ def ferramenta_excluir(id):
     db.session.delete(t)
     db.session.commit()
     flash('Ferramenta removida.', 'success')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/revalidar', methods=['POST'])
+@admin_required
+def ferramenta_revalidar(id):
+    """Força reconferir agora se o site permite iframe, sem esperar o
+    cache de 1 dia — útil logo depois de mudar a config do lado de lá."""
+    t = ExternalTool.query.get_or_404(id)
+    t.embeddable = _verifica_embeddable(t.url)
+    t.embeddable_checado_em = datetime.utcnow()
+    db.session.commit()
+    if t.embeddable:
+        flash(f'"{t.label}" agora permite ser aberto aqui dentro!', 'success')
+    else:
+        flash(f'"{t.label}" ainda bloqueia — confira se a mudança já foi publicada do lado de lá.', 'danger')
     return redirect(url_for('ferramentas'))
 
 @app.route('/ferramentas/<int:id>/abrir')
