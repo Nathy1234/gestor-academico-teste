@@ -15,6 +15,22 @@
     <div class="card" style="align-self:start">
       <div class="card-header"><div class="card-title">Dados de Acesso</div></div>
       <div class="card-body">
+        {% if user %}
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+          <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;overflow:hidden;
+                      background:linear-gradient(135deg,var(--primary),#d9640a);display:flex;
+                      align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px">
+            {% if user.foto %}
+            <img src="{{ url_for('usuario_foto', id=user.id) }}" style="width:100%;height:100%;object-fit:cover">
+            {% else %}{{ user.username[0]|upper }}{% endif %}
+          </div>
+          <form method="POST" action="{{ url_for('usuario_foto_upload', id=user.id) }}" enctype="multipart/form-data" style="flex:1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="foto" accept="image/*" onchange="this.form.submit()" style="font-size:11px">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Foto exibida nos Destaques (máx. 3MB)</div>
+          </form>
+        </div>
+        {% endif %}
         <form method="POST" id="userForm">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group" style="margin-bottom:16px">
@@ -63,6 +79,11 @@
             </select>
             <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Personalize com as permissões ao lado.</div>
           </div>
+          <label class="form-group" style="margin-bottom:24px;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="equipe" style="width:15px;height:15px"
+              {% if not user or user.equipe %}checked{% endif %}>
+            <span>Faz parte da equipe <span style="font-weight:400;color:var(--text-muted);font-size:12px">— elegível pra Destaque da Semana/Mês</span></span>
+          </label>
           {% if user %}
           <div style="margin-bottom:24px">
             <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px"

@@ -184,6 +184,10 @@
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Backups
       </a>
+      <a href="{{ url_for('destaques') }}" class="nav-item {% if request.endpoint in ['destaques','destaque_excluir'] %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M12 2l2.6 6.6L21 9.3l-5 4.6L17.4 21 12 17.3 6.6 21 8 13.9l-5-4.6 6.4-.7z"/></svg>
+        Destaques
+      </a>
       </div>
       </div>
       {% endif %}

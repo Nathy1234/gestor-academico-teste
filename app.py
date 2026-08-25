@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_file, Response, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.8.0'
+VERSAO = '1.9.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -200,6 +200,9 @@ class User(db.Model):
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
     dashboard_layout = db.Column(db.Text)  # JSON: ordem dos cards do dashboard escolhida pelo usuário
+    equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe? usado em Destaques e Avisos
+    foto         = db.Column(db.LargeBinary)  # foto de perfil, exibida nos Destaques
+    foto_mimetype = db.Column(db.String(50))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_perm(self, key):
@@ -482,6 +485,19 @@ class AppSetting(db.Model):
     todo mundo (diferente do dashboard, que cada usuário organiza o seu)."""
     key   = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.Text)
+
+class Destaque(db.Model):
+    """Destaque da Semana / do Mês — escolhido manualmente pelo admin,
+    aparece no dashboard com a foto da pessoa."""
+    id            = db.Column(db.Integer, primary_key=True)
+    tipo          = db.Column(db.String(10), nullable=False)  # 'semana' ou 'mes'
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    periodo_label = db.Column(db.String(100))  # texto livre, ex: "Semana de 18 a 24/08"
+    observacao    = db.Column(db.Text)
+    created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    pessoa = db.relationship('User', foreign_keys=[user_id])
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -1116,6 +1132,9 @@ def dashboard():
     except (ValueError, TypeError):
         dashboard_layout = []
 
+    destaque_semana = _destaque_atual('semana')
+    destaque_mes = _destaque_atual('mes')
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
@@ -1126,7 +1145,8 @@ def dashboard():
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
         erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando,
-        dashboard_layout=dashboard_layout)
+        dashboard_layout=dashboard_layout,
+        destaque_semana=destaque_semana, destaque_mes=destaque_mes)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -3264,7 +3284,8 @@ def usuario_novo():
             perms = _perms_from_form(request.form)
             u = User(username=d['username'], nome=d.get('nome', '').strip(), email=email,
                      password=hash_pw(d['password']),
-                     role=d['role'], permissoes=json.dumps(perms), must_change_password=True)
+                     role=d['role'], permissoes=json.dumps(perms), must_change_password=True,
+                     equipe=(d.get('equipe') == 'on'))
             db.session.add(u)
             db.session.commit()
             log_action(session['user_id'], session['username'], 'criar', 'user', u.id, u.username)
@@ -3296,6 +3317,7 @@ def usuario_editar(id):
         u.nome = d.get('nome', '').strip()
         u.role = d['role']
         u.permissoes = json.dumps(_perms_from_form(d))
+        u.equipe = (d.get('equipe') == 'on')
         if d.get('password'):
             u.password = hash_pw(d['password'])
             u.must_change_password = True
@@ -3328,6 +3350,30 @@ def usuario_redefinir_senha(id):
     flash(f'"{u.username}" precisará trocar a senha no próximo login.', 'success')
     return redirect(url_for('usuarios'))
 
+@app.route('/usuarios/<int:id>/foto', methods=['POST'])
+@admin_required
+def usuario_foto_upload(id):
+    u = User.query.get_or_404(id)
+    arquivo = request.files.get('foto')
+    if arquivo and arquivo.filename:
+        conteudo = arquivo.read()
+        if len(conteudo) > 3 * 1024 * 1024:
+            flash('Foto muito grande (máx. 3MB).', 'danger')
+        else:
+            u.foto = conteudo
+            u.foto_mimetype = arquivo.mimetype or 'image/jpeg'
+            db.session.commit()
+            flash('Foto atualizada!', 'success')
+    return redirect(url_for('usuario_editar', id=id))
+
+@app.route('/usuarios/<int:id>/foto')
+@login_required
+def usuario_foto(id):
+    u = User.query.get_or_404(id)
+    if not u.foto:
+        abort(404)
+    return Response(u.foto, mimetype=u.foto_mimetype or 'image/jpeg')
+
 @app.route('/usuarios/<int:id>/excluir', methods=['POST'])
 @admin_required
 def usuario_excluir(id):
@@ -3346,6 +3392,48 @@ def usuario_excluir(id):
     log_action(session['user_id'], session['username'], 'excluir', 'user', id, username)
     flash(f'Usuário "{username}" excluído.', 'success')
     return redirect(url_for('usuarios'))
+
+# ─── DESTAQUE DA SEMANA / DO MÊS ────────────────────────────────────────────────
+# Escolhido manualmente pelo admin — sempre vale o mais recente cadastrado de
+# cada tipo. Mantém o histórico dos anteriores (não apaga ao trocar).
+
+def _destaque_atual(tipo):
+    return Destaque.query.filter_by(tipo=tipo).order_by(Destaque.created_at.desc()).first()
+
+@app.route('/destaques', methods=['GET', 'POST'])
+@admin_required
+def destaques():
+    if request.method == 'POST':
+        d = request.form
+        tipo = d.get('tipo')
+        user_id = d.get('user_id', type=int)
+        if tipo not in ('semana', 'mes') or not user_id:
+            flash('Escolha o tipo e a pessoa.', 'danger')
+        else:
+            item = Destaque(
+                tipo=tipo, user_id=user_id,
+                periodo_label=d.get('periodo_label', '').strip(),
+                observacao=d.get('observacao', '').strip(),
+                created_by=session['user_id'],
+            )
+            db.session.add(item)
+            db.session.commit()
+            log_action(session['user_id'], session['username'], 'criar', 'destaque', item.id, item.periodo_label)
+            flash('Destaque registrado!', 'success')
+        return redirect(url_for('destaques'))
+    equipe = User.query.filter_by(equipe=True).order_by(User.username).all()
+    historico = Destaque.query.order_by(Destaque.created_at.desc()).limit(20).all()
+    return render_template('destaques.html', equipe=equipe, historico=historico,
+                           destaque_semana=_destaque_atual('semana'), destaque_mes=_destaque_atual('mes'))
+
+@app.route('/destaques/<int:id>/excluir', methods=['POST'])
+@admin_required
+def destaque_excluir(id):
+    d = Destaque.query.get_or_404(id)
+    db.session.delete(d)
+    db.session.commit()
+    flash('Destaque removido.', 'success')
+    return redirect(url_for('destaques'))
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
@@ -3630,6 +3718,7 @@ def ferramenta_abrir(id):
 DASHBOARD_BLOCOS_VALIDOS = {
     'andamento_plataforma', 'cursos_responsavel', 'distribuicao_tipo',
     'erp_moodle', 'atividade_recente', 'acesso_rapido', 'ultimo_backup',
+    'destaques',
 }
 
 @app.route('/api/dashboard-layout', methods=['POST'])
@@ -4253,6 +4342,7 @@ def seed_data():
         ('Moodle Pós ERP', 'https://moodleposead.unifatecie.edu.br/login/index.php?loginredirect=1'),
         ('Moodle Cursos Técnicos ERP', 'https://moodle.evoluitec.app.br/course/index.php'),
         ('Moodle LAV', 'https://lav.eadunifatecie.com.br/login/index.php'),
+        ('Microsoft Teams', 'https://teams.microsoft.com/'),
     ]
     maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
     labels_existentes = {t.label for t in ExternalTool.query.all()}
@@ -4668,7 +4758,9 @@ def _run_migrations():
         # tabela "user" precisa de aspas pois é palavra reservada em alguns DBs
         for col, dtype in [("permissoes", "TEXT DEFAULT '{}' "), ("email", "VARCHAR(200)"),
                            ("must_change_password", "BOOLEAN DEFAULT false"),
-                           ("nome", "VARCHAR(200)"), ("dashboard_layout", "TEXT")]:
+                           ("nome", "VARCHAR(200)"), ("dashboard_layout", "TEXT"),
+                           ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
+                           ("foto_mimetype", "VARCHAR(50)")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'

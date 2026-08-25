@@ -59,7 +59,8 @@
             </td>
             {% if session.role == 'admin' %}
             <td style="white-space:nowrap">
-              <button type="button" class="btn btn-sm btn-secondary" onclick="editarFerramenta({{ t.id }}, {{ t.label|tojson }}, {{ t.url|tojson }})">Editar</button>
+              <button type="button" class="btn btn-sm btn-secondary btn-editar-ferramenta"
+                      data-id="{{ t.id }}" data-label="{{ t.label }}" data-url="{{ t.url }}">Editar</button>
               <form method="POST" action="{{ url_for('ferramenta_revalidar', id=t.id) }}" style="display:inline" title="Reconferir agora se o site já libera ser embutido">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-sm btn-secondary">Revalidar</button>
@@ -110,6 +111,11 @@ function editarFerramenta(id, label, url) {
 function fecharModalEditar() {
   document.getElementById('modalEditar').style.display = 'none';
 }
+document.querySelectorAll('.btn-editar-ferramenta').forEach(btn => {
+  btn.addEventListener('click', () => {
+    editarFerramenta(btn.dataset.id, btn.dataset.label, btn.dataset.url);
+  });
+});
 </script>
 {% endif %}
 {% endblock %}
