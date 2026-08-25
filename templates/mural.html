@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}Mural da Equipe — Gestor{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Mural da Equipe</div>
+      <div class="page-subtitle">Recados rápidos pra todo mundo — reaja com emoji, sem precisar de aba separada</div>
+    </div>
+  </div>
+
+  <div id="avisoNovasMsgs" style="display:none;margin-bottom:12px">
+    <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;color:var(--primary)" onclick="location.reload()">
+      ↻ Tem mensagem nova — clique pra atualizar
+    </button>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('mural_nova') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <textarea name="texto" rows="2" maxlength="2000" placeholder="Escreva um recado pra equipe..." required
+                  style="width:100%;resize:vertical"></textarea>
+        <div style="text-align:right;margin-top:8px">
+          <button type="submit" class="btn btn-primary">Postar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px" id="listaMural"
+       data-ultimo-id="{{ mensagens[0].id if mensagens else 0 }}">
+    {% for m in mensagens %}
+    <div class="card">
+      <div class="card-body" style="padding:14px 16px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;overflow:hidden;
+                      background:linear-gradient(135deg,var(--primary),#d9640a);display:flex;
+                      align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px">
+            {% if m.autor.foto %}
+            <img src="{{ url_for('usuario_foto', id=m.autor.id) }}" style="width:100%;height:100%;object-fit:cover">
+            {% else %}{{ m.autor.username[0]|upper }}{% endif %}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+              <span style="font-weight:600;font-size:13px">{{ m.autor.nome or m.autor.username }}</span>
+              <span style="font-size:11px;color:var(--text-muted)">{{ m.created_at.strftime('%d/%m/%Y às %H:%M') }}</span>
+            </div>
+            <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;word-break:break-word">{{ m.texto }}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
+              {% for e in emojis %}
+              {% set reagido = (m.id, e) in minhas_reacoes %}
+              {% set qtd = (reacoes_por_msg.get(m.id, []) | selectattr('emoji', 'equalto', e) | map(attribute='qtd') | first) or 0 %}
+              <button type="button" class="btn-reacao {% if reagido %}is-active{% endif %}"
+                      data-msg-id="{{ m.id }}" data-emoji="{{ e }}" onclick="reagirMural(this)">
+                {{ e }}{% if qtd > 0 %} <span class="reacao-count">{{ qtd }}</span>{% endif %}
+              </button>
+              {% endfor %}
+              {% if m.user_id == session.user_id or session.role == 'admin' %}
+              <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="margin-left:auto"
+                    onsubmit="return confirm('Excluir esta mensagem?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626">Excluir</button>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card"><div class="card-body" style="text-align:center;color:var(--text-muted);padding:32px">
+      Nenhuma mensagem ainda — seja o primeiro a postar!
+    </div></div>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+.btn-reacao {
+  border: 1px solid var(--border); background: var(--surface-2); border-radius: 20px;
+  padding: 3px 10px; font-size: 13px; cursor: pointer; transition: all .12s;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-reacao:hover { border-color: var(--primary); background: var(--primary-light); }
+.btn-reacao.is-active { border-color: var(--primary); background: var(--primary-light); }
+.reacao-count { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+</style>
+
+<script>
+function reagirMural(btn) {
+  const msgId = btn.dataset.msgId;
+  const emoji = btn.dataset.emoji;
+  fetch(`/mural/${msgId}/reagir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emoji }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      btn.classList.toggle('is-active', data.reagiu);
+      let countEl = btn.querySelector('.reacao-count');
+      if (data.contagem > 0) {
+        if (!countEl) {
+          countEl = document.createElement('span');
+          countEl.className = 'reacao-count';
+          btn.appendChild(countEl);
+        }
+        countEl.textContent = data.contagem;
+      } else if (countEl) {
+        countEl.remove();
+      }
+    });
+}
+
+(function() {
+  const lista = document.getElementById('listaMural');
+  if (!lista) return;
+  const ultimoId = lista.dataset.ultimoId || '0';
+  setInterval(() => {
+    fetch(`/api/mural/novas-desde/${ultimoId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.novas > 0) document.getElementById('avisoNovasMsgs').style.display = 'block';
+      });
+  }, 30000);
+})();
+</script>
+{% endblock %}

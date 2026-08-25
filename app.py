@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.9.1'
+VERSAO = '1.10.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -498,6 +498,29 @@ class Destaque(db.Model):
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     pessoa = db.relationship('User', foreign_keys=[user_id])
+
+class MuralMensagem(db.Model):
+    """Mural compartilhado da equipe — mensagem curta + reações em emoji.
+    Não é chat privado nem em tempo real: todo mundo vê tudo, atualiza ao
+    recarregar a tela."""
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    texto      = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    autor = db.relationship('User', foreign_keys=[user_id])
+
+class MuralReacao(db.Model):
+    """Uma reação em emoji de um usuário numa mensagem do mural. Uma pessoa
+    pode reagir com vários emojis diferentes na mesma mensagem, mas não
+    repetir o mesmo emoji duas vezes (clicar de novo remove)."""
+    id           = db.Column(db.Integer, primary_key=True)
+    mensagem_id  = db.Column(db.Integer, db.ForeignKey('mural_mensagem.id'), nullable=False)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    emoji        = db.Column(db.String(10), nullable=False)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('mensagem_id', 'user_id', 'emoji', name='uq_reacao'),)
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -3434,6 +3457,74 @@ def destaque_excluir(id):
     db.session.commit()
     flash('Destaque removido.', 'success')
     return redirect(url_for('destaques'))
+
+# ─── MURAL DA EQUIPE (mensagens + reação em emoji) ─────────────────────────────
+
+EMOJIS_MURAL = ['👍', '❤️', '😂', '🎉', '👏', '🔥', '😮', '🙏']
+
+@app.route('/mural')
+@login_required
+def mural():
+    mensagens = MuralMensagem.query.order_by(MuralMensagem.created_at.desc()).limit(80).all()
+    reacoes_por_msg = {}
+    minhas_reacoes = set()
+    if mensagens:
+        ids = [m.id for m in mensagens]
+        rows = db.session.query(MuralReacao.mensagem_id, MuralReacao.emoji, db.func.count(MuralReacao.id))\
+            .filter(MuralReacao.mensagem_id.in_(ids)).group_by(MuralReacao.mensagem_id, MuralReacao.emoji).all()
+        for msg_id, emoji, qtd in rows:
+            reacoes_por_msg.setdefault(msg_id, []).append({'emoji': emoji, 'qtd': qtd})
+        minhas = MuralReacao.query.filter(MuralReacao.mensagem_id.in_(ids), MuralReacao.user_id == session['user_id']).all()
+        minhas_reacoes = {(r.mensagem_id, r.emoji) for r in minhas}
+    return render_template('mural.html', mensagens=mensagens, emojis=EMOJIS_MURAL,
+                           reacoes_por_msg=reacoes_por_msg, minhas_reacoes=minhas_reacoes)
+
+@app.route('/mural/nova', methods=['POST'])
+@login_required
+def mural_nova():
+    texto = request.form.get('texto', '').strip()
+    if texto:
+        db.session.add(MuralMensagem(user_id=session['user_id'], texto=texto[:2000]))
+        db.session.commit()
+    return redirect(url_for('mural'))
+
+@app.route('/mural/<int:id>/excluir', methods=['POST'])
+@login_required
+def mural_excluir(id):
+    m = MuralMensagem.query.get_or_404(id)
+    u = User.query.get(session['user_id'])
+    if m.user_id != u.id and u.role != 'admin':
+        flash('Você só pode excluir suas próprias mensagens.', 'danger')
+        return redirect(url_for('mural'))
+    db.session.delete(m)
+    db.session.commit()
+    return redirect(url_for('mural'))
+
+@app.route('/mural/<int:id>/reagir', methods=['POST'])
+@login_required
+def mural_reagir(id):
+    MuralMensagem.query.get_or_404(id)
+    data = request.get_json(silent=True) or {}
+    emoji = (data.get('emoji') or '').strip()
+    if not emoji or emoji not in EMOJIS_MURAL:
+        return jsonify({'ok': False, 'erro': 'Emoji inválido.'}), 400
+    existente = MuralReacao.query.filter_by(mensagem_id=id, user_id=session['user_id'], emoji=emoji).first()
+    if existente:
+        db.session.delete(existente)
+        reagiu = False
+    else:
+        db.session.add(MuralReacao(mensagem_id=id, user_id=session['user_id'], emoji=emoji))
+        reagiu = True
+    db.session.commit()
+    contagem = MuralReacao.query.filter_by(mensagem_id=id, emoji=emoji).count()
+    return jsonify({'ok': True, 'reagiu': reagiu, 'contagem': contagem})
+
+@app.route('/api/mural/novas-desde/<int:ultimo_id>')
+@login_required
+def api_mural_novas(ultimo_id):
+    """Consultado via JS pra saber se surgiram mensagens novas sem recarregar a página."""
+    total = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id).count()
+    return jsonify({'novas': total})
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 

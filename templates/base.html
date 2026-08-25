@@ -48,6 +48,10 @@
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Dashboard
       </a>
+      <a href="{{ url_for('mural') }}" class="nav-item {% if request.endpoint in ['mural'] %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Mural da Equipe
+      </a>
       {% set em_curso = request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar','pacotes'] %}
       {% set is_admin_nav = session.role == 'admin' %}
       {% set secoes_padrao = ['inova_carreira','ferramentas','erp_moodle','gestao','admin'] %}
@@ -224,6 +228,12 @@
         <div id="searchResults" class="search-dropdown"></div>
       </div>
       <div class="topbar-actions">
+        <!-- MURAL DA EQUIPE -->
+        <a href="{{ url_for('mural') }}" class="theme-toggle" title="Mural da Equipe" style="text-decoration:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </a>
         <!-- SINO DE NOTIFICAÇÕES -->
         <div class="notif-wrap">
           {% set total_badge = (notif_count + admin_finalizado_count + eventos_pendentes_count + solicitacoes_pendentes_count) if session.role == 'admin' else (notif_count + eventos_pendentes_count + solicitacoes_pendentes_count) %}
