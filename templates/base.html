@@ -48,43 +48,12 @@
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Dashboard
       </a>
-      {% set cur_tipo = request.args.get('tipo', c.tipo if (request.endpoint == 'curso_detalhe' and c is defined) else '') %}
-      {% set cur_status = request.args.get('status','') %}
-      {% set em_curso = request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar'] %}
-      {% set inova_carreira_aberto = em_curso or request.endpoint == 'pacotes' %}
-      <button type="button" class="nav-section-toggle {% if inova_carreira_aberto %}is-open{% endif %}"
-              onclick="toggleNavGroup('navInovaCarreira', this)">
-        <span>INOVA CARREIRA</span>
-        <svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </button>
-      <div id="navInovaCarreira" class="nav-collapsible {% if not inova_carreira_aberto %}is-collapsed{% endif %}"
-           data-default-open="{{ 'true' if inova_carreira_aberto else 'false' }}">
-        <a href="{{ url_for('cursos') }}" class="nav-item {% if em_curso and not cur_tipo %}active{% endif %}">
-          <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          Todos os Cursos
-        </a>
-        <a href="{{ url_for('cursos', tipo='pos') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='pos' %}active{% endif %}">
-          <span class="dot dot-purple"></span> Pós-Graduação
-        </a>
-        <a href="{{ url_for('cursos', tipo='profissionalizante') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='profissionalizante' %}active{% endif %}">
-          <span class="dot dot-blue"></span> Profissionalizantes
-        </a>
-        <a href="{{ url_for('cursos', tipo='rapido') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='rapido' %}active{% endif %}">
-          <span class="dot dot-green"></span> Rápidos
-        </a>
-        <a href="{{ url_for('pacotes') }}" class="nav-item nav-sub {% if request.endpoint=='pacotes' %}active{% endif %}">
-          <span class="dot dot-orange"></span> Pacotes
-        </a>
-        <a href="{{ url_for('cursos', tipo='terceiros') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='terceiros' %}active{% endif %}">
-          <span class="dot dot-gray"></span> Terceiros
-        </a>
-        <a href="{{ url_for('cursos', tipo='evento') }}" class="nav-item nav-sub {% if em_curso and cur_tipo=='evento' %}active{% endif %}">
-          <span class="dot dot-pink"></span> Eventos
-        </a>
-        <a href="{{ url_for('cursos', status='descontinuado') }}" class="nav-item nav-sub {% if em_curso and cur_status=='descontinuado' %}active{% endif %}">
-          <span class="dot" style="background:#94a3b8"></span> Arquivados
-        </a>
-      </div>
+      {% set em_curso = request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar','pacotes'] %}
+      <div class="nav-section">INOVA CARREIRA</div>
+      <a href="{{ url_for('cursos') }}" class="nav-item {% if em_curso %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        Catálogo de Cursos
+      </a>
 
       <a href="{{ url_for('matrizes') }}" class="nav-item {% if request.endpoint in ['matrizes','matrizes_relatorio'] %}active{% endif %}">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>
