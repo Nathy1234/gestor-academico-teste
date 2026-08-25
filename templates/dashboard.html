@@ -227,8 +227,8 @@
         </div>
         <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
       </div>
-      <div style="overflow:hidden">
-        <table style="width:100%">
+      <div class="table-wrapper">
+        <table style="width:100%;min-width:520px">
           <thead>
             <tr>
               <th style="padding-left:16px">Insersor</th>
@@ -321,9 +321,9 @@
         </div>
         <a href="{{ url_for('cursos') }}" class="btn btn-sm btn-secondary">Ver todos →</a>
       </div>
-      <div style="overflow:hidden">
+      <div class="table-wrapper">
         {% if cursos_ins_stats %}
-        <table style="width:100%">
+        <table style="width:100%;min-width:520px">
           <thead>
             <tr>
               <th style="padding-left:16px">Responsável</th>

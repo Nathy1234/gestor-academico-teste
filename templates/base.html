@@ -49,7 +49,13 @@
         Dashboard
       </a>
       {% set em_curso = request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar','pacotes'] %}
-      <div class="nav-section">INOVA CARREIRA</div>
+      {% set is_admin_nav = session.role == 'admin' %}
+      {% set secoes_padrao = ['inova_carreira','ferramentas','erp_moodle','gestao','admin'] %}
+      {% set secoes_ordem = (sidebar_section_order if sidebar_section_order else secoes_padrao) %}
+      <div id="sidebarSections" data-admin="{{ 'true' if is_admin_nav else 'false' }}">
+
+      <div class="sidebar-section-block" data-section-id="inova_carreira" {% if is_admin_nav %}draggable="true"{% endif %}>
+      <div class="nav-section">{% if is_admin_nav %}<span class="section-handle" title="Arraste para reorganizar as seções">⠿</span>{% endif %}INOVA CARREIRA</div>
       <a href="{{ url_for('cursos') }}" class="nav-item {% if em_curso %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         Catálogo de Cursos
@@ -80,10 +86,13 @@
         <svg viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
         IA Assistente
       </a>
+      </div>
 
+      {% if ferramentas_tools or session.role == 'admin' %}
+      <div class="sidebar-section-block" data-section-id="ferramentas" {% if is_admin_nav %}draggable="true"{% endif %}>
       {% if ferramentas_tools %}
       <div class="nav-section" style="display:flex;align-items:center;justify-content:space-between">
-        <span>FERRAMENTAS</span>
+        <span>{% if is_admin_nav %}<span class="section-handle" title="Arraste para reorganizar as seções">⠿</span>{% endif %}FERRAMENTAS</span>
         {% if session.role == 'admin' %}
         <a href="{{ url_for('ferramentas') }}" style="color:var(--sidebar-text);font-size:14px;line-height:1;text-decoration:none" title="Gerenciar ferramentas">+</a>
         {% endif %}
@@ -101,26 +110,29 @@
       {% endif %}
       {% endfor %}
       {% elif session.role == 'admin' %}
-      <div class="nav-section">FERRAMENTAS</div>
+      <div class="nav-section">{% if is_admin_nav %}<span class="section-handle" title="Arraste para reorganizar as seções">⠿</span>{% endif %}FERRAMENTAS</div>
       <a href="{{ url_for('ferramentas') }}" class="nav-item {% if 'ferramenta' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 20h8"/></svg>
         + Adicionar Ferramenta
       </a>
       {% endif %}
+      </div>
       {% endif %}
 
       {% if can_erp_moodle %}
-      <div class="nav-section" style="color:#1d4ed8">ERP MOODLE</div>
+      <div class="sidebar-section-block" data-section-id="erp_moodle" {% if is_admin_nav %}draggable="true"{% endif %}>
+      <div class="nav-section" style="color:#1d4ed8">{% if is_admin_nav %}<span class="section-handle" title="Arraste para reorganizar as seções">⠿</span>{% endif %}ERP MOODLE</div>
       <a href="{{ url_for('erp_moodle') }}" class="nav-item {% if 'erp_moodle' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Inserção de Conteúdo
       </a>
+      </div>
       {% endif %}
 
       {% if not somente_erp_moodle %}
       {% if can_reembolsos or can_historico %}
-      <div class="nav-section">GESTÃO</div>
-      {% endif %}
+      <div class="sidebar-section-block" data-section-id="gestao" {% if is_admin_nav %}draggable="true"{% endif %}>
+      <div class="nav-section">{% if is_admin_nav %}<span class="section-handle" title="Arraste para reorganizar as seções">⠿</span>{% endif %}GESTÃO</div>
       {% if can_reembolsos %}
       <a href="{{ url_for('reembolsos') }}" class="nav-item {% if 'reembolso' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M3 12h18M3 12l6-6M3 12l6 6"/></svg>
@@ -133,9 +145,12 @@
         Histórico
       </a>
       {% endif %}
+      </div>
+      {% endif %}
 
       {% if session.role == 'admin' %}
-      <div class="nav-section">ADMIN</div>
+      <div class="sidebar-section-block" data-section-id="admin" draggable="true">
+      <div class="nav-section"><span class="section-handle" title="Arraste para reorganizar as seções">⠿</span>ADMIN</div>
       <a href="{{ url_for('usuarios') }}" class="nav-item {% if 'usuario' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Usuários
@@ -144,9 +159,17 @@
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Backups
       </a>
+      </div>
       {% endif %}
+      {% endif %}
+
+      </div>
       {% endif %}
     </nav>
+    <script>
+      window.SIDEBAR_ORDEM = {{ secoes_ordem|default([])|tojson }};
+      window.SIDEBAR_IS_ADMIN = {{ 'true' if is_admin_nav|default(false) else 'false' }};
+    </script>
     <div class="sidebar-footer">
       <a href="{{ url_for('minha_conta') }}" class="user-info" style="text-decoration:none;color:inherit" title="Minha Conta">
         <div class="user-avatar">{{ session.username[0]|upper }}</div>

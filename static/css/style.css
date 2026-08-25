@@ -138,6 +138,11 @@ body {
 }
 .nav-sub { padding-left: 20px; font-size: 12px; font-weight: 400; }
 .nav-sub.active { padding-left: 20px; }
+.sidebar-section-block[draggable="true"] { cursor: default; }
+.sidebar-section-block[draggable="true"] .nav-section { cursor: grab; }
+.section-handle { cursor: grab; margin-right: 3px; user-select: none; }
+.sidebar-section-block.section-dragging { opacity: .4; }
+.sidebar-section-block.section-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; border-radius: 8px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .dot-purple { background: #c084fc; }
 .dot-blue   { background: #60a5fa; }

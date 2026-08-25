@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.6.1'
+VERSAO = '1.7.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -450,6 +450,13 @@ class ExternalTool(db.Model):
     embeddable_checado_em = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class AppSetting(db.Model):
+    """Configurações globais simples do sistema, tipo chave/valor — ex: a
+    ordem das seções do menu lateral, escolhida pelo admin e valendo pra
+    todo mundo (diferente do dashboard, que cada usuário organiza o seu)."""
+    key   = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.Text)
+
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
 def _parse_data_form(valor):
@@ -661,6 +668,17 @@ def restaurar_backup(dados):
 def inject_now():
     return {'now': datetime.now}
 
+def _sidebar_section_order():
+    """Ordem das seções do menu lateral escolhida pelo admin (vale pra todo
+    mundo). Lista vazia = ordem padrão (a ordem em que já estão no HTML)."""
+    setting = AppSetting.query.get('sidebar_section_order')
+    if not setting or not setting.value:
+        return []
+    try:
+        return json.loads(setting.value)
+    except (ValueError, TypeError):
+        return []
+
 @app.context_processor
 def inject_notificacoes():
     if 'user_id' not in session:
@@ -677,6 +695,7 @@ def inject_notificacoes():
             'solicitacoes_pendentes': [], 'solicitacoes_pendentes_count': 0,
             'can_cupons': False, 'can_reembolsos': False, 'can_historico': False,
             'can_erp_moodle': True, 'somente_erp_moodle': True, 'ferramentas_tools': [],
+            'sidebar_section_order': [],
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -729,6 +748,7 @@ def inject_notificacoes():
         'can_erp_moodle': u.can_view_erp_moodle(),
         'somente_erp_moodle': False,
         'ferramentas_tools': ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all(),
+        'sidebar_section_order': _sidebar_section_order(),
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -3587,6 +3607,26 @@ def api_dashboard_layout():
     db.session.commit()
     return jsonify({'ok': True})
 
+SIDEBAR_SECOES_VALIDAS = {'inova_carreira', 'ferramentas', 'erp_moodle', 'gestao', 'admin'}
+
+@app.route('/api/sidebar-ordem', methods=['POST'])
+@admin_required
+def api_sidebar_ordem():
+    """Só admin mexe na ordem das seções do menu lateral — vale globalmente
+    pra todo mundo que loga, igual as permissões que o admin já controla."""
+    data = request.get_json(silent=True) or {}
+    ordem = data.get('order', [])
+    if not isinstance(ordem, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    ordem = [s for s in ordem if s in SIDEBAR_SECOES_VALIDAS]
+    setting = AppSetting.query.get('sidebar_section_order')
+    if not setting:
+        setting = AppSetting(key='sidebar_section_order')
+        db.session.add(setting)
+    setting.value = json.dumps(ordem) if ordem else None
+    db.session.commit()
+    return jsonify({'ok': True})
+
 @app.route('/api/eventos/pendentes-ocultar')
 @login_required
 def api_eventos_pendentes_ocultar():
@@ -4163,12 +4203,24 @@ def seed_data():
             VendaModalidadeOpcao(label='Site', ordem=2),
         ])
         db.session.commit()
-    if ExternalTool.query.count() == 0:
-        db.session.add_all([
-            ExternalTool(label='Kronos', url='https://kronoslabtecie.web.app/', ordem=1),
-            ExternalTool(label='Sistema Curadoria', url='https://sistema-curadoria.vercel.app/', ordem=2),
-        ])
-        db.session.commit()
+    # Ferramentas padrão — checa por label (não por count==0) pra continuar
+    # funcionando mesmo depois que o admin já cadastrou/editou outras.
+    ferramentas_padrao = [
+        ('Kronos', 'https://kronoslabtecie.web.app/'),
+        ('Sistema Curadoria', 'https://sistema-curadoria.vercel.app/'),
+        ('Moodle Graduação ERP', 'https://moodle.fatecie.edu.br/course/index.php?categoryid=11752'),
+        ('Moodle Graduação WAE', 'https://www.eadunifatecie.com.br/'),
+        ('Moodle Pós ERP', 'https://moodleposead.unifatecie.edu.br/login/index.php?loginredirect=1'),
+        ('Moodle Cursos Técnicos ERP', 'https://moodle.evoluitec.app.br/course/index.php'),
+        ('Moodle LAV', 'https://lav.eadunifatecie.com.br/login/index.php'),
+    ]
+    maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
+    labels_existentes = {t.label for t in ExternalTool.query.all()}
+    for label, url in ferramentas_padrao:
+        if label not in labels_existentes:
+            maior_ordem += 1
+            db.session.add(ExternalTool(label=label, url=url, ordem=maior_ordem))
+    db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required

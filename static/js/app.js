@@ -22,6 +22,64 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── ORDEM DAS SEÇÕES DO MENU LATERAL ────────────────────────────────
+// A ordem é global (escolhida pelo admin, salva no servidor) — todo mundo
+// vê nessa ordem; só o admin pode arrastar pra mudar.
+(function() {
+  const container = document.getElementById('sidebarSections');
+  if (!container) return;
+  const ordemSalva = window.SIDEBAR_ORDEM || [];
+  const ehAdmin = window.SIDEBAR_IS_ADMIN === true;
+
+  if (ordemSalva.length) {
+    const blocos = {};
+    container.querySelectorAll('.sidebar-section-block').forEach(b => { blocos[b.dataset.sectionId] = b; });
+    ordemSalva.forEach(id => { if (blocos[id]) container.appendChild(blocos[id]); });
+  }
+
+  if (!ehAdmin) return;
+
+  let arrastando = null;
+  container.querySelectorAll('.sidebar-section-block[draggable="true"]').forEach(bloco => {
+    bloco.addEventListener('dragstart', () => {
+      arrastando = bloco;
+      bloco.classList.add('section-dragging');
+    });
+    bloco.addEventListener('dragend', () => {
+      bloco.classList.remove('section-dragging');
+      container.querySelectorAll('.section-drop-target').forEach(b => b.classList.remove('section-drop-target'));
+      arrastando = null;
+      salvarOrdemSidebar();
+    });
+    bloco.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!arrastando || arrastando === bloco) return;
+      container.querySelectorAll('.section-drop-target').forEach(b => b.classList.remove('section-drop-target'));
+      bloco.classList.add('section-drop-target');
+    });
+    bloco.addEventListener('dragleave', () => bloco.classList.remove('section-drop-target'));
+    bloco.addEventListener('drop', e => {
+      e.preventDefault();
+      bloco.classList.remove('section-drop-target');
+      if (!arrastando || arrastando === bloco) return;
+      const todos = Array.from(container.querySelectorAll('.sidebar-section-block'));
+      const posArrastando = todos.indexOf(arrastando);
+      const posAlvo = todos.indexOf(bloco);
+      if (posArrastando < posAlvo) bloco.after(arrastando);
+      else bloco.before(arrastando);
+    });
+  });
+
+  function salvarOrdemSidebar() {
+    const ordem = Array.from(container.querySelectorAll('.sidebar-section-block')).map(b => b.dataset.sectionId);
+    fetch('/api/sidebar-ordem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: ordem }),
+    });
+  }
+})();
+
 // ── THEME ────────────────────────────────────────────────────────
 function toggleTheme() {
   const html = document.documentElement;
