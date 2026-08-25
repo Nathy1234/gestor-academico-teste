@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.7.1'
+VERSAO = '1.8.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -240,6 +240,32 @@ class User(db.Model):
 
     def can_manage_backup(self):
         return self.role == 'admin' or self.get_perm('backup_gerenciar')
+
+    def can_view_cursos(self):
+        if self._p().get('block_cursos'): return False
+        return True  # todos os usuários logados têm acesso por padrão
+
+    def can_view_matrizes(self):
+        if self._p().get('block_matrizes'): return False
+        return True
+
+    def can_view_banco_disciplinas(self):
+        if self._p().get('block_banco_disciplinas'): return False
+        return True
+
+    def can_view_ia_assistente(self):
+        if self._p().get('block_ia_assistente'): return False
+        return True
+
+    def can_view_ferramentas(self):
+        if self._p().get('block_ferramentas'): return False
+        return True
+
+    def can_manage_pagamentos_terceiros(self):
+        return self.role == 'admin' or self.get_perm('pagamentos_terceiros_gerenciar')
+
+    def can_manage_opcoes_curso(self):
+        return self.role == 'admin' or self.get_perm('opcoes_curso_gerenciar')
 
     def can_change_own_password(self):
         if self.role == 'admin': return True
@@ -696,6 +722,9 @@ def inject_notificacoes():
             'can_cupons': False, 'can_reembolsos': False, 'can_historico': False,
             'can_erp_moodle': True, 'somente_erp_moodle': True, 'ferramentas_tools': [],
             'sidebar_section_order': [],
+            'can_cursos': False, 'can_matrizes': False, 'can_banco_disciplinas': False,
+            'can_ia_assistente': False, 'can_ferramentas': False,
+            'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -747,8 +776,15 @@ def inject_notificacoes():
         'can_historico': u.can_view_historico(),
         'can_erp_moodle': u.can_view_erp_moodle(),
         'somente_erp_moodle': False,
-        'ferramentas_tools': ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all(),
+        'ferramentas_tools': ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all() if u.can_view_ferramentas() else [],
         'sidebar_section_order': _sidebar_section_order(),
+        'can_cursos': u.can_view_cursos(),
+        'can_matrizes': u.can_view_matrizes(),
+        'can_banco_disciplinas': u.can_view_banco_disciplinas(),
+        'can_ia_assistente': u.can_view_ia_assistente(),
+        'can_ferramentas': u.can_view_ferramentas(),
+        'can_pagamentos_terceiros': u.can_manage_pagamentos_terceiros(),
+        'can_opcoes_curso': u.can_manage_opcoes_curso(),
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -1095,7 +1131,7 @@ def dashboard():
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
 @app.route('/cursos')
-@login_required
+@perm_check('can_view_cursos')
 def cursos():
     tipo      = request.args.get('tipo','')
     area      = request.args.get('area','')
@@ -1186,7 +1222,7 @@ def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas
     return lista
 
 @app.route('/cursos/status-em-lote', methods=['POST'])
-@login_required
+@perm_check('can_view_cursos')
 def cursos_status_em_lote():
     """Oculta ou ativa vários cursos de uma vez — só admin (só altera o
     campo status, nenhum curso, disciplina ou outro dado é apagado)."""
@@ -1213,7 +1249,7 @@ def cursos_status_em_lote():
     return jsonify({'ok': True, 'total': total})
 
 @app.route('/cursos/exportar-excel')
-@login_required
+@perm_check('can_view_cursos')
 def cursos_exportar_excel():
     import openpyxl, re
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1292,7 +1328,7 @@ def cursos_exportar_excel():
                      as_attachment=True, download_name=fname)
 
 @app.route('/cursos/relatorio')
-@login_required
+@perm_check('can_view_cursos')
 def cursos_relatorio():
     tipo      = request.args.get('tipo','')
     area      = request.args.get('area','')
@@ -1311,6 +1347,7 @@ def cursos_relatorio():
 
 @app.route('/cursos/novo', methods=['GET','POST'])
 @editor_required
+@perm_check('can_view_cursos')
 def curso_novo():
     if request.method == 'POST':
         d = request.form
@@ -1356,7 +1393,7 @@ def curso_novo():
                            usuarios=usuarios, video_presets=video_presets, venda_opcoes=venda_opcoes)
 
 @app.route('/cursos/<int:id>')
-@login_required
+@perm_check('can_view_cursos')
 def curso_detalhe(id):
     c    = Course.query.get_or_404(id)
     disc = Discipline.query.filter_by(course_id=id).order_by(Discipline.ordem).all()
@@ -1378,6 +1415,7 @@ CAMPOS_CURSO_LABEL = {
 
 @app.route('/cursos/<int:id>/editar', methods=['GET','POST'])
 @editor_required
+@perm_check('can_view_cursos')
 def curso_editar(id):
     c = Course.query.get_or_404(id)
     if request.method == 'POST':
@@ -1898,7 +1936,7 @@ def _pagamentos_terceiros_filtrados():
     return items, f_terceiro, f_curso, f_ano
 
 @app.route('/pagamentos-terceiros')
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamentos_terceiros():
     items, f_terceiro, f_curso, f_ano = _pagamentos_terceiros_filtrados()
 
@@ -1934,7 +1972,7 @@ def pagamentos_terceiros():
                            f_terceiro=f_terceiro, f_curso=f_curso, f_ano=f_ano)
 
 @app.route('/pagamentos-terceiros/exportar-excel')
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamentos_terceiros_exportar_excel():
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1994,7 +2032,7 @@ def pagamentos_terceiros_exportar_excel():
                      as_attachment=True, download_name=fname)
 
 @app.route('/pagamentos-terceiros/novo', methods=['GET', 'POST'])
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamento_terceiro_novo():
     cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
     if request.method == 'POST':
@@ -2020,7 +2058,7 @@ def pagamento_terceiro_novo():
                            terceiro_prefill=terceiro_prefill)
 
 @app.route('/pagamentos-terceiros/<int:id>/editar', methods=['GET', 'POST'])
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamento_terceiro_editar(id):
     p = ThirdPartyPayment.query.get_or_404(id)
     cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
@@ -2041,7 +2079,7 @@ def pagamento_terceiro_editar(id):
     return render_template('pagamento_terceiro_form.html', item=p, cursos_terceiros=cursos_terceiros)
 
 @app.route('/pagamentos-terceiros/<int:id>/excluir', methods=['POST'])
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamento_terceiro_excluir(id):
     p = ThirdPartyPayment.query.get_or_404(id)
     nome = p.terceiro
@@ -2077,7 +2115,7 @@ def disciplinas_marcar_todas(course_id):
     return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
 
 @app.route('/banco-disciplinas')
-@login_required
+@perm_check('can_view_banco_disciplinas')
 def banco_disciplinas():
     busca = request.args.get('q', '').strip()
 
@@ -2110,7 +2148,7 @@ def banco_disciplinas():
 
 
 @app.route('/banco-disciplinas/exportar-excel')
-@login_required
+@perm_check('can_view_banco_disciplinas')
 def banco_disciplinas_exportar_excel():
     import openpyxl, re as _re, unicodedata
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
@@ -2308,7 +2346,7 @@ def banco_disciplinas_exportar_excel():
 
 
 @app.route('/banco-disciplinas/relatorio')
-@login_required
+@perm_check('can_view_banco_disciplinas')
 def banco_disciplinas_relatorio():
     busca = request.args.get('q', '').strip()
 
@@ -2350,7 +2388,7 @@ def banco_disciplinas_relatorio():
 
 
 @app.route('/ia-assistente')
-@login_required
+@perm_check('can_view_ia_assistente')
 def ia_assistente():
     cursos_amostra = Course.query.filter(Course.status != 'descontinuado').order_by(Course.nome).limit(20).all()
     return render_template('ia_assistente.html', cursos_amostra=cursos_amostra)
@@ -2784,7 +2822,7 @@ def admin_marcar_concluido():
 
 
 @app.route('/pacotes')
-@login_required
+@perm_check('can_view_cursos')
 def pacotes():
     busca = request.args.get('q', '').strip()
 
@@ -2822,7 +2860,7 @@ def admin_migrar_externos():
 
 
 @app.route('/matrizes')
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes():
     busca = request.args.get('q', '').strip()
     # Sem "tipo" na URL nenhuma = primeira abertura (link da barra lateral) →
@@ -2920,7 +2958,7 @@ def matrizes():
                            pendentes_por_tipo=pendentes_por_tipo)
 
 @app.route('/matrizes/marcar-tudo', methods=['POST'])
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes_marcar_tudo():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Acesso negado'}), 403
@@ -2958,7 +2996,7 @@ def matrizes_marcar_tudo():
     return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
 
 @app.route('/matrizes/relatorio')
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes_relatorio():
     filtro_tipo = request.args.get('tipo', '')
     filtro_status = request.args.get('status', '')
@@ -2992,7 +3030,7 @@ def matrizes_relatorio():
                            now=datetime.utcnow())
 
 @app.route('/matrizes/exportar-excel')
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes_exportar_excel():
     import openpyxl, re
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -3272,8 +3310,10 @@ def _perms_from_form(d):
         'cursos_editar', 'cursos_excluir',
         'cupons_gerenciar', 'reembolsos_gerenciar',
         'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
-        'erp_moodle_acesso',
+        'erp_moodle_acesso', 'pagamentos_terceiros_gerenciar', 'opcoes_curso_gerenciar',
         'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
+        'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
+        'block_ia_assistente', 'block_ferramentas',
         'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
@@ -3439,7 +3479,7 @@ def arquivar_logs_antigos():
     return qtd
 
 @app.route('/admin/video-presets', methods=['GET', 'POST'])
-@admin_required
+@perm_check('can_manage_opcoes_curso')
 def video_presets():
     if request.method == 'POST':
         if request.form.get('form_tipo') == 'venda_modalidade':
@@ -3467,7 +3507,7 @@ def video_presets():
     return render_template('video_presets.html', presets=presets, venda_opcoes=venda_opcoes)
 
 @app.route('/admin/video-presets/<int:id>/excluir', methods=['POST'])
-@admin_required
+@perm_check('can_manage_opcoes_curso')
 def video_preset_excluir(id):
     p = VideoPreset.query.get_or_404(id)
     db.session.delete(p)
@@ -3476,7 +3516,7 @@ def video_preset_excluir(id):
     return redirect(url_for('video_presets'))
 
 @app.route('/admin/venda-modalidades/<int:id>/excluir', methods=['POST'])
-@admin_required
+@perm_check('can_manage_opcoes_curso')
 def venda_modalidade_excluir(id):
     o = VendaModalidadeOpcao.query.get_or_404(id)
     db.session.delete(o)
@@ -3516,7 +3556,7 @@ def _verifica_embeddable(url):
     return True
 
 @app.route('/ferramentas')
-@login_required
+@perm_check('can_view_ferramentas')
 def ferramentas():
     tools = ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all()
     return render_template('ferramentas.html', tools=tools)
@@ -3575,7 +3615,7 @@ def ferramenta_revalidar(id):
     return redirect(url_for('ferramentas'))
 
 @app.route('/ferramentas/<int:id>/abrir')
-@login_required
+@perm_check('can_view_ferramentas')
 def ferramenta_abrir(id):
     t = ExternalTool.query.get_or_404(id)
     # Recheca de tempos em tempos (1 dia) — o site pode mudar de política.
