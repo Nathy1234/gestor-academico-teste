@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+{% block title %}Importar da Matriz — ERP Moodle{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('erp_moodle') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← ERP Moodle</a>
+      <div class="page-title" style="margin-top:6px">Importar da Matriz</div>
+      <div class="page-subtitle">Escolha um curso já cadastrado e traga as disciplinas dele direto, sem digitar de novo</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-body">
+      <label>Buscar curso</label>
+      <input type="text" id="buscaCurso" placeholder="Digite o nome do curso..." autocomplete="off"
+             style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px">
+      <div id="resultadosBusca" style="margin-top:6px;border-radius:8px;overflow:hidden"></div>
+    </div>
+  </div>
+
+  <div id="painelDisciplinas" class="card" style="display:none">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+      <div class="card-title">Disciplinas de <span id="nomeCursoSelecionado"></span></div>
+      <label style="font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="marcarTodas" onchange="alternarTodas(this)"> Marcar todas
+      </label>
+    </div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('erp_moodle_importar') }}" id="formImportar">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="curso_id" id="cursoIdInput">
+        <input type="hidden" name="curso_nome" id="cursoNomeInput">
+
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="form-group"><label>Insersor Responsável (aplica a todas selecionadas)</label>
+            <input type="text" name="insersor_responsavel"></div>
+          <div class="form-group full"><label>Observação (aplica a todas selecionadas)</label>
+            <textarea name="observacao"></textarea></div>
+        </div>
+
+        <div class="table-wrapper">
+          <table style="width:100%">
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th>Disciplina</th>
+                <th style="width:220px">Status inicial</th>
+              </tr>
+            </thead>
+            <tbody id="listaDisciplinas"></tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <a href="{{ url_for('erp_moodle') }}" class="btn btn-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary">Importar selecionadas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const buscaInput = document.getElementById('buscaCurso');
+const resultadosDiv = document.getElementById('resultadosBusca');
+const painel = document.getElementById('painelDisciplinas');
+const listaBody = document.getElementById('listaDisciplinas');
+const cursoIdInicial = {{ curso_id_inicial|tojson }};
+
+let timerBusca;
+buscaInput.addEventListener('input', () => {
+  clearTimeout(timerBusca);
+  const q = buscaInput.value.trim();
+  if (q.length < 2) { resultadosDiv.innerHTML = ''; return; }
+  timerBusca = setTimeout(() => buscarCursos(q), 250);
+});
+
+function buscarCursos(q) {
+  fetch(`/api/busca?q=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.length) { resultadosDiv.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--text-muted)">Nenhum curso encontrado.</div>'; return; }
+      resultadosDiv.innerHTML = data.map(c => `
+        <div class="nav-item" style="cursor:pointer;border:1px solid var(--border);margin-bottom:4px"
+             onclick="selecionarCurso(${c.id}, '${c.nome.replace(/'/g, "\\'")}')">
+          ${c.nome}
+        </div>
+      `).join('');
+    });
+}
+
+function selecionarCurso(id, nome) {
+  resultadosDiv.innerHTML = '';
+  buscaInput.value = nome;
+  carregarDisciplinas(id, nome);
+}
+
+function carregarDisciplinas(id, nomeFallback) {
+  fetch(`/api/curso/${id}/disciplinas`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('cursoIdInput').value = data.curso_id;
+      document.getElementById('cursoNomeInput').value = data.curso_nome;
+      document.getElementById('nomeCursoSelecionado').textContent = data.curso_nome || nomeFallback;
+      if (!data.disciplinas.length) {
+        listaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px">Esse curso ainda não tem disciplinas cadastradas na matriz.</td></tr>';
+      } else {
+        listaBody.innerHTML = data.disciplinas.map((d, i) => `
+          <tr>
+            <td><input type="checkbox" class="chk-disc" ${d.ja_importada ? '' : 'checked'}
+                       onchange="atualizaLinha(this)"></td>
+            <td>
+              <input type="hidden" name="disciplina_nome" value="${d.nome.replace(/"/g,'&quot;')}" disabled>
+              ${d.nome}
+              ${d.ja_importada ? '<span style="font-size:11px;color:var(--text-muted);margin-left:6px">(já importada antes)</span>' : ''}
+            </td>
+            <td>
+              <select name="disciplina_status" class="filter-select" style="width:100%" disabled>
+                <option value="em_insercao">Em Inserção</option>
+                <option value="concluida">Concluída</option>
+              </select>
+            </td>
+          </tr>
+        `).join('');
+        listaBody.querySelectorAll('.chk-disc').forEach(atualizaLinha);
+      }
+      painel.style.display = 'block';
+    });
+}
+
+function atualizaLinha(chk) {
+  const row = chk.closest('tr');
+  row.querySelectorAll('input[type=hidden], select').forEach(el => el.disabled = !chk.checked);
+}
+
+function alternarTodas(origem) {
+  listaBody.querySelectorAll('.chk-disc').forEach(chk => {
+    chk.checked = origem.checked;
+    atualizaLinha(chk);
+  });
+}
+
+if (cursoIdInicial) {
+  carregarDisciplinas(cursoIdInicial, '');
+}
+</script>
+{% endblock %}

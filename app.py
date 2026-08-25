@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.3.1'
+VERSAO = '1.4.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -436,6 +436,15 @@ class VendaModalidadeOpcao(db.Model):
     id     = db.Column(db.Integer, primary_key=True)
     label  = db.Column(db.String(100), nullable=False)
     ordem  = db.Column(db.Integer, default=0)
+
+class ExternalTool(db.Model):
+    """Sistemas externos (ex: Kronos) cadastrados pelo admin pra abrir
+    embutidos dentro do próprio Gestor, sem precisar sair pra outra aba."""
+    id         = db.Column(db.Integer, primary_key=True)
+    label      = db.Column(db.String(150), nullable=False)
+    url        = db.Column(db.Text, nullable=False)
+    ordem      = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -1030,6 +1039,15 @@ def dashboard():
     # dashboard, só pra quem tem acesso àquela seção.
     erp_em_insercao = ErpMoodleItem.query.filter_by(status='em_insercao').count()
     erp_concluida = ErpMoodleItem.query.filter_by(status='concluida').count()
+    # Curso "novo" = ainda tem alguma disciplina pendente; assim que todas as
+    # disciplinas dele forem concluídas, o curso passa a contar como "rodando".
+    erp_por_curso = db.session.query(
+            ErpMoodleItem.nome_curso,
+            db.func.sum(db.case((ErpMoodleItem.status == 'em_insercao', 1), else_=0))
+        ).filter(ErpMoodleItem.nome_curso != None, ErpMoodleItem.nome_curso != '')\
+        .group_by(ErpMoodleItem.nome_curso).all()
+    erp_cursos_novos = sum(1 for _, pend in erp_por_curso if pend > 0)
+    erp_cursos_rodando = sum(1 for _, pend in erp_por_curso if pend == 0)
     erp_recentes = ErpMoodleItem.query.order_by(ErpMoodleItem.updated_at.desc()).limit(5).all()
 
     return render_template('dashboard.html',
@@ -1040,7 +1058,8 @@ def dashboard():
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u,
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
-        erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes)
+        erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
+        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -1541,6 +1560,60 @@ def erp_moodle_excluir(id):
     log_action(session['user_id'], session['username'], 'excluir', 'erp_moodle', id, nome)
     flash('Item excluído.', 'success')
     return redirect(url_for('erp_moodle'))
+
+@app.route('/api/curso/<int:id>/disciplinas')
+@perm_check('can_view_erp_moodle')
+def api_curso_disciplinas(id):
+    """Lista as disciplinas da matriz de um curso, pra importar pro ERP
+    Moodle sem digitar tudo de novo. Marca quais já têm item criado (mesmo
+    curso + mesma disciplina) pra não duplicar sem querer."""
+    curso = Course.query.get_or_404(id)
+    discs = Discipline.query.filter_by(course_id=id).order_by(Discipline.ordem).all()
+    ja_importadas = {
+        i.nome_disciplina for i in ErpMoodleItem.query.filter_by(nome_curso=curso.nome).all()
+    }
+    return jsonify({
+        'curso_id': curso.id, 'curso_nome': curso.nome,
+        'disciplinas': [{'nome': d.nome, 'modulo': d.modulo or '',
+                          'ja_importada': d.nome in ja_importadas} for d in discs],
+    })
+
+@app.route('/erp-moodle/importar', methods=['GET', 'POST'])
+@editor_required
+def erp_moodle_importar():
+    if request.method == 'POST':
+        curso_id = request.form.get('curso_id', '')
+        curso_nome = request.form.get('curso_nome', '').strip()
+        insersor = request.form.get('insersor_responsavel', '').strip()
+        observacao = request.form.get('observacao', '').strip()
+        nomes = request.form.getlist('disciplina_nome')
+        status_list = request.form.getlist('disciplina_status')
+        if not curso_nome or not nomes:
+            flash('Selecione um curso e ao menos uma disciplina da matriz.', 'danger')
+            return redirect(url_for('erp_moodle_importar', curso_id=curso_id))
+        criados = 0
+        for nome, status in zip(nomes, status_list):
+            nome = nome.strip()
+            if not nome:
+                continue
+            status = status if status in ('em_insercao', 'concluida') else 'em_insercao'
+            item = ErpMoodleItem(
+                nome_disciplina=nome, nome_curso=curso_nome, status=status,
+                insersor_responsavel=insersor, observacao=observacao,
+                created_by=session['user_id'],
+            )
+            if status == 'concluida':
+                item.data_conclusao = date.today()
+            db.session.add(item)
+            criados += 1
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'importar', 'erp_moodle', None,
+                   f'{criados} disciplina(s) da matriz de "{curso_nome}"')
+        flash(f'{criados} disciplina(s) importada(s) da matriz de "{curso_nome}"!', 'success')
+        return redirect(url_for('erp_moodle'))
+
+    curso_id_inicial = request.args.get('curso_id', '')
+    return render_template('erp_moodle_importar.html', curso_id_inicial=curso_id_inicial)
 
 # ─── CUPONS ────────────────────────────────────────────────────────────────────
 
@@ -3379,6 +3452,62 @@ def venda_modalidade_excluir(id):
     db.session.commit()
     flash('Opção de "Venda por" removida.', 'success')
     return redirect(url_for('video_presets'))
+
+# ─── FERRAMENTAS EXTERNAS (sistemas embutidos via iframe) ──────────────────────
+# Ex: Kronos. Alguns sites bloqueiam ser exibidos em iframe (cabeçalho
+# X-Frame-Options / Content-Security-Policy: frame-ancestors) — isso é uma
+# proteção do próprio site contra clickjacking e não tem como ser contornada
+# por aqui; nesses casos a tela mostra um aviso com link pra abrir em nova aba.
+
+@app.route('/ferramentas')
+@login_required
+def ferramentas():
+    tools = ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all()
+    return render_template('ferramentas.html', tools=tools)
+
+@app.route('/ferramentas/nova', methods=['POST'])
+@admin_required
+def ferramenta_nova():
+    label = request.form.get('label', '').strip()
+    url = request.form.get('url', '').strip()
+    if label and url:
+        maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
+        db.session.add(ExternalTool(label=label, url=url, ordem=maior_ordem + 1))
+        db.session.commit()
+        flash('Ferramenta adicionada!', 'success')
+    else:
+        flash('Preencha o nome e o link.', 'danger')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/editar', methods=['POST'])
+@admin_required
+def ferramenta_editar(id):
+    t = ExternalTool.query.get_or_404(id)
+    label = request.form.get('label', '').strip()
+    url = request.form.get('url', '').strip()
+    if label and url:
+        t.label = label
+        t.url = url
+        db.session.commit()
+        flash('Ferramenta atualizada!', 'success')
+    else:
+        flash('Preencha o nome e o link.', 'danger')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/excluir', methods=['POST'])
+@admin_required
+def ferramenta_excluir(id):
+    t = ExternalTool.query.get_or_404(id)
+    db.session.delete(t)
+    db.session.commit()
+    flash('Ferramenta removida.', 'success')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/abrir')
+@login_required
+def ferramenta_abrir(id):
+    t = ExternalTool.query.get_or_404(id)
+    return render_template('ferramenta_abrir.html', tool=t)
 
 @app.route('/api/eventos/pendentes-ocultar')
 @login_required

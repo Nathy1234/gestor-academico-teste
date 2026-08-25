@@ -10,7 +10,10 @@
       <div class="page-subtitle">Acompanhamento de disciplinas em inserção no Moodle — separado do catálogo INOVA</div>
     </div>
     {% if can_edit %}
-    <a href="{{ url_for('erp_moodle_novo') }}" class="btn btn-primary">+ Nova Disciplina</a>
+    <div style="display:flex;gap:8px">
+      <a href="{{ url_for('erp_moodle_importar') }}" class="btn btn-secondary">Importar da Matriz</a>
+      <a href="{{ url_for('erp_moodle_novo') }}" class="btn btn-primary">+ Nova Disciplina</a>
+    </div>
     {% endif %}
   </div>
 

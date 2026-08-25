@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}Ferramentas Externas — Gestor{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Ferramentas Externas</div>
+      <div class="page-subtitle">Sistemas que a equipe usa no dia a dia, abertos direto aqui dentro</div>
+    </div>
+  </div>
+
+  {% if session.role == 'admin' %}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><div class="card-title">Adicionar Ferramenta</div></div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('ferramenta_nova') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="flex:1;min-width:180px;margin:0">
+          <label>Nome</label>
+          <input type="text" name="label" placeholder="Ex: Kronos" required>
+        </div>
+        <div class="form-group" style="flex:2;min-width:260px;margin:0">
+          <label>Link</label>
+          <input type="url" name="url" placeholder="https://..." required>
+        </div>
+        <button type="submit" class="btn btn-primary">Adicionar</button>
+      </form>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:10px">
+        Alguns sites bloqueiam deliberadamente ser exibidos dentro de outra página (proteção contra clickjacking).
+        Nesses casos a tela mostra um aviso com um link pra abrir em nova aba em vez de ficar em branco.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="table-wrapper">
+      {% if tools %}
+      <table>
+        <thead><tr><th>Nome</th><th>Link</th>{% if session.role=='admin' %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for t in tools %}
+          <tr>
+            <td>
+              <a href="{{ url_for('ferramenta_abrir', id=t.id) }}" style="color:var(--text);text-decoration:none;font-weight:500;display:flex;align-items:center;gap:8px">
+                <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:var(--primary);stroke-width:2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 20h8"/></svg>
+                {{ t.label }}
+              </a>
+            </td>
+            <td style="font-size:12px;color:var(--text-muted);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.url }}</td>
+            {% if session.role == 'admin' %}
+            <td style="white-space:nowrap">
+              <button type="button" class="btn btn-sm btn-secondary" onclick="editarFerramenta({{ t.id }}, {{ t.label|tojson }}, {{ t.url|tojson }})">Editar</button>
+              <form method="POST" action="{{ url_for('ferramenta_excluir', id=t.id) }}" style="display:inline" onsubmit="return confirm('Remover esta ferramenta?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626">Excluir</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="text-align:center;color:var(--text-muted);padding:32px">Nenhuma ferramenta cadastrada ainda.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if session.role == 'admin' %}
+<div id="modalEditar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;align-items:center;justify-content:center">
+  <div class="card" style="width:100%;max-width:420px">
+    <div class="card-header"><div class="card-title">Editar Ferramenta</div></div>
+    <div class="card-body">
+      <form method="POST" id="formEditarFerramenta">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin-bottom:12px"><label>Nome</label>
+          <input type="text" name="label" id="editLabel" required></div>
+        <div class="form-group" style="margin-bottom:16px"><label>Link</label>
+          <input type="url" name="url" id="editUrl" required></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+function editarFerramenta(id, label, url) {
+  document.getElementById('formEditarFerramenta').action = `/ferramentas/${id}/editar`;
+  document.getElementById('editLabel').value = label;
+  document.getElementById('editUrl').value = url;
+  document.getElementById('modalEditar').style.display = 'flex';
+}
+function fecharModalEditar() {
+  document.getElementById('modalEditar').style.display = 'none';
+}
+</script>
+{% endif %}
+{% endblock %}
