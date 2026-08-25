@@ -43,7 +43,7 @@
           </div>
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-              <span style="font-weight:600;font-size:13px">{{ m.autor.nome or m.autor.username }}</span>
+              <span style="font-weight:600;font-size:13px">{{ m.autor|nome_exibicao }}</span>
               <span style="font-size:11px;color:var(--text-muted)">{{ m.created_at.strftime('%d/%m/%Y às %H:%M') }}</span>
             </div>
             <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;word-break:break-word">{{ m.texto }}</div>

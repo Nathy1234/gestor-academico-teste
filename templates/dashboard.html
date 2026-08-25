@@ -243,7 +243,7 @@
           <div style="min-width:0">
             <div style="font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--text-muted);text-transform:uppercase">Destaque da {{ titulo }}</div>
             {% if atual %}
-            <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ atual.pessoa.nome or atual.pessoa.username }}</div>
+            <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ atual.pessoa|nome_exibicao }}</div>
             {% else %}
             <div style="font-size:12px;color:var(--text-muted)">Ainda não escolhido</div>
             {% endif %}

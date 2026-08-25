@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.10.0'
+VERSAO = '1.10.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -200,6 +200,7 @@ class User(db.Model):
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
     dashboard_layout = db.Column(db.Text)  # JSON: ordem dos cards do dashboard escolhida pelo usuário
+    dashboard_ocultos = db.Column(db.Text)  # JSON: lista de block_id desligados pelo usuário (só exibição — não apaga dado nenhum)
     equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe? usado em Destaques e Avisos
     foto         = db.Column(db.LargeBinary)  # foto de perfil, exibida nos Destaques
     foto_mimetype = db.Column(db.String(50))
@@ -542,6 +543,17 @@ def _eventos_pendentes_ocultar():
         Course.tipo == 'evento', Course.status == 'ativo',
         Course.data_finalizacao != None, Course.data_finalizacao <= limite
     ).order_by(Course.data_finalizacao).all()
+
+@app.template_filter('nome_exibicao')
+def nome_exibicao(u):
+    """Nome de exibição de um usuário — trata também a string literal
+    "None" que algum import antigo pode ter deixado no lugar de vazio."""
+    if not u:
+        return '—'
+    nome = (u.nome or '').strip()
+    if nome and nome.lower() != 'none':
+        return nome
+    return u.username
 
 def hash_pw(pw): return generate_password_hash(pw)
 
@@ -3496,8 +3508,10 @@ def mural_excluir(id):
     if m.user_id != u.id and u.role != 'admin':
         flash('Você só pode excluir suas próprias mensagens.', 'danger')
         return redirect(url_for('mural'))
+    MuralReacao.query.filter_by(mensagem_id=m.id).delete()
     db.session.delete(m)
     db.session.commit()
+    flash('Mensagem excluída.', 'success')
     return redirect(url_for('mural'))
 
 @app.route('/mural/<int:id>/reagir', methods=['POST'])
@@ -4851,7 +4865,7 @@ def _run_migrations():
                            ("must_change_password", "BOOLEAN DEFAULT false"),
                            ("nome", "VARCHAR(200)"), ("dashboard_layout", "TEXT"),
                            ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
-                           ("foto_mimetype", "VARCHAR(50)")]:
+                           ("foto_mimetype", "VARCHAR(50)"), ("dashboard_ocultos", "TEXT")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
@@ -4874,6 +4888,10 @@ def ensure_db():
             db.create_all()
             _run_migrations()
             seed_data()
+            # Limpeza pontual: algum import antigo pode ter gravado a string
+            # literal "None" em vez de deixar o campo vazio de verdade.
+            User.query.filter(User.nome == 'None').update({'nome': None})
+            db.session.commit()
             _db_ready = True
         except Exception:
             import traceback
