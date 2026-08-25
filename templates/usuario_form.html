@@ -140,6 +140,12 @@
               {% elif user and user.get_perm('backup_gerenciar') %}checked{% endif %}>
             <div><div class="perm-name">Acessar Backups</div><div class="perm-desc">Ver e baixar backups do sistema</div></div>
           </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_erp_moodle_acesso" form="userForm" id="permErpMoodleAcesso" onchange="syncSomenteErpMoodle()"
+              {% if user and user.role=='admin' %}checked disabled
+              {% elif user and user.get_perm('erp_moodle_acesso') %}checked{% endif %}>
+            <div><div class="perm-name">Acessar ERP Moodle</div><div class="perm-desc">Ver a tela de acompanhamento de inserção de conteúdo — categoria separada do INOVA, para a equipe de inserção de materiais</div></div>
+          </label>
         </div>
 
         <!-- RESTRIÇÕES -->
@@ -164,11 +170,17 @@
               {% elif user and user._p().get('block_historico') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Histórico</div><div class="perm-desc">Este editor não poderá ver o log de atividades</div></div>
           </label>
-          <label class="perm-item" style="border-bottom:none">
+          <label class="perm-item">
             <input type="checkbox" name="perm_block_trocar_senha" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_trocar_senha') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Troca de Senha</div><div class="perm-desc">Este usuário não poderá alterar a própria senha em "Minha Conta" — só o admin poderá trocá-la</div></div>
+          </label>
+          <label class="perm-item" style="border-bottom:none;background:#eff6ff">
+            <input type="checkbox" name="perm_somente_erp_moodle" form="userForm" id="permSomenteErpMoodle" onchange="syncSomenteErpMoodle()"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('somente_erp_moodle') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#1d4ed8">Restringir só ao ERP Moodle</div><div class="perm-desc">Ideal para contas da equipe externa: a pessoa não enxerga cursos, financeiro, matrizes nem mais nada — só a tela de ERP Moodle. Marque junto com "Acessar ERP Moodle" acima.</div></div>
           </label>
         </div>
 
@@ -209,9 +221,20 @@ const EDITOR_DEFAULTS = {
   cursos_editar: true, cursos_excluir: false,
   cupons_gerenciar: true, reembolsos_gerenciar: true,
   historico_ver: true, usuarios_gerenciar: false, backup_gerenciar: false,
+  erp_moodle_acesso: false,
   block_cupons: false, block_reembolsos: false, block_historico: false,
-  block_trocar_senha: false,
+  block_trocar_senha: false, somente_erp_moodle: false,
 };
+
+// "Restringir só ao ERP Moodle" só faz sentido junto com "Acessar ERP
+// Moodle" — sem isso a conta ficaria travada sem enxergar nada.
+function syncSomenteErpMoodle() {
+  const acesso = document.getElementById('permErpMoodleAcesso');
+  const restrito = document.getElementById('permSomenteErpMoodle');
+  if (!acesso || !restrito) return;
+  if (restrito.checked && !acesso.checked) acesso.checked = true;
+  if (!acesso.checked) restrito.checked = false;
+}
 
 function applyRoleDefaults() {
   const role = document.getElementById('roleSelect').value;

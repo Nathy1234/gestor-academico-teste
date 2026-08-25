@@ -55,7 +55,11 @@ function fetchSearch(q) {
       searchResults.innerHTML = data.map(c => `
         <a href="/cursos/${c.id}" class="search-item">
           <div>
-            <div class="search-item-name">${c.nome}</div>
+            <div class="search-item-name">
+              ${c.nome}
+              <span style="font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--primary);
+                           background:var(--primary-light);padding:1px 6px;border-radius:10px;margin-left:6px">${c.categoria}</span>
+            </div>
             <div class="search-item-meta">${tipoLabel(c.tipo)} · <span class="badge badge-${c.status}" style="font-size:10px;padding:1px 6px">${c.status}</span></div>
           </div>
         </a>

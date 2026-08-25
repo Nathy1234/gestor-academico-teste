@@ -195,6 +195,16 @@
     </a>
   </div>
 
+  <!-- SEÇÃO INOVA ───────────────────────────────
+       Tudo daqui até o fim de "LINHA 2" é o catálogo/operação do INOVA
+       (cursos, pós, financeiro). O ERP Moodle (equipe externa de inserção
+       de conteúdo) tem seção própria, visualmente separada, mais abaixo. -->
+  <div style="display:flex;align-items:center;gap:8px;margin:4px 0 12px">
+    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--primary);
+                 background:var(--primary-light);padding:3px 10px;border-radius:20px">INOVA</span>
+    <span style="font-size:12px;color:var(--text-muted)">Catálogo de cursos, matrizes e financeiro</span>
+  </div>
+
   <!-- LINHA 2: ANDAMENTO + TIPOS ──────────────── -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
@@ -385,8 +395,27 @@
           'pratica_estagio':'Prática Estágio','projeto_ambiental':'Proj. Ambiental',
           'ggbr':'GGBR','integra_edu':'Integra Edu'
         } %}
+        <!-- Pós-Graduação em destaque, separada do resto dos tipos -->
+        <a href="{{ url_for('cursos', tipo='pos') }}" style="text-decoration:none;color:inherit">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;
+                      padding:12px 14px;border-radius:10px;margin-bottom:14px;
+                      background:linear-gradient(135deg,#f3e8ff,#faf5ff);border:1px solid #e9d5ff">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:30px;height:30px;background:#f3e8ff;border-radius:7px;display:flex;
+                           align-items:center;justify-content:center;flex-shrink:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#7e22ce" stroke-width="2" style="width:15px;height:15px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </span>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:#6b21a8">Pós-Graduação</div>
+                <div style="font-size:11px;color:#7e22ce">{{ (pos_count / total * 100)|int if total else 0 }}% do total de cursos</div>
+              </div>
+            </div>
+            <div style="font-size:22px;font-weight:700;color:#6b21a8">{{ pos_count }}</div>
+          </div>
+        </a>
         <div class="tipo-list">
           {% for tipo, count in por_tipo %}
+          {% if tipo != 'pos' %}
           {% set pct = (count / total * 100)|int if total else 0 %}
           <div class="tipo-item">
             <a href="{{ url_for('cursos', tipo=tipo) }}"
@@ -399,11 +428,57 @@
             </div>
             <div class="tipo-count">{{ count }}</div>
           </div>
+          {% endif %}
           {% endfor %}
         </div>
       </div>
     </div>
   </div>
+
+  {% if can_erp_moodle %}
+  <!-- SEÇÃO ERP MOODLE ──────────────────────────
+       Propositalmente com visual bem diferente (azul, borda tracejada) do
+       resto do dashboard, que é tudo INOVA — pra ninguém confundir as duas
+       coisas. Isto aqui é o acompanhamento manual da equipe de inserção de
+       materiais, sem ligação com o catálogo de cursos acima. -->
+  <div style="display:flex;align-items:center;gap:8px;margin:20px 0 12px">
+    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#1d4ed8;
+                 background:#dbeafe;padding:3px 10px;border-radius:20px">ERP MOODLE</span>
+    <span style="font-size:12px;color:var(--text-muted)">Inserção de conteúdo — equipe externa, separado do INOVA</span>
+  </div>
+  <div class="card" style="border:1.5px dashed #93c5fd;margin-bottom:16px">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border-bottom:1px solid #bfdbfe">
+      <div class="card-title" style="color:#1d4ed8">Andamento — Inserção Moodle</div>
+      <a href="{{ url_for('erp_moodle') }}" class="btn btn-sm btn-secondary">Ver tudo →</a>
+    </div>
+    <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:20px">
+        <div>
+          <div style="font-size:24px;font-weight:700;color:#b35700">{{ erp_em_insercao }}</div>
+          <div style="font-size:11px;color:var(--text-muted)">Em Inserção</div>
+        </div>
+        <div>
+          <div style="font-size:24px;font-weight:700;color:#15803d">{{ erp_concluida }}</div>
+          <div style="font-size:11px;color:var(--text-muted)">Concluídas</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:220px">
+        {% if erp_recentes %}
+        {% for it in erp_recentes %}
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">
+          <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;
+                       background:{{ '#15803d' if it.status=='concluida' else '#b35700' }}"></span>
+          <span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.nome_disciplina }}</span>
+          <span style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">— {{ it.nome_curso or 'sem curso' }}</span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div style="font-size:12px;color:var(--text-muted)">Nenhum item cadastrado ainda.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- LINHA 3: ATIVIDADE + ATALHOS ─────────────── -->
   <div style="display:grid;grid-template-columns:1fr 320px;gap:16px">

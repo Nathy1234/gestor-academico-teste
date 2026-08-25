@@ -243,6 +243,28 @@ class User(db.Model):
         if self.role == 'admin': return True
         return not self._p().get('block_trocar_senha')
 
+    def can_view_erp_moodle(self):
+        """Enxerga a tela do ERP Moodle (inserção de conteúdo). Equipe interna
+        (admin/editor) sempre vê; leitores só com a permissão explícita —
+        usado para dar acesso à equipe externa de inserção."""
+        if self.role in ('admin', 'editor'):
+            return True
+        return self.get_perm('erp_moodle_acesso')
+
+    def can_edit_erp_moodle(self):
+        """Só a equipe interna cria/edita itens — a equipe externa (viewer)
+        só visualiza o andamento."""
+        return self.role in ('admin', 'editor')
+
+    def is_restrito_erp_moodle(self):
+        """Conta usada só pela equipe externa: não deve ver nada além do
+        ERP Moodle (nem cursos, financeiro, matrizes etc). Só faz efeito se
+        a pessoa também tiver acesso ao ERP Moodle, pra nunca travar alguém
+        do lado de fora sem enxergar nada."""
+        if self.role == 'admin':
+            return False
+        return bool(self._p().get('somente_erp_moodle')) and self.can_view_erp_moodle()
+
 class Course(db.Model):
     id            = db.Column(db.Integer, primary_key=True)
     nome          = db.Column(db.String(300), nullable=False)
@@ -266,6 +288,7 @@ class Course(db.Model):
     link_video       = db.Column(db.Text)         # vídeo exibido na página de venda
     limite_parcelas  = db.Column(db.String(10))   # limite de parcelas — sobretudo cursos de pós
     via_formulario   = db.Column(db.Boolean, default=False)  # veio do formulário público de solicitação
+    categoria     = db.Column(db.String(30), default='INOVA')  # INOVA — reservado p/ futuras linhas de produto
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -290,6 +313,26 @@ class Discipline(db.Model):
     titulacao     = db.Column(db.String(50))
     plataforma_ok = db.Column(db.Boolean, default=False)
     plataforma_em = db.Column(db.DateTime)
+
+class ErpMoodleItem(db.Model):
+    """Acompanhamento de inserção de conteúdo no Moodle pela equipe de
+    inserção de materiais — categoria própria (ERP MOODLE), separada do
+    catálogo INOVA. Cadastro manual e independente de Course/Discipline:
+    o curso pode ainda nem existir formalmente no catálogo."""
+    id                   = db.Column(db.Integer, primary_key=True)
+    nome_disciplina      = db.Column(db.String(300), nullable=False)
+    nome_curso           = db.Column(db.String(300))  # digitado manualmente, sem vínculo com Course
+    status               = db.Column(db.String(20), default='em_insercao')  # em_insercao, concluida
+    data_conclusao       = db.Column(db.Date)
+    insersor_responsavel = db.Column(db.String(200))
+    observacao           = db.Column(db.Text)
+    created_at           = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by           = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    @property
+    def status_label(self):
+        return 'Concluída' if self.status == 'concluida' else 'Em Inserção'
 
 class AuditLog(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
@@ -492,7 +535,7 @@ def _resumo_mudancas(antes, depois, labels):
         partes.append(f'{label}: "{va_show}" → "{vn_show}"')
     return '; '.join(partes)
 
-BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
+BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment, ErpMoodleItem]
 
 def _serializar_valor(v):
     if isinstance(v, (datetime, date)):
@@ -573,8 +616,8 @@ def _desserializar_valor(valor, coluna):
 
 # Ordem que respeita as chaves estrangeiras: Discipline depende de Course,
 # Course e AuditLog dependem de User — então apaga nessa ordem e insere ao contrário.
-RESTORE_ORDEM_APAGAR   = [ThirdPartyPayment, Discipline, Course, AuditLog, Coupon, Refund, User]
-RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
+RESTORE_ORDEM_APAGAR   = [ThirdPartyPayment, Discipline, Course, AuditLog, Coupon, Refund, ErpMoodleItem, User]
+RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment, ErpMoodleItem]
 
 def restaurar_backup(dados):
     """Substitui TODOS os dados atuais pelos do backup (mesmo formato gerado
@@ -612,6 +655,16 @@ def inject_notificacoes():
     u = User.query.get(session['user_id'])
     if not u:
         return {}
+    if u.is_restrito_erp_moodle():
+        # Conta restrita à equipe externa — nem calcula notificações do
+        # catálogo INOVA, que ela não tem acesso a ver.
+        return {
+            'notif_count': 0, 'notif_list': [], 'admin_finalizado': [], 'admin_finalizado_count': 0,
+            'eventos_pendentes': [], 'eventos_pendentes_count': 0,
+            'solicitacoes_pendentes': [], 'solicitacoes_pendentes_count': 0,
+            'can_cupons': False, 'can_reembolsos': False, 'can_historico': False,
+            'can_erp_moodle': True, 'somente_erp_moodle': True,
+        }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
         .join(Course, Discipline.course_id == Course.id)\
@@ -660,13 +713,24 @@ def inject_notificacoes():
         'can_cupons': u.can_manage_cupons(),
         'can_reembolsos': u.can_manage_reembolsos(),
         'can_historico': u.can_view_historico(),
+        'can_erp_moodle': u.can_view_erp_moodle(),
+        'somente_erp_moodle': False,
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
 
+def _home_redirect(u):
+    """Pra onde mandar a pessoa depois de logar/acessar '/': contas restritas
+    ao ERP Moodle (equipe externa) caem direto lá, sem passar pelo dashboard
+    do INOVA que elas não têm acesso a ver."""
+    if u and u.is_restrito_erp_moodle():
+        return redirect(url_for('erp_moodle'))
+    return redirect(url_for('dashboard'))
+
 @app.route('/')
 def index():
-    if 'user_id' in session: return redirect(url_for('dashboard'))
+    if 'user_id' in session:
+        return _home_redirect(User.query.get(session['user_id']))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET','POST'])
@@ -689,7 +753,7 @@ def login():
             session['username'] = u.username
             session['role'] = u.role
             log_action(u.id, u.username, 'login', 'user', u.id)
-            return redirect(url_for('dashboard'))
+            return _home_redirect(u)
         flash('Usuário ou senha incorretos.', 'danger')
     return render_template('login.html')
 
@@ -872,6 +936,7 @@ def dashboard():
 
     por_tipo = db.session.query(Course.tipo, db.func.count(Course.id))\
                          .group_by(Course.tipo).all()
+    pos_count = next((c for t, c in por_tipo if t == 'pos'), 0)
 
     if is_admin:
         recentes = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(10).all()
@@ -961,14 +1026,21 @@ def dashboard():
         qtd = q_base.filter(Course.created_at >= ini, Course.created_at < fim).count()
         serie_mensal.append({'label': ini.strftime('%b'), 'qtd': qtd})
 
+    # Resumo do ERP Moodle (categoria separada do INOVA) — card próprio no
+    # dashboard, só pra quem tem acesso àquela seção.
+    erp_em_insercao = ErpMoodleItem.query.filter_by(status='em_insercao').count()
+    erp_concluida = ErpMoodleItem.query.filter_by(status='concluida').count()
+    erp_recentes = ErpMoodleItem.query.order_by(ErpMoodleItem.updated_at.desc()).limit(5).all()
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
-        por_tipo=por_tipo, recentes=recentes,
+        por_tipo=por_tipo, pos_count=pos_count, recentes=recentes,
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u,
-        cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal)
+        cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
+        erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -1353,7 +1425,102 @@ def api_busca():
     q = request.args.get('q','')
     if len(q) < 2: return jsonify([])
     results = Course.query.filter(Course.nome.ilike(f'%{q}%')).limit(10).all()
-    return jsonify([{'id': c.id, 'nome': c.nome, 'tipo': c.tipo, 'status': c.status} for c in results])
+    return jsonify([{'id': c.id, 'nome': c.nome, 'tipo': c.tipo, 'status': c.status,
+                      'categoria': c.categoria or 'INOVA'} for c in results])
+
+# ─── ERP MOODLE (inserção de conteúdo — categoria separada do INOVA) ───────────
+# Acompanhamento manual da equipe de inserção de materiais: cada linha é uma
+# disciplina em inserção/concluída, com o curso digitado à mão (não depende
+# do catálogo Course). Equipe interna (admin/editor) cria e edita; a equipe
+# externa só enxerga quando ganha a permissão 'erp_moodle_acesso'.
+
+@app.route('/erp-moodle')
+@perm_check('can_view_erp_moodle')
+def erp_moodle():
+    f_status = request.args.get('status', '')
+    f_insersor = request.args.get('insersor', '')
+    f_busca = request.args.get('busca', '').strip()
+
+    q = ErpMoodleItem.query
+    if f_status in ('em_insercao', 'concluida'):
+        q = q.filter_by(status=f_status)
+    if f_insersor:
+        q = q.filter(ErpMoodleItem.insersor_responsavel.ilike(f'%{f_insersor}%'))
+    if f_busca:
+        like = f'%{f_busca}%'
+        q = q.filter(db.or_(ErpMoodleItem.nome_disciplina.ilike(like),
+                             ErpMoodleItem.nome_curso.ilike(like)))
+    itens = q.order_by(ErpMoodleItem.status.asc(), ErpMoodleItem.updated_at.desc()).all()
+
+    total = ErpMoodleItem.query.count()
+    total_em_insercao = ErpMoodleItem.query.filter_by(status='em_insercao').count()
+    total_concluida = ErpMoodleItem.query.filter_by(status='concluida').count()
+
+    insersores = sorted({i.insersor_responsavel for i in ErpMoodleItem.query.all() if i.insersor_responsavel})
+
+    u = User.query.get(session['user_id'])
+    return render_template('erp_moodle.html', itens=itens,
+                           total=total, total_em_insercao=total_em_insercao, total_concluida=total_concluida,
+                           f_status=f_status, f_insersor=f_insersor, f_busca=f_busca,
+                           insersores=insersores, can_edit=u.can_edit_erp_moodle())
+
+@app.route('/erp-moodle/novo', methods=['GET', 'POST'])
+@editor_required
+def erp_moodle_novo():
+    if request.method == 'POST':
+        d = request.form
+        item = ErpMoodleItem(
+            nome_disciplina=d.get('nome_disciplina', '').strip(),
+            nome_curso=d.get('nome_curso', '').strip(),
+            status=d.get('status', 'em_insercao'),
+            data_conclusao=_parse_data_form(d.get('data_conclusao', '')),
+            insersor_responsavel=d.get('insersor_responsavel', '').strip(),
+            observacao=d.get('observacao', '').strip(),
+            created_by=session['user_id'],
+        )
+        if item.status == 'concluida' and not item.data_conclusao:
+            item.data_conclusao = date.today()
+        db.session.add(item)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'criar', 'erp_moodle', item.id, item.nome_disciplina)
+        flash('Item adicionado ao ERP Moodle!', 'success')
+        return redirect(url_for('erp_moodle'))
+    return render_template('erp_moodle_form.html', item=None)
+
+@app.route('/erp-moodle/<int:id>/editar', methods=['GET', 'POST'])
+@editor_required
+def erp_moodle_editar(id):
+    item = ErpMoodleItem.query.get_or_404(id)
+    if request.method == 'POST':
+        d = request.form
+        item.nome_disciplina = d.get('nome_disciplina', '').strip()
+        item.nome_curso = d.get('nome_curso', '').strip()
+        novo_status = d.get('status', 'em_insercao')
+        if novo_status == 'concluida' and item.status != 'concluida':
+            item.data_conclusao = _parse_data_form(d.get('data_conclusao', '')) or date.today()
+        elif novo_status == 'em_insercao':
+            item.data_conclusao = _parse_data_form(d.get('data_conclusao', ''))
+        else:
+            item.data_conclusao = _parse_data_form(d.get('data_conclusao', ''))
+        item.status = novo_status
+        item.insersor_responsavel = d.get('insersor_responsavel', '').strip()
+        item.observacao = d.get('observacao', '').strip()
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'erp_moodle', item.id, item.nome_disciplina)
+        flash('Item atualizado!', 'success')
+        return redirect(url_for('erp_moodle'))
+    return render_template('erp_moodle_form.html', item=item)
+
+@app.route('/erp-moodle/<int:id>/excluir', methods=['POST'])
+@editor_required
+def erp_moodle_excluir(id):
+    item = ErpMoodleItem.query.get_or_404(id)
+    nome = item.nome_disciplina
+    db.session.delete(item)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'erp_moodle', id, nome)
+    flash('Item excluído.', 'success')
+    return redirect(url_for('erp_moodle'))
 
 # ─── CUPONS ────────────────────────────────────────────────────────────────────
 
@@ -2981,7 +3148,9 @@ def _perms_from_form(d):
         'cursos_editar', 'cursos_excluir',
         'cupons_gerenciar', 'reembolsos_gerenciar',
         'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
+        'erp_moodle_acesso',
         'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
+        'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
@@ -4137,6 +4306,7 @@ def _run_migrations():
         ("course",     "link_video",       "TEXT"),
         ("course",     "limite_parcelas",  "VARCHAR(10)"),
         ("course",     "via_formulario",   "BOOLEAN DEFAULT false"),
+        ("course",     "categoria",        "VARCHAR(30) DEFAULT 'INOVA'"),
         ("discipline", "cod_moodle",       "VARCHAR(50)"),
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),
@@ -4212,6 +4382,24 @@ def exigir_troca_senha():
     if u and u.must_change_password and u.can_change_own_password():
         flash('Por segurança, troque sua senha antes de continuar.', 'danger')
         return redirect(url_for('minha_conta'))
+
+ROTAS_LIVRES_ERP_MOODLE = {
+    'erp_moodle', 'erp_moodle_novo', 'erp_moodle_editar', 'erp_moodle_excluir',
+    'minha_conta', 'logout', 'login', 'static', 'esqueci_senha', 'resetar_senha',
+}
+
+@app.before_request
+def restringir_somente_erp_moodle():
+    """Contas da equipe externa (permissão 'somente_erp_moodle') não podem
+    navegar pra nenhuma outra tela do sistema — nem dashboard, cursos,
+    financeiro etc. Ficam presas na tela do ERP Moodle e em 'Minha Conta'."""
+    if request.endpoint in ROTAS_LIVRES_ERP_MOODLE or request.endpoint is None:
+        return
+    if 'user_id' not in session:
+        return
+    u = User.query.get(session['user_id'])
+    if u and u.is_restrito_erp_moodle():
+        return redirect(url_for('erp_moodle'))
 
 if __name__ == '__main__':
     t = threading.Thread(target=backup_scheduler, daemon=True)
