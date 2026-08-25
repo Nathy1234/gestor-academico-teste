@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.5.2'
+VERSAO = '1.6.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -676,7 +676,7 @@ def inject_notificacoes():
             'eventos_pendentes': [], 'eventos_pendentes_count': 0,
             'solicitacoes_pendentes': [], 'solicitacoes_pendentes_count': 0,
             'can_cupons': False, 'can_reembolsos': False, 'can_historico': False,
-            'can_erp_moodle': True, 'somente_erp_moodle': True,
+            'can_erp_moodle': True, 'somente_erp_moodle': True, 'ferramentas_tools': [],
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -728,6 +728,7 @@ def inject_notificacoes():
         'can_historico': u.can_view_historico(),
         'can_erp_moodle': u.can_view_erp_moodle(),
         'somente_erp_moodle': False,
+        'ferramentas_tools': ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all(),
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
