@@ -22,6 +22,27 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── GRUPOS RECOLHÍVEIS DO MENU LATERAL (ex: INOVA CARREIRA) ───────
+function toggleNavGroup(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const vaiAbrir = el.classList.contains('is-collapsed');
+  el.classList.toggle('is-collapsed', !vaiAbrir);
+  if (btn) btn.classList.toggle('is-open', vaiAbrir);
+  localStorage.setItem('navGroupOpen_' + id, vaiAbrir ? '1' : '0');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-collapsible[data-default-open]').forEach(el => {
+    const salvo = localStorage.getItem('navGroupOpen_' + el.id);
+    if (salvo === null) return; // sem escolha explícita: mantém o padrão vindo do servidor
+    const abrir = salvo === '1';
+    el.classList.toggle('is-collapsed', !abrir);
+    const btn = el.previousElementSibling;
+    if (btn && btn.classList.contains('nav-section-toggle')) btn.classList.toggle('is-open', abrir);
+  });
+});
+
 // ── THEME ────────────────────────────────────────────────────────
 function toggleTheme() {
   const html = document.documentElement;

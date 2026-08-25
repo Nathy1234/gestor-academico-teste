@@ -108,6 +108,7 @@
             <th>Status</th>
             <th>Insersor</th>
             <th>Link</th>
+            <th>Venda por</th>
             <th></th>
           </tr>
         </thead>
@@ -133,6 +134,19 @@
               <a href="{{ c.link_venda }}" target="_blank">🔗 Abrir</a>
               {% else %}—{% endif %}
             </td>
+            <td>
+              {% if session.role in ['admin','editor'] %}
+              <select class="filter-select venda-modalidade-select" style="font-size:12px;padding:4px 8px"
+                      data-curso-id="{{ c.id }}" onchange="atualizaVendaModalidade(this)">
+                <option value="" {% if not c.venda_modalidade %}selected{% endif %}>Nenhum</option>
+                {% for o in venda_opcoes %}
+                <option value="{{ o.label }}" {% if c.venda_modalidade==o.label %}selected{% endif %}>{{ o.label }}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              {{ c.venda_modalidade or 'Nenhum' }}
+              {% endif %}
+            </td>
             <td style="white-space:nowrap">
               <a href="{{ url_for('curso_detalhe', id=c.id) }}" class="btn btn-sm btn-secondary">Ver</a>
               {% if session.role in ['admin','editor'] %}
@@ -141,7 +155,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
+          <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -175,6 +189,27 @@ function limparSelecao() {
   const chkTodos = document.getElementById('chk-todos');
   if (chkTodos) chkTodos.checked = false;
   atualizaSelecao();
+}
+
+function atualizaVendaModalidade(select) {
+  const cursoId = select.dataset.cursoId;
+  const valor = select.value;
+  const corOriginal = select.style.borderColor;
+  fetch(`/cursos/${cursoId}/venda-modalidade`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ venda_modalidade: valor })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        select.style.borderColor = '#22c55e';
+        setTimeout(() => { select.style.borderColor = corOriginal; }, 900);
+      } else {
+        alert(data.erro || 'Não foi possível salvar.');
+      }
+    })
+    .catch(() => alert('Erro ao salvar. Tente novamente.'));
 }
 
 function acaoEmLote(novoStatus) {

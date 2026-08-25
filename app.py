@@ -47,7 +47,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.2.0'
+VERSAO = '1.3.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -1058,11 +1058,31 @@ def cursos():
     areas  = AREAS_VALIDAS
     insersores = [u.username for u in User.query.order_by(User.username).all()]
     contagem_status = _contagem_cursos_por_status(tipo, area, busca)
+    venda_opcoes = VendaModalidadeOpcao.query.order_by(VendaModalidadeOpcao.ordem).all()
     return render_template('cursos.html', cursos=lista, areas=areas, insersores=insersores,
                            filtro_tipo=tipo, filtro_area=area, filtro_status=status,
-                           contagem_status=contagem_status,
+                           contagem_status=contagem_status, venda_opcoes=venda_opcoes,
                            filtro_insersor=insersor, busca=busca,
                            filtro_horas_min=horas_min, filtro_horas_max=horas_max)
+
+@app.route('/cursos/<int:id>/venda-modalidade', methods=['POST'])
+@editor_required
+def curso_venda_modalidade(id):
+    """Atualiza só a modalidade de venda (Nenhum/Link/Site/...) direto pela
+    listagem — sem precisar abrir Editar Curso. Pensado pra eventos, que
+    costumam mudar esse campo com frequência."""
+    c = Course.query.get_or_404(id)
+    data = request.get_json(silent=True) or {}
+    valor = (data.get('venda_modalidade') or '').strip()
+    if valor:
+        opcoes_validas = {o.label for o in VendaModalidadeOpcao.query.all()}
+        if valor not in opcoes_validas:
+            return jsonify({'ok': False, 'erro': 'Opção inválida.'}), 400
+    c.venda_modalidade = valor or None
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'editar', 'course', c.id,
+               f'Venda por: "{valor or "Nenhum"}"')
+    return jsonify({'ok': True, 'venda_modalidade': c.venda_modalidade})
 
 def _contagem_cursos_por_status(tipo, area, busca):
     """Quantos cursos existem em cada status, respeitando tipo/área/busca
