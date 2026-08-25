@@ -357,10 +357,10 @@
         </div>
         <a href="{{ url_for('cursos') }}" class="btn btn-sm btn-secondary">Ver todos →</a>
       </div>
-      <div class="table-wrapper">
+      <div class="table-wrapper" style="max-height:240px;overflow-y:auto">
         {% if cursos_ins_stats %}
         <table style="width:100%;min-width:520px">
-          <thead>
+          <thead style="position:sticky;top:0;background:var(--surface);z-index:1">
             <tr>
               <th style="padding-left:16px">Responsável</th>
               <th style="text-align:center">Total</th>
