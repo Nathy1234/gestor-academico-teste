@@ -63,7 +63,7 @@
           <div class="form-group">
             <label>Status</label>
             <select name="status">
-              {% for s in ['em_edicao','finalizado','descontinuado','oculto'] %}
+              {% for s in ['em_edicao','finalizado','descontinuado','oculto','inativo'] %}
               <option value="{{ s }}" {% if curso and curso.status==s %}selected{% elif not curso and s=='em_edicao' %}selected{% endif %}>
                 {{ s|replace('_',' ')|title }}
               </option>

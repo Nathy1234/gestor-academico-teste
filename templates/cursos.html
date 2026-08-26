@@ -29,7 +29,7 @@
 
   <!-- FILTROS RÁPIDOS POR STATUS -->
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-    {% for s,label,cor in [('','Todos os status','#64748b'),('ativo','Ativos','#22c55e'),('em_edicao','Em Edição','#eab308'),('finalizado','Finalizados','#3b82f6'),('descontinuado','Arquivados','#94a3b8'),('oculto','Ocultos','#6366f1')] %}
+    {% for s,label,cor in [('','Todos os status','#64748b'),('ativo','Ativos','#22c55e'),('em_edicao','Em Edição','#eab308'),('finalizado','Finalizados','#3b82f6'),('descontinuado','Arquivados','#94a3b8'),('oculto','Ocultos','#6366f1'),('inativo','Inativos','#71717a')] %}
     {% set sativo = (filtro_status == s) %}
     <a href="{{ url_for('cursos', tipo=filtro_tipo, area=filtro_area, status=s, q=busca) }}"
        class="filter-chip{% if sativo %} is-active{% endif %}" style="--fc:{{ cor }}">
@@ -64,6 +64,7 @@
       <option value="finalizado" {% if filtro_status=='finalizado' %}selected{% endif %}>Finalizado</option>
       <option value="descontinuado" {% if filtro_status=='descontinuado' %}selected{% endif %}>Descontinuado</option>
       <option value="oculto" {% if filtro_status=='oculto' %}selected{% endif %}>Oculto</option>
+      <option value="inativo" {% if filtro_status=='inativo' %}selected{% endif %}>Inativo</option>
     </select>
     <select name="insersor" class="filter-select" onchange="this.form.submit()">
       <option value="">Todos os insersores</option>
@@ -87,6 +88,9 @@
     </button>
     <button type="button" class="btn btn-sm btn-secondary" style="color:#22c55e" onclick="acaoEmLote('ativo')">
       Ativar selecionados
+    </button>
+    <button type="button" class="btn btn-sm btn-secondary" style="color:#71717a" onclick="acaoEmLote('inativo')">
+      Inativar selecionados
     </button>
     <button type="button" class="btn btn-sm btn-secondary" onclick="limparSelecao()">Cancelar</button>
   </div>
@@ -180,7 +184,7 @@ function limparSelecao() {
 function acaoEmLote(novoStatus) {
   const ids = Array.from(document.querySelectorAll('.chk-curso:checked')).map(chk => parseInt(chk.value));
   if (ids.length === 0) return;
-  const acaoLabel = novoStatus === 'oculto' ? 'ocultar' : 'ativar';
+  const acaoLabel = novoStatus === 'oculto' ? 'ocultar' : (novoStatus === 'inativo' ? 'inativar' : 'ativar');
   if (!confirm('Confirma ' + acaoLabel + ' ' + ids.length + ' curso(s) selecionado(s)?')) return;
   fetch('/cursos/status-em-lote', {
     method: 'POST',
