@@ -660,6 +660,7 @@ textarea { resize: vertical; min-height: 80px; }
 .dash-widgets {
   display: grid; grid-template-columns: repeat(4, 1fr);
   grid-auto-flow: row dense; gap: 10px; margin-bottom: 16px;
+  align-items: start;
 }
 /* dashboard mais compacta — reduz cards/textos/ícones só aqui dentro,
    sem afetar essas mesmas classes usadas em outras telas do sistema */
