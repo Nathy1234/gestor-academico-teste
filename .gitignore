@@ -11,3 +11,4 @@ server_*.txt
 .venv/
 
 .vercel
+.env*

@@ -8,6 +8,10 @@
       <div class="page-subtitle">{{ cursos|length }} curso(s) encontrado(s)</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
+      <a href="{{ url_for('pacotes') }}" class="btn btn-secondary" style="color:#c2660a" title="Tela dedicada de Pacotes">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3M3 8v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8M3 8h18M12 12v6"/></svg>
+        Ver Pacotes
+      </a>
       <a href="{{ url_for('cursos_relatorio', tipo=filtro_tipo, area=filtro_area, status=filtro_status, q=busca, insersor=filtro_insersor, horas_min=filtro_horas_min, horas_max=filtro_horas_max) }}"
          target="_blank" class="btn btn-secondary" title="Relatório imprimível">
         <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -112,6 +116,7 @@
             <th>Status</th>
             <th>Insersor</th>
             <th>Link</th>
+            <th>Venda por</th>
             <th></th>
           </tr>
         </thead>
@@ -137,6 +142,19 @@
               <a href="{{ c.link_venda }}" target="_blank">🔗 Abrir</a>
               {% else %}—{% endif %}
             </td>
+            <td>
+              {% if session.role in ['admin','editor'] %}
+              <select class="filter-select venda-modalidade-select" style="font-size:12px;padding:4px 8px"
+                      data-curso-id="{{ c.id }}" onchange="atualizaVendaModalidade(this)">
+                <option value="" {% if not c.venda_modalidade %}selected{% endif %}>Nenhum</option>
+                {% for o in venda_opcoes %}
+                <option value="{{ o.label }}" {% if c.venda_modalidade==o.label %}selected{% endif %}>{{ o.label }}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              {{ c.venda_modalidade or 'Nenhum' }}
+              {% endif %}
+            </td>
             <td style="white-space:nowrap">
               <a href="{{ url_for('curso_detalhe', id=c.id) }}" class="btn btn-sm btn-secondary">Ver</a>
               {% if session.role in ['admin','editor'] %}
@@ -145,7 +163,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
+          <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -179,6 +197,27 @@ function limparSelecao() {
   const chkTodos = document.getElementById('chk-todos');
   if (chkTodos) chkTodos.checked = false;
   atualizaSelecao();
+}
+
+function atualizaVendaModalidade(select) {
+  const cursoId = select.dataset.cursoId;
+  const valor = select.value;
+  const corOriginal = select.style.borderColor;
+  fetch(`/cursos/${cursoId}/venda-modalidade`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ venda_modalidade: valor })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        select.style.borderColor = '#22c55e';
+        setTimeout(() => { select.style.borderColor = corOriginal; }, 900);
+      } else {
+        alert(data.erro || 'Não foi possível salvar.');
+      }
+    })
+    .catch(() => alert('Erro ao salvar. Tente novamente.'));
 }
 
 function acaoEmLote(novoStatus) {

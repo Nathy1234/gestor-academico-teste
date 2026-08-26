@@ -22,6 +22,94 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── SEÇÕES RECOLHÍVEIS DO MENU LATERAL ──────────────────────────────
+// Preferência pessoal de cada um (não é permissão nem ordem) — fica salva
+// só neste navegador. Por padrão a seção que contém a página atual já
+// abre expandida, as outras ficam fechadas, pra poluir menos a tela.
+function toggleSidebarSection(header) {
+  const bloco = header.closest('.sidebar-section-block');
+  if (!bloco) return;
+  const items = bloco.querySelector('.sidebar-section-items');
+  const chevron = header.querySelector('.section-chevron');
+  const abrir = items.classList.contains('is-collapsed');
+  items.classList.toggle('is-collapsed', !abrir);
+  if (chevron) chevron.classList.toggle('is-open', abrir);
+  const id = bloco.dataset.sectionId;
+  if (id) localStorage.setItem('navSecaoAberta_' + id, abrir ? '1' : '0');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.sidebar-section-block').forEach(bloco => {
+    const id = bloco.dataset.sectionId;
+    const items = bloco.querySelector('.sidebar-section-items');
+    const chevron = bloco.querySelector('.section-chevron');
+    if (!items || !id) return;
+    const temPaginaAtual = !!items.querySelector('.nav-item.active');
+    const salvo = localStorage.getItem('navSecaoAberta_' + id);
+    const abrir = salvo !== null ? salvo === '1' : temPaginaAtual;
+    items.classList.toggle('is-collapsed', !abrir);
+    if (chevron) chevron.classList.toggle('is-open', abrir);
+  });
+});
+
+// ── ORDEM DAS SEÇÕES DO MENU LATERAL ────────────────────────────────
+// A ordem é global (escolhida pelo admin, salva no servidor) — todo mundo
+// vê nessa ordem; só o admin pode arrastar pra mudar.
+(function() {
+  const container = document.getElementById('sidebarSections');
+  if (!container) return;
+  const ordemSalva = window.SIDEBAR_ORDEM || [];
+  const ehAdmin = window.SIDEBAR_IS_ADMIN === true;
+
+  if (ordemSalva.length) {
+    const blocos = {};
+    container.querySelectorAll('.sidebar-section-block').forEach(b => { blocos[b.dataset.sectionId] = b; });
+    ordemSalva.forEach(id => { if (blocos[id]) container.appendChild(blocos[id]); });
+  }
+
+  if (!ehAdmin) return;
+
+  let arrastando = null;
+  container.querySelectorAll('.sidebar-section-block[draggable="true"]').forEach(bloco => {
+    bloco.addEventListener('dragstart', () => {
+      arrastando = bloco;
+      bloco.classList.add('section-dragging');
+    });
+    bloco.addEventListener('dragend', () => {
+      bloco.classList.remove('section-dragging');
+      container.querySelectorAll('.section-drop-target').forEach(b => b.classList.remove('section-drop-target'));
+      arrastando = null;
+      salvarOrdemSidebar();
+    });
+    bloco.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!arrastando || arrastando === bloco) return;
+      container.querySelectorAll('.section-drop-target').forEach(b => b.classList.remove('section-drop-target'));
+      bloco.classList.add('section-drop-target');
+    });
+    bloco.addEventListener('dragleave', () => bloco.classList.remove('section-drop-target'));
+    bloco.addEventListener('drop', e => {
+      e.preventDefault();
+      bloco.classList.remove('section-drop-target');
+      if (!arrastando || arrastando === bloco) return;
+      const todos = Array.from(container.querySelectorAll('.sidebar-section-block'));
+      const posArrastando = todos.indexOf(arrastando);
+      const posAlvo = todos.indexOf(bloco);
+      if (posArrastando < posAlvo) bloco.after(arrastando);
+      else bloco.before(arrastando);
+    });
+  });
+
+  function salvarOrdemSidebar() {
+    const ordem = Array.from(container.querySelectorAll('.sidebar-section-block')).map(b => b.dataset.sectionId);
+    fetch('/api/sidebar-ordem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: ordem }),
+    });
+  }
+})();
+
 // ── THEME ────────────────────────────────────────────────────────
 function toggleTheme() {
   const html = document.documentElement;
@@ -55,7 +143,11 @@ function fetchSearch(q) {
       searchResults.innerHTML = data.map(c => `
         <a href="/cursos/${c.id}" class="search-item">
           <div>
-            <div class="search-item-name">${c.nome}</div>
+            <div class="search-item-name">
+              ${c.nome}
+              <span style="font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--primary);
+                           background:var(--primary-light);padding:1px 6px;border-radius:10px;margin-left:6px">${c.categoria}</span>
+            </div>
             <div class="search-item-meta">${tipoLabel(c.tipo)} · <span class="badge badge-${c.status}" style="font-size:10px;padding:1px 6px">${c.status}</span></div>
           </div>
         </a>

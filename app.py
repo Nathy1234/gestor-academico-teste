@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_file, Response, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -9,6 +9,7 @@ from markupsafe import Markup, escape
 from datetime import datetime, timedelta, date
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd, re as _re
+import requests as _requests
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -48,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.5.2'
+VERSAO = '1.11.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -144,6 +145,8 @@ DASHBOARD_WIDGETS = [
     {'id': 'sem_responsavel', 'label': 'Cursos sem responsável'},
     {'id': 'reembolsos_pend', 'label': 'Reembolsos pendentes'},
     {'id': 'notas',           'label': 'Notas rápidas'},
+    {'id': 'destaques',       'label': 'Destaque da Semana/Mês'},
+    {'id': 'erp_moodle_resumo', 'label': 'ERP Moodle — Andamento'},
 ]
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
 
@@ -290,6 +293,9 @@ class User(db.Model):
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
     dashboard_prefs = db.Column(db.Text)  # JSON: {"order":[...], "hidden":[...]} dos widgets da dashboard
     notas_pessoais  = db.Column(db.Text)  # texto livre do widget "Notas rápidas" — só o próprio dono vê
+    equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe? usado em Destaques e Avisos
+    foto         = db.Column(db.LargeBinary)  # foto de perfil, exibida nos Destaques
+    foto_mimetype = db.Column(db.String(50))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_perm(self, key):
@@ -331,9 +337,57 @@ class User(db.Model):
     def can_manage_backup(self):
         return self.role == 'admin' or self.get_perm('backup_gerenciar')
 
+    def can_view_cursos(self):
+        if self._p().get('block_cursos'): return False
+        return True  # todos os usuários logados têm acesso por padrão
+
+    def can_view_matrizes(self):
+        if self._p().get('block_matrizes'): return False
+        return True
+
+    def can_view_banco_disciplinas(self):
+        if self._p().get('block_banco_disciplinas'): return False
+        return True
+
+    def can_view_ia_assistente(self):
+        if self._p().get('block_ia_assistente'): return False
+        return True
+
+    def can_view_ferramentas(self):
+        if self._p().get('block_ferramentas'): return False
+        return True
+
+    def can_manage_pagamentos_terceiros(self):
+        return self.role == 'admin' or self.get_perm('pagamentos_terceiros_gerenciar')
+
+    def can_manage_opcoes_curso(self):
+        return self.role == 'admin' or self.get_perm('opcoes_curso_gerenciar')
+
     def can_change_own_password(self):
         if self.role == 'admin': return True
         return not self._p().get('block_trocar_senha')
+
+    def can_view_erp_moodle(self):
+        """Enxerga a tela do ERP Moodle (inserção de conteúdo). Equipe interna
+        (admin/editor) sempre vê; leitores só com a permissão explícita —
+        usado para dar acesso à equipe externa de inserção."""
+        if self.role in ('admin', 'editor'):
+            return True
+        return self.get_perm('erp_moodle_acesso')
+
+    def can_edit_erp_moodle(self):
+        """Só a equipe interna cria/edita itens — a equipe externa (viewer)
+        só visualiza o andamento."""
+        return self.role in ('admin', 'editor')
+
+    def is_restrito_erp_moodle(self):
+        """Conta usada só pela equipe externa: não deve ver nada além do
+        ERP Moodle (nem cursos, financeiro, matrizes etc). Só faz efeito se
+        a pessoa também tiver acesso ao ERP Moodle, pra nunca travar alguém
+        do lado de fora sem enxergar nada."""
+        if self.role == 'admin':
+            return False
+        return bool(self._p().get('somente_erp_moodle')) and self.can_view_erp_moodle()
 
 class Course(db.Model):
     id            = db.Column(db.Integer, primary_key=True)
@@ -358,6 +412,7 @@ class Course(db.Model):
     link_video       = db.Column(db.Text)         # vídeo exibido na página de venda
     limite_parcelas  = db.Column(db.String(10))   # limite de parcelas — sobretudo cursos de pós
     via_formulario   = db.Column(db.Boolean, default=False)  # veio do formulário público de solicitação
+    categoria     = db.Column(db.String(30), default='INOVA')  # INOVA — reservado p/ futuras linhas de produto
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -382,6 +437,26 @@ class Discipline(db.Model):
     titulacao     = db.Column(db.String(50))
     plataforma_ok = db.Column(db.Boolean, default=False)
     plataforma_em = db.Column(db.DateTime)
+
+class ErpMoodleItem(db.Model):
+    """Acompanhamento de inserção de conteúdo no Moodle pela equipe de
+    inserção de materiais — categoria própria (ERP MOODLE), separada do
+    catálogo INOVA. Cadastro manual e independente de Course/Discipline:
+    o curso pode ainda nem existir formalmente no catálogo."""
+    id                   = db.Column(db.Integer, primary_key=True)
+    nome_disciplina      = db.Column(db.String(300), nullable=False)
+    nome_curso           = db.Column(db.String(300))  # digitado manualmente, sem vínculo com Course
+    status               = db.Column(db.String(20), default='em_insercao')  # em_insercao, concluida
+    data_conclusao       = db.Column(db.Date)
+    insersor_responsavel = db.Column(db.String(200))
+    observacao           = db.Column(db.Text)
+    created_at           = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by           = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    @property
+    def status_label(self):
+        return 'Concluída' if self.status == 'concluida' else 'Em Inserção'
 
 class AuditLog(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
@@ -486,6 +561,60 @@ class VendaModalidadeOpcao(db.Model):
     label  = db.Column(db.String(100), nullable=False)
     ordem  = db.Column(db.Integer, default=0)
 
+class ExternalTool(db.Model):
+    """Sistemas externos (ex: Kronos) cadastrados pelo admin pra abrir
+    embutidos dentro do próprio Gestor, sem precisar sair pra outra aba."""
+    id         = db.Column(db.Integer, primary_key=True)
+    label      = db.Column(db.String(150), nullable=False)
+    url        = db.Column(db.Text, nullable=False)
+    ordem      = db.Column(db.Integer, default=0)
+    embeddable        = db.Column(db.Boolean)  # None = ainda não verificado
+    embeddable_checado_em = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class AppSetting(db.Model):
+    """Configurações globais simples do sistema, tipo chave/valor — ex: a
+    ordem das seções do menu lateral, escolhida pelo admin e valendo pra
+    todo mundo (diferente do dashboard, que cada usuário organiza o seu)."""
+    key   = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.Text)
+
+class Destaque(db.Model):
+    """Destaque da Semana / do Mês — escolhido manualmente pelo admin,
+    aparece no dashboard com a foto da pessoa."""
+    id            = db.Column(db.Integer, primary_key=True)
+    tipo          = db.Column(db.String(10), nullable=False)  # 'semana' ou 'mes'
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    periodo_label = db.Column(db.String(100))  # texto livre, ex: "Semana de 18 a 24/08"
+    observacao    = db.Column(db.Text)
+    created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    pessoa = db.relationship('User', foreign_keys=[user_id])
+
+class MuralMensagem(db.Model):
+    """Mural compartilhado da equipe — mensagem curta + reações em emoji.
+    Não é chat privado nem em tempo real: todo mundo vê tudo, atualiza ao
+    recarregar a tela."""
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    texto      = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    autor = db.relationship('User', foreign_keys=[user_id])
+
+class MuralReacao(db.Model):
+    """Uma reação em emoji de um usuário numa mensagem do mural. Uma pessoa
+    pode reagir com vários emojis diferentes na mesma mensagem, mas não
+    repetir o mesmo emoji duas vezes (clicar de novo remove)."""
+    id           = db.Column(db.Integer, primary_key=True)
+    mensagem_id  = db.Column(db.Integer, db.ForeignKey('mural_mensagem.id'), nullable=False)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    emoji        = db.Column(db.String(10), nullable=False)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('mensagem_id', 'user_id', 'emoji', name='uq_reacao'),)
+
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
 def _parse_data_form(valor):
@@ -506,6 +635,17 @@ def _eventos_pendentes_ocultar():
         Course.tipo == 'evento', Course.status == 'ativo',
         Course.data_finalizacao != None, Course.data_finalizacao <= limite
     ).order_by(Course.data_finalizacao).all()
+
+@app.template_filter('nome_exibicao')
+def nome_exibicao(u):
+    """Nome de exibição de um usuário — trata também a string literal
+    "None" que algum import antigo pode ter deixado no lugar de vazio."""
+    if not u:
+        return '—'
+    nome = (u.nome or '').strip()
+    if nome and nome.lower() != 'none':
+        return nome
+    return u.username
 
 def hash_pw(pw): return generate_password_hash(pw)
 
@@ -597,7 +737,7 @@ def _resumo_mudancas(antes, depois, labels):
         partes.append(f'{label}: "{va_show}" → "{vn_show}"')
     return '; '.join(partes)
 
-BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
+BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment, ErpMoodleItem]
 
 def _serializar_valor(v):
     if isinstance(v, (datetime, date)):
@@ -678,8 +818,8 @@ def _desserializar_valor(valor, coluna):
 
 # Ordem que respeita as chaves estrangeiras: Discipline depende de Course,
 # Course e AuditLog dependem de User — então apaga nessa ordem e insere ao contrário.
-RESTORE_ORDEM_APAGAR   = [ThirdPartyPayment, Discipline, Course, AuditLog, Coupon, Refund, User]
-RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment]
+RESTORE_ORDEM_APAGAR   = [ThirdPartyPayment, Discipline, Course, AuditLog, Coupon, Refund, ErpMoodleItem, User]
+RESTORE_ORDEM_INSERIR  = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment, ErpMoodleItem]
 
 def restaurar_backup(dados):
     """Substitui TODOS os dados atuais pelos do backup (mesmo formato gerado
@@ -710,6 +850,17 @@ def restaurar_backup(dados):
 def inject_now():
     return {'now': datetime.now}
 
+def _sidebar_section_order():
+    """Ordem das seções do menu lateral escolhida pelo admin (vale pra todo
+    mundo). Lista vazia = ordem padrão (a ordem em que já estão no HTML)."""
+    setting = AppSetting.query.get('sidebar_section_order')
+    if not setting or not setting.value:
+        return []
+    try:
+        return json.loads(setting.value)
+    except (ValueError, TypeError):
+        return []
+
 @app.context_processor
 def inject_notificacoes():
     if 'user_id' not in session:
@@ -717,6 +868,20 @@ def inject_notificacoes():
     u = User.query.get(session['user_id'])
     if not u:
         return {}
+    if u.is_restrito_erp_moodle():
+        # Conta restrita à equipe externa — nem calcula notificações do
+        # catálogo INOVA, que ela não tem acesso a ver.
+        return {
+            'notif_count': 0, 'notif_list': [], 'admin_finalizado': [], 'admin_finalizado_count': 0,
+            'eventos_pendentes': [], 'eventos_pendentes_count': 0,
+            'solicitacoes_pendentes': [], 'solicitacoes_pendentes_count': 0,
+            'can_cupons': False, 'can_reembolsos': False, 'can_historico': False,
+            'can_erp_moodle': True, 'somente_erp_moodle': True, 'ferramentas_tools': [],
+            'sidebar_section_order': [],
+            'can_cursos': False, 'can_matrizes': False, 'can_banco_disciplinas': False,
+            'can_ia_assistente': False, 'can_ferramentas': False,
+            'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
+        }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
         .join(Course, Discipline.course_id == Course.id)\
@@ -767,13 +932,33 @@ def inject_notificacoes():
         'can_cupons': u.can_manage_cupons(),
         'can_reembolsos': u.can_manage_reembolsos(),
         'can_historico': u.can_view_historico(),
+        'can_erp_moodle': u.can_view_erp_moodle(),
+        'somente_erp_moodle': False,
+        'ferramentas_tools': ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all() if u.can_view_ferramentas() else [],
+        'sidebar_section_order': _sidebar_section_order(),
+        'can_cursos': u.can_view_cursos(),
+        'can_matrizes': u.can_view_matrizes(),
+        'can_banco_disciplinas': u.can_view_banco_disciplinas(),
+        'can_ia_assistente': u.can_view_ia_assistente(),
+        'can_ferramentas': u.can_view_ferramentas(),
+        'can_pagamentos_terceiros': u.can_manage_pagamentos_terceiros(),
+        'can_opcoes_curso': u.can_manage_opcoes_curso(),
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
 
+def _home_redirect(u):
+    """Pra onde mandar a pessoa depois de logar/acessar '/': contas restritas
+    ao ERP Moodle (equipe externa) caem direto lá, sem passar pelo dashboard
+    do INOVA que elas não têm acesso a ver."""
+    if u and u.is_restrito_erp_moodle():
+        return redirect(url_for('erp_moodle'))
+    return redirect(url_for('dashboard'))
+
 @app.route('/')
 def index():
-    if 'user_id' in session: return redirect(url_for('dashboard'))
+    if 'user_id' in session:
+        return _home_redirect(User.query.get(session['user_id']))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET','POST'])
@@ -796,7 +981,7 @@ def login():
             session['username'] = u.username
             session['role'] = u.role
             log_action(u.id, u.username, 'login', 'user', u.id)
-            return redirect(url_for('dashboard'))
+            return _home_redirect(u)
         flash('Usuário ou senha incorretos.', 'danger')
     return render_template('login.html')
 
@@ -979,6 +1164,7 @@ def dashboard():
 
     por_tipo = db.session.query(Course.tipo, db.func.count(Course.id))\
                          .group_by(Course.tipo).all()
+    pos_count = next((c for t, c in por_tipo if t == 'pos'), 0)
 
     if is_admin:
         recentes = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(10).all()
@@ -1103,10 +1289,33 @@ def dashboard():
             db.func.coalesce(db.func.sum(Refund.valor), 0)
         ).filter_by(concluido_manual=False).scalar()
 
+    # Widget "ERP Moodle" — resumo do módulo de inserção de conteúdo
+    # (categoria separada do INOVA), só pra quem tem acesso àquela seção.
+    pode_ver_erp_moodle = u.can_view_erp_moodle()
+    erp_em_insercao = erp_concluida = erp_cursos_novos = erp_cursos_rodando = 0
+    erp_recentes = []
+    if pode_ver_erp_moodle:
+        erp_em_insercao = ErpMoodleItem.query.filter_by(status='em_insercao').count()
+        erp_concluida = ErpMoodleItem.query.filter_by(status='concluida').count()
+        # Curso "novo" = ainda tem alguma disciplina pendente; assim que todas as
+        # disciplinas dele forem concluídas, o curso passa a contar como "rodando".
+        erp_por_curso = db.session.query(
+                ErpMoodleItem.nome_curso,
+                db.func.sum(db.case((ErpMoodleItem.status == 'em_insercao', 1), else_=0))
+            ).filter(ErpMoodleItem.nome_curso != None, ErpMoodleItem.nome_curso != '')\
+            .group_by(ErpMoodleItem.nome_curso).all()
+        erp_cursos_novos = sum(1 for _, pend in erp_por_curso if pend > 0)
+        erp_cursos_rodando = sum(1 for _, pend in erp_por_curso if pend == 0)
+        erp_recentes = ErpMoodleItem.query.order_by(ErpMoodleItem.updated_at.desc()).limit(5).all()
+
+    # Widget "Destaque" — Destaque da Semana/Mês escolhido pelo admin.
+    destaque_semana = _destaque_atual('semana')
+    destaque_mes = _destaque_atual('mes')
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
-        por_tipo=por_tipo, recentes=recentes,
+        por_tipo=por_tipo, pos_count=pos_count, recentes=recentes,
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u,
@@ -1116,7 +1325,11 @@ def dashboard():
         dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios,
         total_sem_resp=total_sem_resp, cursos_sem_resp=cursos_sem_resp,
         pode_ver_reembolsos=pode_ver_reembolsos,
-        reembolsos_pend_qtd=reembolsos_pend_qtd, reembolsos_pend_valor=reembolsos_pend_valor)
+        reembolsos_pend_qtd=reembolsos_pend_qtd, reembolsos_pend_valor=reembolsos_pend_valor,
+        pode_ver_erp_moodle=pode_ver_erp_moodle,
+        erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
+        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando,
+        destaque_semana=destaque_semana, destaque_mes=destaque_mes)
 
 @app.route('/dashboard/prefs', methods=['GET'])
 @login_required
@@ -1174,7 +1387,7 @@ def dashboard_notas_salvar():
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
 @app.route('/cursos')
-@login_required
+@perm_check('can_view_cursos')
 def cursos():
     tipo      = request.args.get('tipo','')
     area      = request.args.get('area','')
@@ -1187,11 +1400,32 @@ def cursos():
     areas  = AREAS_VALIDAS
     insersores = [u.username for u in User.query.order_by(User.username).all()]
     contagem_status = _contagem_cursos_por_status(tipo, area, busca)
+    venda_opcoes = VendaModalidadeOpcao.query.order_by(VendaModalidadeOpcao.ordem).all()
     return render_template('cursos.html', cursos=lista, areas=areas, insersores=insersores,
                            filtro_tipo=tipo, filtro_area=area, filtro_status=status,
-                           contagem_status=contagem_status,
+                           contagem_status=contagem_status, venda_opcoes=venda_opcoes,
                            filtro_insersor=insersor, busca=busca,
                            filtro_horas_min=horas_min, filtro_horas_max=horas_max)
+
+@app.route('/cursos/<int:id>/venda-modalidade', methods=['POST'])
+@editor_required
+def curso_venda_modalidade(id):
+    """Atualiza só a modalidade de venda (Nenhum/Link/Site/...) direto pela
+    listagem — sem precisar abrir Editar Curso. Pensado pra eventos, que
+    costumam mudar esse campo com frequência."""
+    c = Course.query.get_or_404(id)
+    data = request.get_json(silent=True) or {}
+    valor = (data.get('venda_modalidade') or '').strip()
+    if valor:
+        opcoes_validas = {o.label for o in VendaModalidadeOpcao.query.all()}
+        if valor not in opcoes_validas:
+            return jsonify({'ok': False, 'erro': 'Opção inválida.'}), 400
+    c.venda_modalidade = valor or None
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'editar', 'course', c.id,
+               f'Venda por: "{valor or "Nenhum"}"')
+    return jsonify({'ok': True, 'venda_modalidade': c.venda_modalidade})
+
 
 def _contagem_cursos_por_status(tipo, area, busca):
     """Quantos cursos existem em cada status, respeitando tipo/área/busca
@@ -1245,7 +1479,7 @@ def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas
     return lista
 
 @app.route('/cursos/status-em-lote', methods=['POST'])
-@login_required
+@perm_check('can_view_cursos')
 def cursos_status_em_lote():
     """Oculta, ativa ou inativa vários cursos de uma vez — só admin (só
     altera o campo status, nenhum curso, disciplina ou outro dado é apagado)."""
@@ -1272,7 +1506,7 @@ def cursos_status_em_lote():
     return jsonify({'ok': True, 'total': total})
 
 @app.route('/cursos/exportar-excel')
-@login_required
+@perm_check('can_view_cursos')
 def cursos_exportar_excel():
     import openpyxl, re
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1351,7 +1585,7 @@ def cursos_exportar_excel():
                      as_attachment=True, download_name=fname)
 
 @app.route('/cursos/relatorio')
-@login_required
+@perm_check('can_view_cursos')
 def cursos_relatorio():
     tipo      = request.args.get('tipo','')
     area      = request.args.get('area','')
@@ -1370,6 +1604,7 @@ def cursos_relatorio():
 
 @app.route('/cursos/novo', methods=['GET','POST'])
 @editor_required
+@perm_check('can_view_cursos')
 def curso_novo():
     if request.method == 'POST':
         d = request.form
@@ -1415,7 +1650,7 @@ def curso_novo():
                            usuarios=usuarios, video_presets=video_presets, venda_opcoes=venda_opcoes)
 
 @app.route('/cursos/<int:id>')
-@login_required
+@perm_check('can_view_cursos')
 def curso_detalhe(id):
     c    = Course.query.get_or_404(id)
     disc = Discipline.query.filter_by(course_id=id).order_by(Discipline.ordem).all()
@@ -1437,6 +1672,7 @@ CAMPOS_CURSO_LABEL = {
 
 @app.route('/cursos/<int:id>/editar', methods=['GET','POST'])
 @editor_required
+@perm_check('can_view_cursos')
 def curso_editar(id):
     c = Course.query.get_or_404(id)
     if request.method == 'POST':
@@ -1554,7 +1790,156 @@ def api_busca():
     q = request.args.get('q','')
     if len(q) < 2: return jsonify([])
     results = Course.query.filter(Course.nome.ilike(f'%{q}%')).limit(10).all()
-    return jsonify([{'id': c.id, 'nome': c.nome, 'tipo': c.tipo, 'status': c.status} for c in results])
+    return jsonify([{'id': c.id, 'nome': c.nome, 'tipo': c.tipo, 'status': c.status,
+                      'categoria': c.categoria or 'INOVA'} for c in results])
+
+# ─── ERP MOODLE (inserção de conteúdo — categoria separada do INOVA) ───────────
+# Acompanhamento manual da equipe de inserção de materiais: cada linha é uma
+# disciplina em inserção/concluída, com o curso digitado à mão (não depende
+# do catálogo Course). Equipe interna (admin/editor) cria e edita; a equipe
+# externa só enxerga quando ganha a permissão 'erp_moodle_acesso'.
+
+@app.route('/erp-moodle')
+@perm_check('can_view_erp_moodle')
+def erp_moodle():
+    f_status = request.args.get('status', '')
+    f_insersor = request.args.get('insersor', '')
+    f_busca = request.args.get('busca', '').strip()
+
+    q = ErpMoodleItem.query
+    if f_status in ('em_insercao', 'concluida'):
+        q = q.filter_by(status=f_status)
+    if f_insersor:
+        q = q.filter(ErpMoodleItem.insersor_responsavel.ilike(f'%{f_insersor}%'))
+    if f_busca:
+        like = f'%{f_busca}%'
+        q = q.filter(db.or_(ErpMoodleItem.nome_disciplina.ilike(like),
+                             ErpMoodleItem.nome_curso.ilike(like)))
+    itens = q.order_by(ErpMoodleItem.status.asc(), ErpMoodleItem.updated_at.desc()).all()
+
+    total = ErpMoodleItem.query.count()
+    total_em_insercao = ErpMoodleItem.query.filter_by(status='em_insercao').count()
+    total_concluida = ErpMoodleItem.query.filter_by(status='concluida').count()
+
+    insersores = sorted({i.insersor_responsavel for i in ErpMoodleItem.query.all() if i.insersor_responsavel})
+
+    u = User.query.get(session['user_id'])
+    return render_template('erp_moodle.html', itens=itens,
+                           total=total, total_em_insercao=total_em_insercao, total_concluida=total_concluida,
+                           f_status=f_status, f_insersor=f_insersor, f_busca=f_busca,
+                           insersores=insersores, can_edit=u.can_edit_erp_moodle())
+
+@app.route('/erp-moodle/novo', methods=['GET', 'POST'])
+@editor_required
+def erp_moodle_novo():
+    if request.method == 'POST':
+        d = request.form
+        item = ErpMoodleItem(
+            nome_disciplina=d.get('nome_disciplina', '').strip(),
+            nome_curso=d.get('nome_curso', '').strip(),
+            status=d.get('status', 'em_insercao'),
+            data_conclusao=_parse_data_form(d.get('data_conclusao', '')),
+            insersor_responsavel=d.get('insersor_responsavel', '').strip(),
+            observacao=d.get('observacao', '').strip(),
+            created_by=session['user_id'],
+        )
+        if item.status == 'concluida' and not item.data_conclusao:
+            item.data_conclusao = date.today()
+        db.session.add(item)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'criar', 'erp_moodle', item.id, item.nome_disciplina)
+        flash('Item adicionado ao ERP Moodle!', 'success')
+        return redirect(url_for('erp_moodle'))
+    return render_template('erp_moodle_form.html', item=None)
+
+@app.route('/erp-moodle/<int:id>/editar', methods=['GET', 'POST'])
+@editor_required
+def erp_moodle_editar(id):
+    item = ErpMoodleItem.query.get_or_404(id)
+    if request.method == 'POST':
+        d = request.form
+        item.nome_disciplina = d.get('nome_disciplina', '').strip()
+        item.nome_curso = d.get('nome_curso', '').strip()
+        novo_status = d.get('status', 'em_insercao')
+        if novo_status == 'concluida' and item.status != 'concluida':
+            item.data_conclusao = _parse_data_form(d.get('data_conclusao', '')) or date.today()
+        elif novo_status == 'em_insercao':
+            item.data_conclusao = _parse_data_form(d.get('data_conclusao', ''))
+        else:
+            item.data_conclusao = _parse_data_form(d.get('data_conclusao', ''))
+        item.status = novo_status
+        item.insersor_responsavel = d.get('insersor_responsavel', '').strip()
+        item.observacao = d.get('observacao', '').strip()
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'erp_moodle', item.id, item.nome_disciplina)
+        flash('Item atualizado!', 'success')
+        return redirect(url_for('erp_moodle'))
+    return render_template('erp_moodle_form.html', item=item)
+
+@app.route('/erp-moodle/<int:id>/excluir', methods=['POST'])
+@editor_required
+def erp_moodle_excluir(id):
+    item = ErpMoodleItem.query.get_or_404(id)
+    nome = item.nome_disciplina
+    db.session.delete(item)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'erp_moodle', id, nome)
+    flash('Item excluído.', 'success')
+    return redirect(url_for('erp_moodle'))
+
+@app.route('/api/curso/<int:id>/disciplinas')
+@perm_check('can_view_erp_moodle')
+def api_curso_disciplinas(id):
+    """Lista as disciplinas da matriz de um curso, pra importar pro ERP
+    Moodle sem digitar tudo de novo. Marca quais já têm item criado (mesmo
+    curso + mesma disciplina) pra não duplicar sem querer."""
+    curso = Course.query.get_or_404(id)
+    discs = Discipline.query.filter_by(course_id=id).order_by(Discipline.ordem).all()
+    ja_importadas = {
+        i.nome_disciplina for i in ErpMoodleItem.query.filter_by(nome_curso=curso.nome).all()
+    }
+    return jsonify({
+        'curso_id': curso.id, 'curso_nome': curso.nome,
+        'disciplinas': [{'nome': d.nome, 'modulo': d.modulo or '',
+                          'ja_importada': d.nome in ja_importadas} for d in discs],
+    })
+
+@app.route('/erp-moodle/importar', methods=['GET', 'POST'])
+@editor_required
+def erp_moodle_importar():
+    if request.method == 'POST':
+        curso_id = request.form.get('curso_id', '')
+        curso_nome = request.form.get('curso_nome', '').strip()
+        insersor = request.form.get('insersor_responsavel', '').strip()
+        observacao = request.form.get('observacao', '').strip()
+        nomes = request.form.getlist('disciplina_nome')
+        status_list = request.form.getlist('disciplina_status')
+        if not curso_nome or not nomes:
+            flash('Selecione um curso e ao menos uma disciplina da matriz.', 'danger')
+            return redirect(url_for('erp_moodle_importar', curso_id=curso_id))
+        criados = 0
+        for nome, status in zip(nomes, status_list):
+            nome = nome.strip()
+            if not nome:
+                continue
+            status = status if status in ('em_insercao', 'concluida') else 'em_insercao'
+            item = ErpMoodleItem(
+                nome_disciplina=nome, nome_curso=curso_nome, status=status,
+                insersor_responsavel=insersor, observacao=observacao,
+                created_by=session['user_id'],
+            )
+            if status == 'concluida':
+                item.data_conclusao = date.today()
+            db.session.add(item)
+            criados += 1
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'importar', 'erp_moodle', None,
+                   f'{criados} disciplina(s) da matriz de "{curso_nome}"')
+        flash(f'{criados} disciplina(s) importada(s) da matriz de "{curso_nome}"!', 'success')
+        return redirect(url_for('erp_moodle'))
+
+    curso_id_inicial = request.args.get('curso_id', '')
+    return render_template('erp_moodle_importar.html', curso_id_inicial=curso_id_inicial)
 
 # ─── CUPONS ────────────────────────────────────────────────────────────────────
 
@@ -1808,7 +2193,7 @@ def _pagamentos_terceiros_filtrados():
     return items, f_terceiro, f_curso, f_ano
 
 @app.route('/pagamentos-terceiros')
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamentos_terceiros():
     items, f_terceiro, f_curso, f_ano = _pagamentos_terceiros_filtrados()
 
@@ -1844,7 +2229,7 @@ def pagamentos_terceiros():
                            f_terceiro=f_terceiro, f_curso=f_curso, f_ano=f_ano)
 
 @app.route('/pagamentos-terceiros/exportar-excel')
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamentos_terceiros_exportar_excel():
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1904,7 +2289,7 @@ def pagamentos_terceiros_exportar_excel():
                      as_attachment=True, download_name=fname)
 
 @app.route('/pagamentos-terceiros/novo', methods=['GET', 'POST'])
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamento_terceiro_novo():
     cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
     if request.method == 'POST':
@@ -1930,7 +2315,7 @@ def pagamento_terceiro_novo():
                            terceiro_prefill=terceiro_prefill)
 
 @app.route('/pagamentos-terceiros/<int:id>/editar', methods=['GET', 'POST'])
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamento_terceiro_editar(id):
     p = ThirdPartyPayment.query.get_or_404(id)
     cursos_terceiros = Course.query.filter_by(tipo='terceiros').order_by(Course.nome).all()
@@ -1951,7 +2336,7 @@ def pagamento_terceiro_editar(id):
     return render_template('pagamento_terceiro_form.html', item=p, cursos_terceiros=cursos_terceiros)
 
 @app.route('/pagamentos-terceiros/<int:id>/excluir', methods=['POST'])
-@admin_required
+@perm_check('can_manage_pagamentos_terceiros')
 def pagamento_terceiro_excluir(id):
     p = ThirdPartyPayment.query.get_or_404(id)
     nome = p.terceiro
@@ -1987,7 +2372,7 @@ def disciplinas_marcar_todas(course_id):
     return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
 
 @app.route('/banco-disciplinas')
-@login_required
+@perm_check('can_view_banco_disciplinas')
 def banco_disciplinas():
     busca = request.args.get('q', '').strip()
 
@@ -2020,7 +2405,7 @@ def banco_disciplinas():
 
 
 @app.route('/banco-disciplinas/exportar-excel')
-@login_required
+@perm_check('can_view_banco_disciplinas')
 def banco_disciplinas_exportar_excel():
     import openpyxl, re as _re, unicodedata
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
@@ -2218,7 +2603,7 @@ def banco_disciplinas_exportar_excel():
 
 
 @app.route('/banco-disciplinas/relatorio')
-@login_required
+@perm_check('can_view_banco_disciplinas')
 def banco_disciplinas_relatorio():
     busca = request.args.get('q', '').strip()
 
@@ -2260,7 +2645,7 @@ def banco_disciplinas_relatorio():
 
 
 @app.route('/ia-assistente')
-@login_required
+@perm_check('can_view_ia_assistente')
 def ia_assistente():
     cursos_amostra = Course.query.filter(Course.status != 'descontinuado').order_by(Course.nome).limit(20).all()
     return render_template('ia_assistente.html', cursos_amostra=cursos_amostra)
@@ -2295,6 +2680,113 @@ def ia_chat():
 
     p = pergunta
     linhas = []
+
+    # ── CONHECIMENTO GERAL: ESTRUTURA DOS CURSOS NA PLATAFORMA ──────────
+    # Baseado no POP 120-01 – Processo de Revisão e Curadoria de Materiais.
+    # Diferente dos blocos abaixo (que consultam o banco do Gestor), este
+    # responde com conhecimento fixo sobre como a Inova Carreira organiza
+    # o conteúdo de cada modalidade — ex: "o que tem dentro de cada disciplina?"
+    if _contem(p, 'dentro de cada disciplina', 'dentro do curso', 'dentro da disciplina',
+               'o que tem no curso', 'conteudo do curso', 'conteúdo do curso',
+               'como e estruturado', 'como é estruturado', 'como funciona a disciplina',
+               'estrutura da disciplina', 'estrutura do curso', 'estrutura dos cursos',
+               'materiais do curso', 'apostila', 'videoaula', 'atividade avaliativa',
+               'quantas questoes', 'quantas questões', 'como e organizado o curso',
+               'como é organizado o curso'):
+        linhas = [
+            "**Estrutura dos cursos na plataforma Inova Carreira:**\n",
+            "📚 **Cursos Rápidos (Livres)** — geralmente 1 disciplina apenas:",
+            "• Apostila em PDF",
+            "• Videoaulas",
+            "• Slides (quando disponíveis)",
+            "• Áudios (quando disponíveis)",
+            "• 1 atividade avaliativa no final, com 10 questões",
+            "• Certificado após aprovação\n",
+            "🎓 **Cursos Profissionalizantes** — geralmente 6 a 8 disciplinas:",
+            "• Apostila, videoaulas, slides e áudios (quando disponíveis) por disciplina",
+            "• Materiais complementares (quando houver)",
+            "• 1 atividade avaliativa com 10 questões por disciplina",
+            "• Certificado após concluir e ser aprovado em todas as disciplinas\n",
+            "💻 **Em qualquer curso**, o aluno encontra: apresentação do curso, conteúdo "
+            "organizado por tópicos/módulos, materiais de estudo (PDF, vídeos, slides e "
+            "áudios, quando disponíveis), atividade avaliativa, resultado da avaliação e "
+            "emissão de certificado (quando atende aos critérios de aprovação).\n",
+            "_Pode haver pequenas diferenças conforme o tipo de curso ou como foi desenvolvido._",
+        ]
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── CONHECIMENTO GERAL: VISÃO GERAL DA PLATAFORMA / MODALIDADES ─────
+    if _contem(p, 'visao geral', 'visão geral', 'sobre a plataforma', 'o que e a inova',
+               'o que é a inova', 'modalidades atendidas', 'quais modalidades',
+               'como funciona a inova carreira', 'como funciona a plataforma'):
+        linhas = [
+            "**Plataforma Inova Carreira — visão geral** (baseado no POP 120-01):\n",
+            "A plataforma contempla diferentes modalidades e demandas acadêmicas: Cursos "
+            "Rápidos, Cursos Profissionalizantes, Pós-Graduação, Eventos, alunos internos "
+            "da Unifatecie e alunos externos. Também atende Educação Corporativa, Práticas "
+            "Conectadas, Projetos em Ambientes Profissionais e eventos institucionais.\n",
+            "O suporte é feito pela Central de Atendimento da Inova Carreira, com "
+            "intermédio da equipe de Inserção quando necessário.\n",
+            "**Ferramentas usadas no processo:**",
+            "• **Articulate** — criação e padronização dos conteúdos em HTML, com "
+            "flexibilidade para alterações em tempo real.",
+            "• **Planner** — controle diário de suporte, reembolsos e melhorias da "
+            "plataforma.",
+            "• **Trello** — monitoramento das demandas da Inserção, feedbacks e "
+            "compartilhamento das disciplinas produzidas com a equipe de Produção de "
+            "Materiais.\n",
+            "🔗 Acesso à plataforma: https://www.inovacarreira.com.br/login",
+        ]
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
+
+    # ── CONHECIMENTO GERAL: FERRAMENTAS ESPECÍFICAS ─────────────────────
+    if _contem(p, 'articulate'):
+        return jsonify({'ok': True, 'resposta':
+            "**Articulate** é a ferramenta utilizada para criação, edição e padronização "
+            "dos conteúdos da plataforma Inova Carreira. Os materiais são feitos em "
+            "documentos HTML, o que permite alterações e atualizações em tempo real, com "
+            "mais flexibilidade e padronização visual."})
+    if _contem(p, 'planner'):
+        return jsonify({'ok': True, 'resposta':
+            "**Planner** é usado diariamente para controlar as demandas relacionadas à "
+            "plataforma Inova Carreira: acompanhamento de suporte, solicitações de "
+            "reembolso, melhorias e correções de bugs da plataforma."})
+    if _contem(p, 'trello'):
+        return jsonify({'ok': True, 'resposta':
+            "**Trello** é usado para monitorar as demandas da equipe de Inserção, "
+            "gerenciar feedbacks, acompanhar a plataforma Inova Carreira e compartilhar "
+            "as disciplinas produzidas com a equipe de Produção de Materiais."})
+    if _contem(p, 'curadoria', 'link moodle'):
+        return jsonify({'ok': True, 'resposta':
+            "O **Sistema de Curadoria** é distinto da plataforma Inova Carreira. No "
+            "processo de envio de disciplinas para lá, o formulário de cadastro tem um "
+            "campo \"Link Moodle/Inova\", onde o colaborador insere o link da disciplina "
+            "no Moodle. Esse campo faz parte do sistema de Curadoria e não é uma etapa "
+            "da Inova Carreira."})
+
+    # ── CONHECIMENTO GERAL: PROCESSO DE INSERÇÃO (ABAS DO CADASTRO) ─────
+    if _contem(p, 'abas do curso', 'como cadastrar curso', 'como e inserido',
+               'como é inserido', 'processo de insercao', 'processo de inserção',
+               'modulos e disciplinas', 'módulos e disciplinas', 'como cadastrar disciplina'):
+        linhas = [
+            "**Como os cursos são estruturados na inserção (plataforma Inova Carreira):**\n",
+            "🚀 **Curso Rápido** — 1 módulo com conteúdo e avaliação. Abas:",
+            "• Dados do Curso — nome, categoria e descrição",
+            "• Parâmetros — capa/vídeo, precificação, validades e canais de venda",
+            "• Conteúdo do Curso — módulo, carga horária e aulas",
+            "• Questões — banco de questões objetivas (mín. 1 alternativa certa e 1 "
+            "errada), com prazo de certificação configurável\n",
+            "🎓 **Curso Profissionalizante** — múltiplos módulos e disciplinas. Além das "
+            "abas acima, tem:",
+            "• Módulos — divisões do curso (equivalentes a capítulos)",
+            "• Disciplinas — agrupamento de aulas dentro do módulo, cada uma pode ter um "
+            "instrutor específico",
+            "• Aulas — gerenciador de aulas por disciplina/módulo\n",
+            "🎓 **Pós-Graduação** — segue a mesma estrutura do Profissionalizante, mas "
+            "cada disciplina precisa indicar o professor responsável e sua titulação "
+            "acadêmica.",
+        ]
+        return jsonify({'ok': True, 'resposta': '\n'.join(linhas)})
 
     # ── ESTATÍSTICAS GERAIS ─────────────────────────────
     if _contem(p, 'quantos', 'total', 'quantidade', 'estatistica', 'estatística', 'resumo', 'geral'):
@@ -2587,7 +3079,7 @@ def admin_marcar_concluido():
 
 
 @app.route('/pacotes')
-@login_required
+@perm_check('can_view_cursos')
 def pacotes():
     busca = request.args.get('q', '').strip()
 
@@ -2625,7 +3117,7 @@ def admin_migrar_externos():
 
 
 @app.route('/matrizes')
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes():
     busca = request.args.get('q', '').strip()
     # Sem "tipo" na URL nenhuma = primeira abertura (link da barra lateral) →
@@ -2722,7 +3214,7 @@ def matrizes():
                            pendentes_por_tipo=pendentes_por_tipo)
 
 @app.route('/matrizes/marcar-tudo', methods=['POST'])
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes_marcar_tudo():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Acesso negado'}), 403
@@ -2760,7 +3252,7 @@ def matrizes_marcar_tudo():
     return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
 
 @app.route('/matrizes/relatorio')
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes_relatorio():
     filtro_tipo = request.args.get('tipo', '')
     filtro_status = request.args.get('status', '')
@@ -2794,7 +3286,7 @@ def matrizes_relatorio():
                            now=datetime.utcnow())
 
 @app.route('/matrizes/exportar-excel')
-@login_required
+@perm_check('can_view_matrizes')
 def matrizes_exportar_excel():
     import openpyxl, re
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -3030,7 +3522,8 @@ def usuario_novo():
             perms = _perms_from_form(request.form)
             u = User(username=d['username'], nome=d.get('nome', '').strip(), email=email,
                      password=hash_pw(d['password']),
-                     role=d['role'], permissoes=json.dumps(perms), must_change_password=True)
+                     role=d['role'], permissoes=json.dumps(perms), must_change_password=True,
+                     equipe=(d.get('equipe') == 'on'))
             db.session.add(u)
             db.session.commit()
             log_action(session['user_id'], session['username'], 'criar', 'user', u.id, u.username)
@@ -3065,6 +3558,7 @@ def usuario_editar(id):
         u.nome = d.get('nome', '').strip()
         u.role = d['role']
         u.permissoes = json.dumps(_perms_from_form(d))
+        u.equipe = (d.get('equipe') == 'on')
         if d.get('password'):
             u.password = hash_pw(d['password'])
             u.must_change_password = True
@@ -3079,7 +3573,11 @@ def _perms_from_form(d):
         'cursos_editar', 'cursos_excluir',
         'cupons_gerenciar', 'reembolsos_gerenciar',
         'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
+        'erp_moodle_acesso', 'pagamentos_terceiros_gerenciar', 'opcoes_curso_gerenciar',
         'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
+        'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
+        'block_ia_assistente', 'block_ferramentas',
+        'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
@@ -3092,6 +3590,30 @@ def usuario_redefinir_senha(id):
     log_action(session['user_id'], session['username'], 'redefinir_senha', 'user', id, u.username)
     flash(f'"{u.username}" precisará trocar a senha no próximo login.', 'success')
     return redirect(url_for('usuarios'))
+
+@app.route('/usuarios/<int:id>/foto', methods=['POST'])
+@admin_required
+def usuario_foto_upload(id):
+    u = User.query.get_or_404(id)
+    arquivo = request.files.get('foto')
+    if arquivo and arquivo.filename:
+        conteudo = arquivo.read()
+        if len(conteudo) > 3 * 1024 * 1024:
+            flash('Foto muito grande (máx. 3MB).', 'danger')
+        else:
+            u.foto = conteudo
+            u.foto_mimetype = arquivo.mimetype or 'image/jpeg'
+            db.session.commit()
+            flash('Foto atualizada!', 'success')
+    return redirect(url_for('usuario_editar', id=id))
+
+@app.route('/usuarios/<int:id>/foto')
+@login_required
+def usuario_foto(id):
+    u = User.query.get_or_404(id)
+    if not u.foto:
+        abort(404)
+    return Response(u.foto, mimetype=u.foto_mimetype or 'image/jpeg')
 
 @app.route('/usuarios/<int:id>/excluir', methods=['POST'])
 @admin_required
@@ -3111,6 +3633,118 @@ def usuario_excluir(id):
     log_action(session['user_id'], session['username'], 'excluir', 'user', id, username)
     flash(f'Usuário "{username}" excluído.', 'success')
     return redirect(url_for('usuarios'))
+
+# ─── DESTAQUE DA SEMANA / DO MÊS ────────────────────────────────────────────────
+# Escolhido manualmente pelo admin — sempre vale o mais recente cadastrado de
+# cada tipo. Mantém o histórico dos anteriores (não apaga ao trocar).
+
+def _destaque_atual(tipo):
+    return Destaque.query.filter_by(tipo=tipo).order_by(Destaque.created_at.desc()).first()
+
+@app.route('/destaques', methods=['GET', 'POST'])
+@admin_required
+def destaques():
+    if request.method == 'POST':
+        d = request.form
+        tipo = d.get('tipo')
+        user_id = d.get('user_id', type=int)
+        if tipo not in ('semana', 'mes') or not user_id:
+            flash('Escolha o tipo e a pessoa.', 'danger')
+        else:
+            item = Destaque(
+                tipo=tipo, user_id=user_id,
+                periodo_label=d.get('periodo_label', '').strip(),
+                observacao=d.get('observacao', '').strip(),
+                created_by=session['user_id'],
+            )
+            db.session.add(item)
+            db.session.commit()
+            log_action(session['user_id'], session['username'], 'criar', 'destaque', item.id, item.periodo_label)
+            flash('Destaque registrado!', 'success')
+        return redirect(url_for('destaques'))
+    equipe = User.query.filter_by(equipe=True).order_by(User.username).all()
+    historico = Destaque.query.order_by(Destaque.created_at.desc()).limit(20).all()
+    return render_template('destaques.html', equipe=equipe, historico=historico,
+                           destaque_semana=_destaque_atual('semana'), destaque_mes=_destaque_atual('mes'))
+
+@app.route('/destaques/<int:id>/excluir', methods=['POST'])
+@admin_required
+def destaque_excluir(id):
+    d = Destaque.query.get_or_404(id)
+    db.session.delete(d)
+    db.session.commit()
+    flash('Destaque removido.', 'success')
+    return redirect(url_for('destaques'))
+
+# ─── MURAL DA EQUIPE (mensagens + reação em emoji) ─────────────────────────────
+
+EMOJIS_MURAL = ['👍', '❤️', '😂', '🎉', '👏', '🔥', '😮', '🙏']
+
+@app.route('/mural')
+@login_required
+def mural():
+    mensagens = MuralMensagem.query.order_by(MuralMensagem.created_at.desc()).limit(80).all()
+    reacoes_por_msg = {}
+    minhas_reacoes = set()
+    if mensagens:
+        ids = [m.id for m in mensagens]
+        rows = db.session.query(MuralReacao.mensagem_id, MuralReacao.emoji, db.func.count(MuralReacao.id))\
+            .filter(MuralReacao.mensagem_id.in_(ids)).group_by(MuralReacao.mensagem_id, MuralReacao.emoji).all()
+        for msg_id, emoji, qtd in rows:
+            reacoes_por_msg.setdefault(msg_id, []).append({'emoji': emoji, 'qtd': qtd})
+        minhas = MuralReacao.query.filter(MuralReacao.mensagem_id.in_(ids), MuralReacao.user_id == session['user_id']).all()
+        minhas_reacoes = {(r.mensagem_id, r.emoji) for r in minhas}
+    return render_template('mural.html', mensagens=mensagens, emojis=EMOJIS_MURAL,
+                           reacoes_por_msg=reacoes_por_msg, minhas_reacoes=minhas_reacoes)
+
+@app.route('/mural/nova', methods=['POST'])
+@login_required
+def mural_nova():
+    texto = request.form.get('texto', '').strip()
+    if texto:
+        db.session.add(MuralMensagem(user_id=session['user_id'], texto=texto[:2000]))
+        db.session.commit()
+    return redirect(url_for('mural'))
+
+@app.route('/mural/<int:id>/excluir', methods=['POST'])
+@login_required
+def mural_excluir(id):
+    m = MuralMensagem.query.get_or_404(id)
+    u = User.query.get(session['user_id'])
+    if m.user_id != u.id and u.role != 'admin':
+        flash('Você só pode excluir suas próprias mensagens.', 'danger')
+        return redirect(url_for('mural'))
+    MuralReacao.query.filter_by(mensagem_id=m.id).delete()
+    db.session.delete(m)
+    db.session.commit()
+    flash('Mensagem excluída.', 'success')
+    return redirect(url_for('mural'))
+
+@app.route('/mural/<int:id>/reagir', methods=['POST'])
+@login_required
+def mural_reagir(id):
+    MuralMensagem.query.get_or_404(id)
+    data = request.get_json(silent=True) or {}
+    emoji = (data.get('emoji') or '').strip()
+    if not emoji or emoji not in EMOJIS_MURAL:
+        return jsonify({'ok': False, 'erro': 'Emoji inválido.'}), 400
+    existente = MuralReacao.query.filter_by(mensagem_id=id, user_id=session['user_id'], emoji=emoji).first()
+    if existente:
+        db.session.delete(existente)
+        reagiu = False
+    else:
+        db.session.add(MuralReacao(mensagem_id=id, user_id=session['user_id'], emoji=emoji))
+        reagiu = True
+    db.session.commit()
+    contagem = MuralReacao.query.filter_by(mensagem_id=id, emoji=emoji).count()
+    return jsonify({'ok': True, 'reagiu': reagiu, 'contagem': contagem})
+
+@app.route('/api/mural/novas-desde/<int:ultimo_id>')
+@login_required
+def api_mural_novas(ultimo_id):
+    """Consultado via JS pra saber se surgiram mensagens novas sem recarregar a página."""
+    total = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id).count()
+    return jsonify({'novas': total})
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
@@ -3244,7 +3878,7 @@ def arquivar_logs_antigos():
     return qtd
 
 @app.route('/admin/video-presets', methods=['GET', 'POST'])
-@admin_required
+@perm_check('can_manage_opcoes_curso')
 def video_presets():
     if request.method == 'POST':
         if request.form.get('form_tipo') == 'venda_modalidade':
@@ -3272,7 +3906,7 @@ def video_presets():
     return render_template('video_presets.html', presets=presets, venda_opcoes=venda_opcoes)
 
 @app.route('/admin/video-presets/<int:id>/excluir', methods=['POST'])
-@admin_required
+@perm_check('can_manage_opcoes_curso')
 def video_preset_excluir(id):
     p = VideoPreset.query.get_or_404(id)
     db.session.delete(p)
@@ -3281,13 +3915,157 @@ def video_preset_excluir(id):
     return redirect(url_for('video_presets'))
 
 @app.route('/admin/venda-modalidades/<int:id>/excluir', methods=['POST'])
-@admin_required
+@perm_check('can_manage_opcoes_curso')
 def venda_modalidade_excluir(id):
     o = VendaModalidadeOpcao.query.get_or_404(id)
     db.session.delete(o)
     db.session.commit()
     flash('Opção de "Venda por" removida.', 'success')
     return redirect(url_for('video_presets'))
+
+# ─── FERRAMENTAS EXTERNAS (sistemas embutidos via iframe) ──────────────────────
+# Ex: Kronos. Alguns sites bloqueiam ser exibidos em iframe (cabeçalho
+# X-Frame-Options / Content-Security-Policy: frame-ancestors) — isso é uma
+# proteção do próprio site contra clickjacking e não tem como ser contornada
+# por aqui; nesses casos a tela mostra um aviso com link pra abrir em nova aba.
+# A verificação é feita pelo SERVIDOR (olhando o cabeçalho de verdade que o
+# site manda) — não dá pra confiar em "esperar um tempo e ver se carregou"
+# no navegador, porque isso dá falso positivo em sites só um pouco lentos.
+
+def _verifica_embeddable(url):
+    """Confere se um site permite ser exibido em iframe, olhando os
+    cabeçalhos X-Frame-Options e Content-Security-Policy da resposta.
+    Retorna True (permite), False (bloqueia) ou None (não deu pra checar —
+    site fora do ar, timeout etc; nesse caso tentamos o iframe mesmo assim)."""
+    try:
+        r = _requests.get(url, timeout=6, allow_redirects=True,
+                           headers={'User-Agent': 'Mozilla/5.0 (compatible; GestorAcademico/1.0)'})
+    except _requests.RequestException:
+        return None
+    xfo = (r.headers.get('X-Frame-Options') or '').strip().upper()
+    if xfo in ('DENY', 'SAMEORIGIN'):
+        return False
+    csp = r.headers.get('Content-Security-Policy') or ''
+    for diretiva in csp.split(';'):
+        diretiva = diretiva.strip()
+        if diretiva.lower().startswith('frame-ancestors'):
+            valor = diretiva[len('frame-ancestors'):].strip()
+            if valor and '*' not in valor:
+                return False
+    return True
+
+@app.route('/ferramentas')
+@perm_check('can_view_ferramentas')
+def ferramentas():
+    tools = ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all()
+    return render_template('ferramentas.html', tools=tools)
+
+@app.route('/ferramentas/nova', methods=['POST'])
+@admin_required
+def ferramenta_nova():
+    label = request.form.get('label', '').strip()
+    url = request.form.get('url', '').strip()
+    if label and url:
+        maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
+        db.session.add(ExternalTool(label=label, url=url, ordem=maior_ordem + 1))
+        db.session.commit()
+        flash('Ferramenta adicionada!', 'success')
+    else:
+        flash('Preencha o nome e o link.', 'danger')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/editar', methods=['POST'])
+@admin_required
+def ferramenta_editar(id):
+    t = ExternalTool.query.get_or_404(id)
+    label = request.form.get('label', '').strip()
+    url = request.form.get('url', '').strip()
+    if label and url:
+        t.label = label
+        t.url = url
+        db.session.commit()
+        flash('Ferramenta atualizada!', 'success')
+    else:
+        flash('Preencha o nome e o link.', 'danger')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/excluir', methods=['POST'])
+@admin_required
+def ferramenta_excluir(id):
+    t = ExternalTool.query.get_or_404(id)
+    db.session.delete(t)
+    db.session.commit()
+    flash('Ferramenta removida.', 'success')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/revalidar', methods=['POST'])
+@admin_required
+def ferramenta_revalidar(id):
+    """Força reconferir agora se o site permite iframe, sem esperar o
+    cache de 1 dia — útil logo depois de mudar a config do lado de lá."""
+    t = ExternalTool.query.get_or_404(id)
+    t.embeddable = _verifica_embeddable(t.url)
+    t.embeddable_checado_em = datetime.utcnow()
+    db.session.commit()
+    if t.embeddable:
+        flash(f'"{t.label}" agora permite ser aberto aqui dentro!', 'success')
+    else:
+        flash(f'"{t.label}" ainda bloqueia — confira se a mudança já foi publicada do lado de lá.', 'danger')
+    return redirect(url_for('ferramentas'))
+
+@app.route('/ferramentas/<int:id>/abrir')
+@perm_check('can_view_ferramentas')
+def ferramenta_abrir(id):
+    t = ExternalTool.query.get_or_404(id)
+    # Recheca de tempos em tempos (1 dia) — o site pode mudar de política.
+    precisa_checar = (t.embeddable_checado_em is None or
+                       datetime.utcnow() - t.embeddable_checado_em > timedelta(days=1))
+    if precisa_checar:
+        t.embeddable = _verifica_embeddable(t.url)
+        t.embeddable_checado_em = datetime.utcnow()
+        db.session.commit()
+    return render_template('ferramenta_abrir.html', tool=t)
+
+DASHBOARD_BLOCOS_VALIDOS = {
+    'andamento_plataforma', 'cursos_responsavel', 'distribuicao_tipo',
+    'erp_moodle', 'atividade_recente', 'acesso_rapido', 'ultimo_backup',
+    'destaques',
+}
+
+@app.route('/api/dashboard-layout', methods=['POST'])
+@login_required
+def api_dashboard_layout():
+    """Salva a ordem em que o usuário arrastou os cards do dashboard.
+    Fica gravada na própria conta — vale em qualquer aparelho que ele logar."""
+    data = request.get_json(silent=True) or {}
+    ordem = data.get('order', [])
+    if not isinstance(ordem, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    ordem = [b for b in ordem if b in DASHBOARD_BLOCOS_VALIDOS]
+    u = User.query.get(session['user_id'])
+    u.dashboard_layout = json.dumps(ordem) if ordem else None
+    db.session.commit()
+    return jsonify({'ok': True})
+
+SIDEBAR_SECOES_VALIDAS = {'inova_carreira', 'ferramentas', 'erp_moodle', 'gestao', 'admin'}
+
+@app.route('/api/sidebar-ordem', methods=['POST'])
+@admin_required
+def api_sidebar_ordem():
+    """Só admin mexe na ordem das seções do menu lateral — vale globalmente
+    pra todo mundo que loga, igual as permissões que o admin já controla."""
+    data = request.get_json(silent=True) or {}
+    ordem = data.get('order', [])
+    if not isinstance(ordem, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    ordem = [s for s in ordem if s in SIDEBAR_SECOES_VALIDAS]
+    setting = AppSetting.query.get('sidebar_section_order')
+    if not setting:
+        setting = AppSetting(key='sidebar_section_order')
+        db.session.add(setting)
+    setting.value = json.dumps(ordem) if ordem else None
+    db.session.commit()
+    return jsonify({'ok': True})
 
 @app.route('/api/eventos/pendentes-ocultar')
 @login_required
@@ -3865,6 +4643,25 @@ def seed_data():
             VendaModalidadeOpcao(label='Site', ordem=2),
         ])
         db.session.commit()
+    # Ferramentas padrão — checa por label (não por count==0) pra continuar
+    # funcionando mesmo depois que o admin já cadastrou/editou outras.
+    ferramentas_padrao = [
+        ('Kronos', 'https://kronoslabtecie.web.app/'),
+        ('Sistema Curadoria', 'https://sistema-curadoria.vercel.app/'),
+        ('Moodle Graduação ERP', 'https://moodle.fatecie.edu.br/course/index.php?categoryid=11752'),
+        ('Moodle Graduação WAE', 'https://www.eadunifatecie.com.br/'),
+        ('Moodle Pós ERP', 'https://moodleposead.unifatecie.edu.br/login/index.php?loginredirect=1'),
+        ('Moodle Cursos Técnicos ERP', 'https://moodle.evoluitec.app.br/course/index.php'),
+        ('Moodle LAV', 'https://lav.eadunifatecie.com.br/login/index.php'),
+        ('Microsoft Teams', 'https://teams.microsoft.com/'),
+    ]
+    maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
+    labels_existentes = {t.label for t in ExternalTool.query.all()}
+    for label, url in ferramentas_padrao:
+        if label not in labels_existentes:
+            maior_ordem += 1
+            db.session.add(ExternalTool(label=label, url=url, ordem=maior_ordem))
+    db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -4235,6 +5032,9 @@ def _run_migrations():
         ("course",     "link_video",       "TEXT"),
         ("course",     "limite_parcelas",  "VARCHAR(10)"),
         ("course",     "via_formulario",   "BOOLEAN DEFAULT false"),
+        ("course",     "categoria",        "VARCHAR(30) DEFAULT 'INOVA'"),
+        ("external_tool", "embeddable",             "BOOLEAN"),
+        ("external_tool", "embeddable_checado_em",  "TIMESTAMP"),
         ("discipline", "cod_moodle",       "VARCHAR(50)"),
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),
@@ -4271,7 +5071,9 @@ def _run_migrations():
                            ("must_change_password", "BOOLEAN DEFAULT false"),
                            ("nome", "VARCHAR(200)"),
                            ("dashboard_prefs", "TEXT"),
-                           ("notas_pessoais", "TEXT")]:
+                           ("notas_pessoais", "TEXT"),
+                           ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
+                           ("foto_mimetype", "VARCHAR(50)")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
@@ -4294,6 +5096,10 @@ def ensure_db():
             db.create_all()
             _run_migrations()
             seed_data()
+            # Limpeza pontual: algum import antigo pode ter gravado a string
+            # literal "None" em vez de deixar o campo vazio de verdade.
+            User.query.filter(User.nome == 'None').update({'nome': None})
+            db.session.commit()
             _db_ready = True
         except Exception:
             import traceback
@@ -4312,6 +5118,24 @@ def exigir_troca_senha():
     if u and u.must_change_password and u.can_change_own_password():
         flash('Por segurança, troque sua senha antes de continuar.', 'danger')
         return redirect(url_for('minha_conta'))
+
+ROTAS_LIVRES_ERP_MOODLE = {
+    'erp_moodle', 'erp_moodle_novo', 'erp_moodle_editar', 'erp_moodle_excluir',
+    'minha_conta', 'logout', 'login', 'static', 'esqueci_senha', 'resetar_senha',
+}
+
+@app.before_request
+def restringir_somente_erp_moodle():
+    """Contas da equipe externa (permissão 'somente_erp_moodle') não podem
+    navegar pra nenhuma outra tela do sistema — nem dashboard, cursos,
+    financeiro etc. Ficam presas na tela do ERP Moodle e em 'Minha Conta'."""
+    if request.endpoint in ROTAS_LIVRES_ERP_MOODLE or request.endpoint is None:
+        return
+    if 'user_id' not in session:
+        return
+    u = User.query.get(session['user_id'])
+    if u and u.is_restrito_erp_moodle():
+        return redirect(url_for('erp_moodle'))
 
 if __name__ == '__main__':
     t = threading.Thread(target=backup_scheduler, daemon=True)

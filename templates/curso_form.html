@@ -217,6 +217,33 @@
       </div>
     </div>
 
+    <!-- IMAGENS / LINKS DE CAPA -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div class="card-title">Imagens / Links de Capa</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Tamanho recomendado da capa que aparece na página de venda: <strong>760x480px</strong></div>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addImagem()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Adicionar Link
+        </button>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="matrix-wrap" style="border:none;border-radius:0">
+          <div class="img-row header">
+            <div>Descrição</div><div>URL da Imagem / SharePoint / Drive</div><div></div>
+          </div>
+          <div id="imagensBody"></div>
+        </div>
+        <div style="padding:10px 16px;color:var(--text-muted);font-size:12px">
+          Cadastre quantos links precisar (ex.: capa do site, banner de divulgação, imagem para redes sociais) — descreva cada um para saber onde usar.
+          O 🗑️ remove só essa linha; para gravar as linhas preenchidas, use o botão
+          <strong>{% if curso %}Salvar Alterações{% else %}Criar Curso{% endif %}</strong> no rodapé da página — ele salva o curso inteiro de uma vez.
+        </div>
+      </div>
+    </div>
+
     <!-- MATRIX EDITOR -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">

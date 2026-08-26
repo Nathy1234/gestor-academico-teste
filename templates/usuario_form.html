@@ -15,6 +15,22 @@
     <div class="card" style="align-self:start">
       <div class="card-header"><div class="card-title">Dados de Acesso</div></div>
       <div class="card-body">
+        {% if user %}
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+          <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;overflow:hidden;
+                      background:linear-gradient(135deg,var(--primary),#d9640a);display:flex;
+                      align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px">
+            {% if user.foto %}
+            <img src="{{ url_for('usuario_foto', id=user.id) }}" style="width:100%;height:100%;object-fit:cover">
+            {% else %}{{ user.username[0]|upper }}{% endif %}
+          </div>
+          <form method="POST" action="{{ url_for('usuario_foto_upload', id=user.id) }}" enctype="multipart/form-data" style="flex:1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="foto" accept="image/*" onchange="this.form.submit()" style="font-size:11px">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Foto exibida nos Destaques (máx. 3MB)</div>
+          </form>
+        </div>
+        {% endif %}
         <form method="POST" id="userForm">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group" style="margin-bottom:16px">
@@ -74,6 +90,22 @@
             </select>
             <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Personalize com as permissões ao lado.</div>
           </div>
+          <label class="form-group" style="margin-bottom:24px;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="equipe" style="width:15px;height:15px"
+              {% if not user or user.equipe %}checked{% endif %}>
+            <span>Faz parte da equipe <span style="font-weight:400;color:var(--text-muted);font-size:12px">— elegível pra Destaque da Semana/Mês</span></span>
+          </label>
+          {% if user %}
+          <div style="margin-bottom:24px">
+            <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px"
+                    onclick="marcarTrocaSenha({{ user.id }}, '{{ user.username }}')">
+              Marcar para trocar senha no próximo login
+            </button>
+            {% if user.must_change_password %}
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Já está marcado — vai trocar no próximo login.</div>
+            {% endif %}
+          </div>
+          {% endif %}
           <div style="display:flex;gap:10px">
             <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
             <button type="submit" class="btn btn-primary">Salvar</button>
@@ -140,35 +172,89 @@
               {% elif user and user.get_perm('backup_gerenciar') %}checked{% endif %}>
             <div><div class="perm-name">Acessar Backups</div><div class="perm-desc">Ver e baixar backups do sistema</div></div>
           </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_erp_moodle_acesso" form="userForm" id="permErpMoodleAcesso" onchange="syncSomenteErpMoodle()"
+              {% if user and user.role=='admin' %}checked disabled
+              {% elif user and user.get_perm('erp_moodle_acesso') %}checked{% endif %}>
+            <div><div class="perm-name">Acessar ERP Moodle</div><div class="perm-desc">Ver a tela de acompanhamento de inserção de conteúdo — categoria separada do INOVA, para a equipe de inserção de materiais</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_pagamentos_terceiros_gerenciar" form="userForm"
+              {% if user and user.role=='admin' %}checked disabled
+              {% elif user and user.get_perm('pagamentos_terceiros_gerenciar') %}checked{% endif %}>
+            <div><div class="perm-name">Acessar Pagamentos Terceiros</div><div class="perm-desc">Ver e gerenciar repasses de venda pra parceiros terceiros</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_opcoes_curso_gerenciar" form="userForm"
+              {% if user and user.role=='admin' %}checked disabled
+              {% elif user and user.get_perm('opcoes_curso_gerenciar') %}checked{% endif %}>
+            <div><div class="perm-name">Gerenciar Opções de Curso</div><div class="perm-desc">Editar links de vídeo padrão e opções de "Venda por"</div></div>
+          </label>
         </div>
 
         <!-- RESTRIÇÕES -->
         <div class="perm-group" id="blockSection">
           <div class="perm-group-header" style="color:#dc2626">Restrições <span style="font-weight:400;text-transform:none;font-size:11px">— bloquear Editores</span></div>
-          <div style="font-size:12px;color:var(--text-muted);padding:0 16px 10px">Marque para impedir que um Editor acesse determinados módulos.</div>
+          <div style="font-size:12px;color:var(--text-muted);padding:0 16px 10px">Por padrão Editores e Leitores enxergam tudo abaixo — marque pra esconder módulos específicos dessa conta.</div>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_cursos" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_cursos') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Catálogo de Cursos</div><div class="perm-desc">Esconde Catálogo de Cursos, Pacotes e a busca global de cursos</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_matrizes" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_matrizes') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Matrizes</div><div class="perm-desc">Esconde a tela de Matrizes Curriculares</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_banco_disciplinas" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_banco_disciplinas') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Banco de Disciplinas</div><div class="perm-desc">Esconde a tela de Banco de Disciplinas</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_ia_assistente" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_ia_assistente') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear IA Assistente</div><div class="perm-desc">Esconde a tela de IA Assistente</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_ferramentas" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_ferramentas') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Ferramentas Externas</div><div class="perm-desc">Esconde a seção de Ferramentas Externas (Kronos, Moodles etc)</div></div>
+          </label>
           <label class="perm-item">
             <input type="checkbox" name="perm_block_cupons" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_cupons') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Cupons</div><div class="perm-desc">Este editor não poderá ver nem acessar a seção de cupons</div></div>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Cupons</div><div class="perm-desc">Esconde a seção de cupons</div></div>
           </label>
           <label class="perm-item">
             <input type="checkbox" name="perm_block_reembolsos" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_reembolsos') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Reembolsos</div><div class="perm-desc">Este editor não poderá ver nem acessar a seção de reembolsos</div></div>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Reembolsos</div><div class="perm-desc">Esconde a seção de reembolsos</div></div>
           </label>
           <label class="perm-item">
             <input type="checkbox" name="perm_block_historico" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_historico') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Histórico</div><div class="perm-desc">Este editor não poderá ver o log de atividades</div></div>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Histórico</div><div class="perm-desc">Esconde o log de atividades</div></div>
           </label>
-          <label class="perm-item" style="border-bottom:none">
+          <label class="perm-item">
             <input type="checkbox" name="perm_block_trocar_senha" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_trocar_senha') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Troca de Senha</div><div class="perm-desc">Este usuário não poderá alterar a própria senha em "Minha Conta" — só o admin poderá trocá-la</div></div>
+          </label>
+          <label class="perm-item" style="border-bottom:none;background:#eff6ff">
+            <input type="checkbox" name="perm_somente_erp_moodle" form="userForm" id="permSomenteErpMoodle" onchange="syncSomenteErpMoodle()"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('somente_erp_moodle') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#1d4ed8">Restringir só ao ERP Moodle</div><div class="perm-desc">Ideal para contas da equipe externa: a pessoa não enxerga cursos, financeiro, matrizes nem mais nada — só a tela de ERP Moodle. Marque junto com "Acessar ERP Moodle" acima.</div></div>
           </label>
         </div>
 
@@ -209,9 +295,22 @@ const EDITOR_DEFAULTS = {
   cursos_editar: true, cursos_excluir: false,
   cupons_gerenciar: true, reembolsos_gerenciar: true,
   historico_ver: true, usuarios_gerenciar: false, backup_gerenciar: false,
+  erp_moodle_acesso: false, pagamentos_terceiros_gerenciar: false, opcoes_curso_gerenciar: false,
   block_cupons: false, block_reembolsos: false, block_historico: false,
-  block_trocar_senha: false,
+  block_cursos: false, block_matrizes: false, block_banco_disciplinas: false,
+  block_ia_assistente: false, block_ferramentas: false,
+  block_trocar_senha: false, somente_erp_moodle: false,
 };
+
+// "Restringir só ao ERP Moodle" só faz sentido junto com "Acessar ERP
+// Moodle" — sem isso a conta ficaria travada sem enxergar nada.
+function syncSomenteErpMoodle() {
+  const acesso = document.getElementById('permErpMoodleAcesso');
+  const restrito = document.getElementById('permSomenteErpMoodle');
+  if (!acesso || !restrito) return;
+  if (restrito.checked && !acesso.checked) acesso.checked = true;
+  if (!acesso.checked) restrito.checked = false;
+}
 
 function applyRoleDefaults() {
   const role = document.getElementById('roleSelect').value;
@@ -232,8 +331,8 @@ function applyRoleDefaults() {
     blockSection.style.pointerEvents = '';
   } else {
     all.forEach(b => { b.disabled = false; b.checked = false; });
-    blockSection.style.opacity = '.35';
-    blockSection.style.pointerEvents = 'none';
+    blockSection.style.opacity = '1';
+    blockSection.style.pointerEvents = '';
   }
 }
 
@@ -242,9 +341,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const blockSection = document.getElementById('blockSection');
   if (role === 'admin') {
     document.querySelectorAll('#permsPanel input[type=checkbox]').forEach(b => b.disabled = true);
-    blockSection.style.opacity = '.35';
-    blockSection.style.pointerEvents = 'none';
-  } else if (role !== 'editor') {
     blockSection.style.opacity = '.35';
     blockSection.style.pointerEvents = 'none';
   }

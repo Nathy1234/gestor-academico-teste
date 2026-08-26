@@ -10,6 +10,8 @@
         {% else %}
         <a href="{{ url_for('cursos', tipo=c.tipo) }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Cursos</a>
         {% endif %}
+        <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--primary);
+                     background:var(--primary-light);padding:2px 9px;border-radius:20px">{{ c.categoria or 'INOVA' }}</span>
         <span class="badge badge-{{ c.tipo }}">{{ c.tipo|replace('_',' ')|title }}</span>
         <span class="badge badge-{{ c.status }}">{{ c.status_label }}</span>
       </div>
@@ -136,6 +138,13 @@
           <div class="info-section">
             <div class="info-section-title">Link do Vídeo</div>
             <div class="info-section-body"><a href="{{ c.link_video }}" target="_blank">{{ c.link_video }}</a></div>
+          </div>
+          {% endif %}
+
+          {% if c.link_video %}
+          <div class="detail-field" style="margin-top:16px">
+            <div class="detail-label">Link do Vídeo</div>
+            <div class="detail-value"><a href="{{ c.link_video }}" target="_blank">{{ c.link_video }}</a></div>
           </div>
           {% endif %}
 
