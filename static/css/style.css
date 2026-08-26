@@ -643,12 +643,31 @@ textarea { resize: vertical; min-height: 80px; }
 .matrix-accordion-item { transition: background .12s; }
 .matrix-accordion-item:last-child { border-bottom: none !important; }
 
+/* ── LAYOUT FLUIDO (grids de 2/3 colunas que antes eram fixas inline) ──
+   Use estas classes em vez de "display:grid;grid-template-columns:..."
+   inline sempre que o layout precisar se adaptar à largura da janela —
+   elas colapsam pra 1 coluna nos breakpoints abaixo, então o conteúdo
+   nunca fica cortado nem precisa de zoom out pra caber. */
+.grid-2col-fluid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-main-aside { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+.grid-aside-main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+.grid-3col-fluid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
 /* ── RESPONSIVE ── */
+@media (max-width: 1400px) {
+  .grid-3col-fluid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 1300px) {
+  .grid-2col-fluid,
+  .grid-main-aside,
+  .grid-aside-main { grid-template-columns: 1fr; }
+}
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .form-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
   .matrix-row { grid-template-columns: 80px 50px 1fr 60px; }
+  .grid-3col-fluid { grid-template-columns: 1fr; }
   .sidebar { width: 200px; min-width: 200px; }
 }
 @media (max-width: 640px) {

@@ -14,7 +14,7 @@
         {% endif %}
       </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
       {% if is_admin %}
       <!-- FILTRO INSERSOR (só admin vê) -->
       <form method="GET" style="display:flex;gap:6px;align-items:center">
@@ -196,7 +196,7 @@
   </div>
 
   <!-- LINHA 2: ANDAMENTO + TIPOS ──────────────── -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div class="grid-2col-fluid" style="margin-bottom:16px">
 
     <!-- ANDAMENTO DA PLATAFORMA -->
     <div class="card">
@@ -214,7 +214,7 @@
         </div>
         <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
       </div>
-      <div style="overflow:hidden">
+      <div class="table-wrapper">
         <table style="width:100%">
           <thead>
             <tr>
@@ -333,7 +333,7 @@
         </div>
         <a href="{{ url_for('cursos') }}" class="btn btn-sm btn-secondary">Ver todos →</a>
       </div>
-      <div style="overflow:hidden">
+      <div class="table-wrapper">
         {% if cursos_ins_stats %}
         <table style="width:100%">
           <thead>
@@ -440,7 +440,7 @@
   </div>
 
   <!-- LINHA 3: ATIVIDADE + ATALHOS ─────────────── -->
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:16px">
+  <div class="grid-main-aside">
 
     <!-- ATIVIDADE RECENTE -->
     <div class="card">
