@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.4.2'
+VERSAO = '1.5.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -123,6 +123,39 @@ def responsaveis_atuais():
     — pra adicionar/remover alguém da equipe, edite EQUIPE_INSERCAO."""
     return [u.username for u in User.query.order_by(User.username).all()
             if _norm_name(u.username) in EQUIPE_INSERCAO]
+
+# Catálogo de widgets da dashboard — cada usuário escolhe quais mostrar e em
+# que ordem (drag-and-drop), preferência salva em User.dashboard_prefs (JSON).
+# Adicionar um widget novo aqui já faz ele aparecer (visível, no fim) pra quem
+# já tinha personalizado a própria dashboard antes dele existir.
+DASHBOARD_WIDGETS = [
+    {'id': 'grafico',         'label': 'Gráfico — Cursos INOVA cadastrados'},
+    {'id': 'ativos',          'label': 'Indicador — Ativos'},
+    {'id': 'em_edicao',       'label': 'Indicador — Em edição'},
+    {'id': 'finalizados',     'label': 'Card — Finalizados'},
+    {'id': 'ocultos',         'label': 'Card — Ocultos'},
+    {'id': 'descontinuados',  'label': 'Card — Descontinuados'},
+    {'id': 'andamento',       'label': 'Andamento — Plataforma'},
+    {'id': 'por_responsavel', 'label': 'Cursos por Responsável'},
+    {'id': 'por_tipo',        'label': 'Distribuição por Tipo'},
+    {'id': 'atividade',       'label': 'Atividade Recente'},
+    {'id': 'atalhos',         'label': 'Acesso Rápido'},
+    {'id': 'backup',          'label': 'Último Backup'},
+]
+_DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
+
+def get_dashboard_prefs(user):
+    """Ordem e conjunto de ocultos da dashboard de `user`, já mesclado com o
+    catálogo atual (widgets desconhecidos/removidos são descartados; widgets
+    novos entram no fim, visíveis)."""
+    try:
+        prefs = json.loads(user.dashboard_prefs or '{}')
+    except Exception:
+        prefs = {}
+    ordem_salva = [w for w in prefs.get('order', []) if w in _DASHBOARD_WIDGET_IDS]
+    ocultos = {w for w in prefs.get('hidden', []) if w in _DASHBOARD_WIDGET_IDS}
+    faltando = [w['id'] for w in DASHBOARD_WIDGETS if w['id'] not in ordem_salva]
+    return ordem_salva + faltando, ocultos
 
 def _insersor_contains(insersor_field, username):
     """Verifica se `username` está entre os insersores de um curso, aceitando
@@ -252,6 +285,7 @@ class User(db.Model):
     must_change_password = db.Column(db.Boolean, default=False)
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
+    dashboard_prefs = db.Column(db.Text)  # JSON: {"order":[...], "hidden":[...]} dos widgets da dashboard
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_perm(self, key):
@@ -1046,6 +1080,9 @@ def dashboard():
         qtd = q_base.filter(Course.created_at >= ini, Course.created_at < fim).count()
         serie_mensal.append({'label': ini.strftime('%b'), 'qtd': qtd})
 
+    widgets_ordem, widgets_ocultos = get_dashboard_prefs(u)
+    todos_usuarios = User.query.order_by(User.username).all() if is_admin else []
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
@@ -1054,7 +1091,49 @@ def dashboard():
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u,
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
-        total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista)
+        total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
+        widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos,
+        dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios)
+
+@app.route('/dashboard/prefs', methods=['GET'])
+@login_required
+def dashboard_prefs_obter():
+    """Devolve a ordem/visibilidade de widgets salva — da própria conta, ou
+    (só admin) da conta de outro usuário indicada em ?user_id=."""
+    u = User.query.get(session['user_id'])
+    target_id = request.args.get('user_id', type=int)
+    if target_id and target_id != u.id:
+        if u.role != 'admin':
+            return jsonify({'ok': False, 'erro': 'Sem permissão.'}), 403
+        alvo = User.query.get_or_404(target_id)
+    else:
+        alvo = u
+    ordem, ocultos = get_dashboard_prefs(alvo)
+    return jsonify({'ok': True, 'order': ordem, 'hidden': list(ocultos)})
+
+@app.route('/dashboard/prefs', methods=['POST'])
+@login_required
+def dashboard_prefs_salvar():
+    """Salva a ordem/visibilidade de widgets — da própria conta, ou (só admin)
+    da conta de outro usuário indicada em user_id no corpo da requisição."""
+    u = User.query.get(session['user_id'])
+    data = request.json or {}
+    target_id = data.get('user_id')
+    if target_id and int(target_id) != u.id:
+        if u.role != 'admin':
+            return jsonify({'ok': False, 'erro': 'Sem permissão.'}), 403
+        alvo = User.query.get_or_404(int(target_id))
+    else:
+        alvo = u
+    ordem_in = data.get('order', [])
+    ocultos_in = data.get('hidden', [])
+    if not isinstance(ordem_in, list) or not isinstance(ocultos_in, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    ordem = [w for w in ordem_in if w in _DASHBOARD_WIDGET_IDS]
+    ocultos = [w for w in ocultos_in if w in _DASHBOARD_WIDGET_IDS]
+    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos})
+    db.session.commit()
+    return jsonify({'ok': True})
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -4154,7 +4233,8 @@ def _run_migrations():
         # tabela "user" precisa de aspas pois é palavra reservada em alguns DBs
         for col, dtype in [("permissoes", "TEXT DEFAULT '{}' "), ("email", "VARCHAR(200)"),
                            ("must_change_password", "BOOLEAN DEFAULT false"),
-                           ("nome", "VARCHAR(200)")]:
+                           ("nome", "VARCHAR(200)"),
+                           ("dashboard_prefs", "TEXT")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
