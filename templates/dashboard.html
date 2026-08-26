@@ -38,7 +38,7 @@
       </div>
 
       <div id="dashEditBar" style="display:none;gap:10px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:11.5px;color:var(--text-muted)">Arraste ⋮⋮ pra reordenar · clique no olho pra mostrar/ocultar</span>
+        <span style="font-size:11.5px;color:var(--text-muted)">Arraste ⋮⋮ pra reordenar · ⤢ muda o tamanho · olho mostra/oculta</span>
         <button type="button" class="btn btn-secondary" onclick="dashRestaurarPadrao()">Restaurar padrão</button>
         <button type="button" class="btn btn-primary" onclick="dashConcluirEdicao()">Concluir</button>
       </div>
@@ -137,7 +137,7 @@
     {% elif wid == 'erp_moodle_resumo' and not pode_ver_erp_moodle %}
       {# sem acesso ao ERP Moodle — widget nem aparece #}
     {% else %}
-    <div class="dash-widget dash-w-{{ widget_sizes.get(wid, 1) }}{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}">
+    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}" data-size="{{ widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}">
       <div class="dash-widget-controls">
         <span class="dash-drag-handle" title="Arrastar pra reordenar">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px">
@@ -146,6 +146,12 @@
             <circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>
           </svg>
         </span>
+        <button type="button" class="dash-widget-resize" onclick="dashCicleTamanho(this)" title="Mudar o tamanho deste widget">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+            <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+            <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+          </svg>
+        </button>
         <button type="button" class="dash-widget-toggle" onclick="dashToggleWidget(this)" title="Mostrar/ocultar este widget">
           <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -866,16 +872,25 @@
     w.classList.toggle('dash-widget-off');
   };
 
+  window.dashCicleTamanho = function(btn) {
+    const w = btn.closest('.dash-widget');
+    const atual = parseInt(w.dataset.size || '1', 10);
+    const proximo = atual >= 4 ? 1 : atual + 1;
+    w.dataset.size = String(proximo);
+  };
+
   window.dashConcluirEdicao = async function() {
     const widgets = Array.prototype.slice.call(container.querySelectorAll('.dash-widget'));
     const order = widgets.map(function(w) { return w.dataset.widget; });
     const hidden = widgets.filter(function(w) { return w.classList.contains('dash-widget-off'); })
                            .map(function(w) { return w.dataset.widget; });
+    const sizes = {};
+    widgets.forEach(function(w) { sizes[w.dataset.widget] = parseInt(w.dataset.size || '1', 10); });
     try {
       const resp = await fetch('/dashboard/prefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: order, hidden: hidden })
+        body: JSON.stringify({ order: order, hidden: hidden, sizes: sizes })
       });
       const data = await resp.json();
       if (!data.ok) throw new Error(data.erro || 'Erro ao salvar.');
@@ -895,7 +910,7 @@
       const resp = await fetch('/dashboard/prefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: [], hidden: [] })
+        body: JSON.stringify({ order: [], hidden: [], sizes: {} })
       });
       const data = await resp.json();
       if (!data.ok) throw new Error(data.erro || 'Erro ao restaurar.');

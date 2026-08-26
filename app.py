@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.11.0'
+VERSAO = '1.11.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -151,17 +151,25 @@ DASHBOARD_WIDGETS = [
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
 
 def get_dashboard_prefs(user):
-    """Ordem e conjunto de ocultos da dashboard de `user`, já mesclado com o
-    catálogo atual (widgets desconhecidos/removidos são descartados; widgets
-    novos entram no fim, visíveis)."""
+    """Ordem, conjunto de ocultos e tamanhos personalizados da dashboard de
+    `user`, já mesclado com o catálogo atual (widgets desconhecidos/removidos
+    são descartados; widgets novos entram no fim, visíveis, no tamanho
+    padrão). `tamanhos` só tem entrada pros widgets que o usuário mudou de
+    tamanho manualmente — os demais usam o padrão do catálogo (definido no
+    template)."""
     try:
         prefs = json.loads(user.dashboard_prefs or '{}')
     except Exception:
         prefs = {}
     ordem_salva = [w for w in prefs.get('order', []) if w in _DASHBOARD_WIDGET_IDS]
     ocultos = {w for w in prefs.get('hidden', []) if w in _DASHBOARD_WIDGET_IDS}
+    tamanhos_in = prefs.get('sizes', {}) if isinstance(prefs.get('sizes'), dict) else {}
+    tamanhos = {}
+    for wid, tam in tamanhos_in.items():
+        if wid in _DASHBOARD_WIDGET_IDS and isinstance(tam, int) and 1 <= tam <= 4:
+            tamanhos[wid] = tam
     faltando = [w['id'] for w in DASHBOARD_WIDGETS if w['id'] not in ordem_salva]
-    return ordem_salva + faltando, ocultos
+    return ordem_salva + faltando, ocultos, tamanhos
 
 def _insersor_contains(insersor_field, username):
     """Verifica se `username` está entre os insersores de um curso, aceitando
@@ -1270,7 +1278,7 @@ def dashboard():
         qtd = q_base.filter(Course.created_at >= ini, Course.created_at < fim).count()
         serie_mensal.append({'label': ini.strftime('%b'), 'qtd': qtd})
 
-    widgets_ordem, widgets_ocultos = get_dashboard_prefs(u)
+    widgets_ordem, widgets_ocultos, widgets_tamanhos = get_dashboard_prefs(u)
     todos_usuarios = User.query.order_by(User.username).all() if is_admin else []
 
     # Widget "Cursos sem responsável" — cursos com o campo insersor vazio,
@@ -1321,7 +1329,7 @@ def dashboard():
         is_admin=is_admin, usuario_atual=u,
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
-        widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos,
+        widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos, widgets_tamanhos=widgets_tamanhos,
         dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios,
         total_sem_resp=total_sem_resp, cursos_sem_resp=cursos_sem_resp,
         pode_ver_reembolsos=pode_ver_reembolsos,
@@ -1344,14 +1352,15 @@ def dashboard_prefs_obter():
         alvo = User.query.get_or_404(target_id)
     else:
         alvo = u
-    ordem, ocultos = get_dashboard_prefs(alvo)
-    return jsonify({'ok': True, 'order': ordem, 'hidden': list(ocultos)})
+    ordem, ocultos, tamanhos = get_dashboard_prefs(alvo)
+    return jsonify({'ok': True, 'order': ordem, 'hidden': list(ocultos), 'sizes': tamanhos})
 
 @app.route('/dashboard/prefs', methods=['POST'])
 @login_required
 def dashboard_prefs_salvar():
-    """Salva a ordem/visibilidade de widgets — da própria conta, ou (só admin)
-    da conta de outro usuário indicada em user_id no corpo da requisição."""
+    """Salva a ordem/visibilidade/tamanho dos widgets — da própria conta, ou
+    (só admin) da conta de outro usuário indicada em user_id no corpo da
+    requisição."""
     u = User.query.get(session['user_id'])
     data = request.json or {}
     target_id = data.get('user_id')
@@ -1363,11 +1372,21 @@ def dashboard_prefs_salvar():
         alvo = u
     ordem_in = data.get('order', [])
     ocultos_in = data.get('hidden', [])
-    if not isinstance(ordem_in, list) or not isinstance(ocultos_in, list):
+    tamanhos_in = data.get('sizes', {})
+    if not isinstance(ordem_in, list) or not isinstance(ocultos_in, list) or not isinstance(tamanhos_in, dict):
         return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
     ordem = [w for w in ordem_in if w in _DASHBOARD_WIDGET_IDS]
     ocultos = [w for w in ocultos_in if w in _DASHBOARD_WIDGET_IDS]
-    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos})
+    tamanhos = {}
+    for wid, tam in tamanhos_in.items():
+        if wid in _DASHBOARD_WIDGET_IDS:
+            try:
+                tam = int(tam)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= tam <= 4:
+                tamanhos[wid] = tam
+    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos, 'sizes': tamanhos})
     db.session.commit()
     return jsonify({'ok': True})
 
