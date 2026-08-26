@@ -107,11 +107,11 @@
   {% set pontos = [] %}
   {% for item in serie_mensal %}
     {% set x = (loop.index0 * 80)|round(1) %}
-    {% set y = (110 - (item.qtd / pico * 82))|round(1) %}
+    {% set y = (84 - (item.qtd / pico * 63))|round(1) %}
     {% set _ = pontos.append(x|string + ',' + y|string) %}
   {% endfor %}
   {% set linha = pontos|join(' ') %}
-  {% set area = 'M' + pontos[0] + ' L' + (pontos[1:]|join(' L')) + ' L400,130 L0,130 Z' %}
+  {% set area = 'M' + pontos[0] + ' L' + (pontos[1:]|join(' L')) + ' L400,100 L0,100 Z' %}
 
   {% set pct_ativos = ((ativos / total * 100)|round)|int if total else 0 %}
   {% set pct_edicao = ((em_edicao / total * 100)|round)|int if total else 0 %}
@@ -120,7 +120,8 @@
     'grafico': 2, 'ativos': 1, 'em_edicao': 1,
     'finalizados': 1, 'ocultos': 1, 'descontinuados': 1,
     'andamento': 2, 'por_responsavel': 2, 'por_tipo': 2,
-    'atividade': 3, 'atalhos': 1, 'backup': 1
+    'atividade': 3, 'atalhos': 1, 'backup': 1,
+    'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1
   } %}
 
   <!-- WIDGETS DA DASHBOARD — ordem e visibilidade são por usuário ────── -->
@@ -128,6 +129,8 @@
   {% for wid in widgets_ordem %}
     {% if wid == 'backup' and not ultimo_bk %}
       {# sem backup registrado ainda — nada pra mostrar/personalizar #}
+    {% elif wid == 'reembolsos_pend' and not pode_ver_reembolsos %}
+      {# sem permissão de reembolsos — widget nem aparece #}
     {% else %}
     <div class="dash-widget dash-w-{{ widget_sizes.get(wid, 1) }}{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}">
       <div class="dash-widget-controls">
@@ -151,18 +154,18 @@
       {% if wid == 'grafico' %}
       <a href="{{ url_for('cursos') }}" class="glass-link">
         <div class="card">
-          <div class="card-head" style="display:flex;align-items:baseline;justify-content:space-between;padding:14px 18px 0">
+          <div class="card-head" style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 14px 0">
             <div>
               <div class="card-title">Cursos INOVA cadastrados <span class="inova-badge">INOVA</span></div>
-              <div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px">Últimos 6 meses{% if filtro_ins %} · {{ filtro_ins }}{% endif %}</div>
+              <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">Últimos 6 meses{% if filtro_ins %} · {{ filtro_ins }}{% endif %}</div>
             </div>
           </div>
-          <div style="display:flex;align-items:baseline;gap:10px;padding:6px 18px 0">
-            <span style="font-size:26px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums">{{ total }}</span>
-            <span style="font-size:11px;color:var(--text-muted)">no total</span>
+          <div style="display:flex;align-items:baseline;gap:8px;padding:3px 14px 0">
+            <span style="font-size:20px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums">{{ total }}</span>
+            <span style="font-size:10.5px;color:var(--text-muted)">no total</span>
           </div>
-          <div style="padding:8px 8px 4px">
-            <svg viewBox="0 0 400 130" width="100%" height="130" preserveAspectRatio="none">
+          <div style="padding:4px 8px 2px">
+            <svg viewBox="0 0 400 100" width="100%" height="100" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="bentoAreaFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0" stop-color="var(--primary)" stop-opacity=".32"/>
@@ -170,9 +173,9 @@
                 </linearGradient>
               </defs>
               <g stroke="var(--border)" stroke-width="1">
-                <line x1="0" y1="26" x2="400" y2="26"/>
-                <line x1="0" y1="70" x2="400" y2="70"/>
-                <line x1="0" y1="114" x2="400" y2="114"/>
+                <line x1="0" y1="20" x2="400" y2="20"/>
+                <line x1="0" y1="54" x2="400" y2="54"/>
+                <line x1="0" y1="88" x2="400" y2="88"/>
               </g>
               <path d="{{ area }}" fill="url(#bentoAreaFill)"/>
               <polyline points="{{ linha }}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -191,9 +194,9 @@
       {% elif wid == 'ativos' %}
       <a href="{{ url_for('cursos', status='ativo') }}" class="glass-link">
         <div class="card ring-card">
-          <div class="card-title" style="padding:16px 18px 0">Ativos <span class="inova-badge">INOVA</span></div>
-          <div class="ring-row" style="padding:10px 18px 18px">
-            <div class="ring" style="--ring-pct:{{ pct_ativos }};--ring-color:var(--primary)"></div>
+          <div class="card-title" style="padding:12px 14px 0">Ativos <span class="inova-badge">INOVA</span></div>
+          <div class="ring-row" style="padding:6px 14px 12px">
+            <div class="ring" style="--ring-size:44px;--ring-thick:5px;--ring-pct:{{ pct_ativos }};--ring-color:var(--primary)"></div>
             <div>
               <div class="ring-num">{{ ativos }}</div>
               <div class="ring-label">{{ pct_ativos }}% do total</div>
@@ -205,9 +208,9 @@
       {% elif wid == 'em_edicao' %}
       <a href="{{ url_for('cursos', status='em_edicao') }}" class="glass-link">
         <div class="card ring-card">
-          <div class="card-title" style="padding:16px 18px 0">Em edição <span class="inova-badge">INOVA</span></div>
-          <div class="ring-row" style="padding:10px 18px 18px">
-            <div class="ring" style="--ring-pct:{{ pct_edicao }};--ring-color:#5b6690"></div>
+          <div class="card-title" style="padding:12px 14px 0">Em edição <span class="inova-badge">INOVA</span></div>
+          <div class="ring-row" style="padding:6px 14px 12px">
+            <div class="ring" style="--ring-size:44px;--ring-thick:5px;--ring-pct:{{ pct_edicao }};--ring-color:#5b6690"></div>
             <div>
               <div class="ring-num">{{ em_edicao }}</div>
               <div class="ring-label">{{ pct_edicao }}% do total</div>
@@ -532,56 +535,56 @@
         <div class="card-header"><div class="card-title">Acesso Rápido</div></div>
         <div class="card-body" style="padding:12px;display:flex;flex-direction:column;gap:8px">
           <a href="{{ url_for('cursos', tipo='pos') }}"
-             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+             style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;
                     text-decoration:none;color:var(--text);background:var(--surface-2);
-                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+                    border:1px solid var(--border);transition:all .14s;font-size:12px;font-weight:500"
              onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
              onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
-            <span style="width:28px;height:28px;background:#f3e8ff;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#7e22ce" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <span style="width:24px;height:24px;background:#f3e8ff;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#7e22ce" stroke-width="2" style="width:12px;height:12px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             </span>
             Pós-Graduação
           </a>
           <a href="{{ url_for('cursos', tipo='profissionalizante') }}"
-             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+             style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;
                     text-decoration:none;color:var(--text);background:var(--surface-2);
-                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+                    border:1px solid var(--border);transition:all .14s;font-size:12px;font-weight:500"
              onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
              onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
-            <span style="width:28px;height:28px;background:#dbeafe;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <span style="width:24px;height:24px;background:#dbeafe;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2" style="width:12px;height:12px"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             </span>
             Profissionalizantes
           </a>
           <a href="{{ url_for('cursos', tipo='evento') }}"
-             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+             style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;
                     text-decoration:none;color:var(--text);background:var(--surface-2);
-                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+                    border:1px solid var(--border);transition:all .14s;font-size:12px;font-weight:500"
              onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
              onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
-            <span style="width:28px;height:28px;background:#fce7f3;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="width:24px;height:24px;background:#fce7f3;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <svg viewBox="0 0 24 24" fill="none" stroke="#9d174d" stroke-width="2" style="width:14px;height:14px"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             </span>
             Eventos
           </a>
           <a href="{{ url_for('banco_disciplinas') }}"
-             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+             style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;
                     text-decoration:none;color:var(--text);background:var(--surface-2);
-                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+                    border:1px solid var(--border);transition:all .14s;font-size:12px;font-weight:500"
              onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
              onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
-            <span style="width:28px;height:28px;background:#fff1e6;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="width:24px;height:24px;background:#fff1e6;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:14px;height:14px"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
             </span>
             Banco de Disciplinas
           </a>
           <a href="{{ url_for('ia_assistente') }}"
-             style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+             style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;
                     text-decoration:none;color:var(--text);background:var(--surface-2);
-                    border:1px solid var(--border);transition:all .14s;font-size:13px;font-weight:500"
+                    border:1px solid var(--border);transition:all .14s;font-size:12px;font-weight:500"
              onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)';this.style.background='var(--primary-light)'"
              onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)';this.style.background='var(--surface-2)'">
-            <span style="width:28px;height:28px;background:#fff1e6;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="width:24px;height:24px;background:#fff1e6;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:14px;height:14px"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
             </span>
             IA Assistente
@@ -616,6 +619,72 @@
           <div style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
             Backup automático: diário
           </div>
+        </div>
+      </div>
+
+      {% elif wid == 'sem_responsavel' %}
+      <div class="card">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <div class="card-title">Cursos sem Responsável</div>
+          {% if total_sem_resp > 0 %}
+          <span style="background:#fff4ea;color:#b35700;border:1px solid #ffd4b0;
+                       padding:2px 9px;border-radius:20px;font-weight:700;font-size:11px">
+            {{ total_sem_resp }}
+          </span>
+          {% endif %}
+        </div>
+        {% if cursos_sem_resp %}
+        <div>
+          {% for c in cursos_sem_resp %}
+          <a href="{{ url_for('curso_detalhe', id=c.id) }}"
+             style="display:flex;align-items:center;gap:10px;padding:7px 14px;
+                    border-bottom:1px solid var(--border);text-decoration:none;color:var(--text)"
+             onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+            <span style="width:7px;height:7px;border-radius:50%;background:#f2780d;flex-shrink:0"></span>
+            <span style="font-size:12px;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              {{ c.nome }}
+            </span>
+          </a>
+          {% endfor %}
+          {% if total_sem_resp > cursos_sem_resp|length %}
+          <a href="{{ url_for('cursos') }}"
+             style="display:block;text-align:center;padding:7px;font-size:11.5px;color:var(--primary);text-decoration:none">
+            Ver todos os {{ total_sem_resp }} sem responsável →
+          </a>
+          {% endif %}
+        </div>
+        {% else %}
+        <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12.5px">
+          Todo curso tem um responsável. 🎉
+        </div>
+        {% endif %}
+      </div>
+
+      {% elif wid == 'reembolsos_pend' %}
+      <a href="{{ url_for('reembolsos') }}" style="text-decoration:none">
+        <div class="stat-card" style="cursor:pointer">
+          <div class="stat-icon yellow">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div>
+            <div class="stat-value">{{ reembolsos_pend_qtd }}</div>
+            <div class="stat-label">Reembolsos pendentes{% if reembolsos_pend_valor %} · R$ {{ '%.2f'|format(reembolsos_pend_valor)|replace('.', ',') }}{% endif %}</div>
+          </div>
+        </div>
+      </a>
+
+      {% elif wid == 'notas' %}
+      <div class="card">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <div class="card-title">Notas Rápidas</div>
+          <span id="dashNotasStatus" style="font-size:10.5px;color:var(--text-muted)"></span>
+        </div>
+        <div class="card-body" style="padding:10px 12px">
+          <textarea id="dashNotasTexto" placeholder="Escreva um lembrete só seu…"
+                    style="width:100%;min-height:90px;resize:vertical;border:1px solid var(--border);
+                           border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;
+                           background:var(--surface-2);color:var(--text)"
+                    oninput="dashNotasAgendar()">{{ usuario_atual.notas_pessoais or '' }}</textarea>
         </div>
       </div>
       {% endif %}
@@ -754,6 +823,33 @@
     }
   };
 })();
+
+// widget "Notas rápidas" — autosalva com um pequeno atraso depois que a
+// pessoa para de digitar, pra não disparar um POST a cada tecla.
+let dashNotasTimer = null;
+function dashNotasAgendar() {
+  const status = document.getElementById('dashNotasStatus');
+  if (status) status.textContent = 'digitando…';
+  clearTimeout(dashNotasTimer);
+  dashNotasTimer = setTimeout(dashNotasSalvar, 900);
+}
+async function dashNotasSalvar() {
+  const el = document.getElementById('dashNotasTexto');
+  const status = document.getElementById('dashNotasStatus');
+  if (!el) return;
+  try {
+    const resp = await fetch('/dashboard/notas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto: el.value })
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.erro || 'Erro ao salvar.');
+    if (status) status.textContent = 'salvo ✓';
+  } catch (err) {
+    if (status) status.textContent = 'erro ao salvar';
+  }
+}
 
 {% if is_admin %}
 const DASH_CATALOG = {{ dashboard_widgets | tojson }};

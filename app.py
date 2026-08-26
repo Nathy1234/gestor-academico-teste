@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.5.0'
+VERSAO = '1.5.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -141,6 +141,9 @@ DASHBOARD_WIDGETS = [
     {'id': 'atividade',       'label': 'Atividade Recente'},
     {'id': 'atalhos',         'label': 'Acesso Rápido'},
     {'id': 'backup',          'label': 'Último Backup'},
+    {'id': 'sem_responsavel', 'label': 'Cursos sem responsável'},
+    {'id': 'reembolsos_pend', 'label': 'Reembolsos pendentes'},
+    {'id': 'notas',           'label': 'Notas rápidas'},
 ]
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
 
@@ -286,6 +289,7 @@ class User(db.Model):
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
     dashboard_prefs = db.Column(db.Text)  # JSON: {"order":[...], "hidden":[...]} dos widgets da dashboard
+    notas_pessoais  = db.Column(db.Text)  # texto livre do widget "Notas rápidas" — só o próprio dono vê
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_perm(self, key):
@@ -1083,6 +1087,22 @@ def dashboard():
     widgets_ordem, widgets_ocultos = get_dashboard_prefs(u)
     todos_usuarios = User.query.order_by(User.username).all() if is_admin else []
 
+    # Widget "Cursos sem responsável" — cursos com o campo insersor vazio,
+    # ninguém cuidando deles ainda.
+    q_sem_resp = Course.query.filter(sql_or(Course.insersor == None, Course.insersor == ''))
+    total_sem_resp = q_sem_resp.count()
+    cursos_sem_resp = q_sem_resp.order_by(Course.nome).limit(8).all()
+
+    # Widget "Reembolsos pendentes" — só pra quem tem permissão de reembolsos.
+    pode_ver_reembolsos = u.can_manage_reembolsos()
+    reembolsos_pend_qtd = 0
+    reembolsos_pend_valor = 0
+    if pode_ver_reembolsos:
+        reembolsos_pend_qtd = Refund.query.filter_by(concluido_manual=False).count()
+        reembolsos_pend_valor = db.session.query(
+            db.func.coalesce(db.func.sum(Refund.valor), 0)
+        ).filter_by(concluido_manual=False).scalar()
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
@@ -1093,7 +1113,10 @@ def dashboard():
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
         widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos,
-        dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios)
+        dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios,
+        total_sem_resp=total_sem_resp, cursos_sem_resp=cursos_sem_resp,
+        pode_ver_reembolsos=pode_ver_reembolsos,
+        reembolsos_pend_qtd=reembolsos_pend_qtd, reembolsos_pend_valor=reembolsos_pend_valor)
 
 @app.route('/dashboard/prefs', methods=['GET'])
 @login_required
@@ -1132,6 +1155,19 @@ def dashboard_prefs_salvar():
     ordem = [w for w in ordem_in if w in _DASHBOARD_WIDGET_IDS]
     ocultos = [w for w in ocultos_in if w in _DASHBOARD_WIDGET_IDS]
     alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos})
+    db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/dashboard/notas', methods=['POST'])
+@login_required
+def dashboard_notas_salvar():
+    """Salva o texto do widget "Notas rápidas" — sempre da própria conta,
+    não existe versão pra admin editar a nota de outra pessoa."""
+    u = User.query.get(session['user_id'])
+    texto = (request.json or {}).get('texto', '')
+    if not isinstance(texto, str):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    u.notas_pessoais = texto[:4000]
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -4234,7 +4270,8 @@ def _run_migrations():
         for col, dtype in [("permissoes", "TEXT DEFAULT '{}' "), ("email", "VARCHAR(200)"),
                            ("must_change_password", "BOOLEAN DEFAULT false"),
                            ("nome", "VARCHAR(200)"),
-                           ("dashboard_prefs", "TEXT")]:
+                           ("dashboard_prefs", "TEXT"),
+                           ("notas_pessoais", "TEXT")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
