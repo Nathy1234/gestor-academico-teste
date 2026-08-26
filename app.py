@@ -48,7 +48,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.4.1'
+VERSAO = '1.4.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -114,11 +114,15 @@ TIPOS_CURSO = [
     'projeto_ambiental', 'ggbr', 'integra_edu',
 ]
 
+EQUIPE_INSERCAO = {'ADMIN', 'EVERSON', 'PEDRO', 'STEFANYE', 'LUCAS', 'FELIPE'}
+
 def responsaveis_atuais():
     """Responsáveis por inserção de cursos = usuários cadastrados no sistema
-    (substituiu a lista fixa antiga — para adicionar/remover alguém, basta
-    criar ou excluir a conta em Usuários, sem precisar mexer no código)."""
-    return [u.username for u in User.query.order_by(User.username).all()]
+    que fazem parte da equipe interna (admin, Everson, Pedro, Stéfanye, Lucas,
+    Felipe). Contas de gente de fora da equipe não aparecem como responsável
+    — pra adicionar/remover alguém da equipe, edite EQUIPE_INSERCAO."""
+    return [u.username for u in User.query.order_by(User.username).all()
+            if _norm_name(u.username) in EQUIPE_INSERCAO]
 
 def _insersor_contains(insersor_field, username):
     """Verifica se `username` está entre os insersores de um curso, aceitando
