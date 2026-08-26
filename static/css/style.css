@@ -674,7 +674,11 @@ textarea { resize: vertical; min-height: 80px; }
    Admin pode editar a de qualquer usuário pelo modal "Dashboards da equipe". */
 .dash-widgets {
   display: grid; grid-template-columns: repeat(4, 1fr);
-  grid-auto-flow: row dense; gap: 10px; margin-bottom: 16px;
+  /* grid-auto-flow: row (não dense) — a posição de cada widget é calculada
+     e atribuída explicitamente via JS (função compactar() no template),
+     então o navegador só precisa continuar pra próxima linha em ordem,
+     nunca tentar "encaixar" um item numa linha anterior por conta própria. */
+  grid-auto-flow: row; gap: 10px; margin-bottom: 16px;
   align-items: start;
 }
 /* dashboard mais compacta — reduz cards/textos/ícones só aqui dentro,

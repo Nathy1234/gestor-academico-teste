@@ -816,6 +816,36 @@
   const container = document.getElementById('dashWidgets');
   let dragEl = null;
 
+  // Posiciona cada widget explicitamente (em vez de deixar o navegador
+  // decidir sozinho com grid-auto-flow), pra nunca sobrar um buraco que
+  // nenhum widget consiga preencher: cada um começa exatamente onde o
+  // anterior terminou, e pula pra próxima linha só quando não cabe mais
+  // no espaço restante da linha atual.
+  function numColunas() {
+    const valor = getComputedStyle(container).gridTemplateColumns;
+    return valor.split(' ').filter(Boolean).length || 1;
+  }
+
+  function compactar() {
+    const cols = numColunas();
+    let cursor = 0;
+    container.querySelectorAll('.dash-widget').forEach(function(w) {
+      if (getComputedStyle(w).display === 'none') return;
+      let span = parseInt(w.dataset.size || '1', 10) || 1;
+      if (span > cols) span = cols;
+      if (cursor + span > cols) cursor = 0;
+      w.style.gridColumn = (cursor + 1) + ' / span ' + span;
+      cursor += span;
+      if (cursor >= cols) cursor = 0;
+    });
+  }
+
+  let resizeTimer = null;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(compactar, 150);
+  });
+
   function initSortable() {
     if (container.dataset.sortableInit) return;
     container.dataset.sortableInit = '1';
@@ -849,6 +879,7 @@
       const r = closest.getBoundingClientRect();
       const before = e.clientX < r.left + r.width / 2;
       closest.parentNode.insertBefore(dragEl, before ? closest : closest.nextSibling);
+      compactar();
     });
 
     // em modo edição, clique não deve navegar pelos links dos cards
@@ -865,11 +896,13 @@
     container.querySelectorAll('.dash-widget').forEach(function(w) { w.setAttribute('draggable', 'true'); });
     document.getElementById('dashViewBar').style.display = 'none';
     document.getElementById('dashEditBar').style.display = 'flex';
+    compactar();
   };
 
   window.dashToggleWidget = function(btn) {
     const w = btn.closest('.dash-widget');
     w.classList.toggle('dash-widget-off');
+    compactar();
   };
 
   window.dashCicleTamanho = function(btn) {
@@ -877,6 +910,7 @@
     const atual = parseInt(w.dataset.size || '1', 10);
     const proximo = atual >= 4 ? 1 : atual + 1;
     w.dataset.size = String(proximo);
+    compactar();
   };
 
   window.dashConcluirEdicao = async function() {
@@ -902,6 +936,7 @@
     widgets.forEach(function(w) { w.setAttribute('draggable', 'false'); });
     document.getElementById('dashEditBar').style.display = 'none';
     document.getElementById('dashViewBar').style.display = 'flex';
+    compactar();
   };
 
   window.dashRestaurarPadrao = async function() {
@@ -919,6 +954,8 @@
       alert('Não foi possível restaurar: ' + err.message);
     }
   };
+
+  compactar();
 })();
 
 // widget "Notas rápidas" — autosalva com um pequeno atraso depois que a
