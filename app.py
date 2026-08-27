@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.13.3'
+VERSAO = '1.13.4'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4905,6 +4905,73 @@ def admin_importar_disciplinas():
     except Exception as e:
         flash(f'Erro ao importar disciplinas: {e}', 'danger')
     return redirect(url_for('dashboard'))
+
+def _importar_ggbr_da_planilha():
+    """Lê só a aba GGBR da planilha e cadastra os cursos que ainda não
+    existem (confere por nome — não duplica se rodar de novo nem mexe em
+    curso de nenhum outro tipo)."""
+    import re as _re3
+
+    def limpar_horas(val):
+        if val is None: return ''
+        m = _re3.match(r'^(\d+\.?\d*)', str(val).strip())
+        return m.group(1) if m else ''
+
+    def limpar_valor(val):
+        if val is None: return ''
+        s = str(val).strip()
+        return s if s not in ('-', '') else ''
+
+    def is_numero(val):
+        try: return int(str(val).strip()) > 0
+        except: return False
+
+    admin = User.query.filter_by(username='admin').first()
+    admin_id = admin.id if admin else None
+
+    existentes = {c.nome.strip().upper() for c in Course.query.filter_by(tipo='ggbr').all()}
+
+    import openpyxl
+    excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
+    wb = openpyxl.load_workbook(excel_path)
+
+    total = 0
+    for shname in wb.sheetnames:
+        if 'GGBR' in shname.upper():
+            ws = wb[shname]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not is_numero(row[0]):
+                    continue
+                nome = str(row[1] or '').strip()
+                if not nome or nome.upper() in existentes:
+                    continue
+                c = Course(nome=nome[:300], tipo='ggbr', area=str(row[2] or '').strip()[:100],
+                          horas=limpar_horas(row[3])[:20], valor=limpar_valor(row[5])[:50],
+                          link_venda=str(row[4] or '').strip(), status='ativo',
+                          insersor='INOVA', created_by=admin_id)
+                db.session.add(c)
+                existentes.add(nome.upper())
+                total += 1
+            break
+    db.session.commit()
+    return total
+
+@app.route('/admin/importar-ggbr', methods=['POST'])
+@admin_required
+def admin_importar_ggbr():
+    """Importa os cursos da aba GGBR da planilha que ainda não estão
+    cadastrados — não mexe em nenhum outro tipo de curso nem duplica."""
+    try:
+        total = _importar_ggbr_da_planilha()
+        if total:
+            log_action(session['user_id'], session['username'], 'importar', 'course', None,
+                       f'Importou {total} curso(s) GGBR da planilha')
+            flash(f'{total} curso(s) GGBR importado(s) com sucesso!', 'success')
+        else:
+            flash('Nenhum curso GGBR novo pra importar — todos já estavam cadastrados.', 'info')
+    except Exception as e:
+        flash(f'Erro ao importar GGBR: {e}', 'danger')
+    return redirect(url_for('cursos', tipo='ggbr'))
 
 def _importar_so_disciplinas():
     import re as _re2, unicodedata as _ud2, openpyxl as _opx
