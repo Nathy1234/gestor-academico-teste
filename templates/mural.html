@@ -5,7 +5,7 @@
   <div class="page-header">
     <div>
       <div class="page-title">Mural da Equipe</div>
-      <div class="page-subtitle">Recados rápidos pra todo mundo — reaja com emoji, sem precisar de aba separada</div>
+      <div class="page-subtitle">Recados rápidos pra todo mundo — reaja com emoji, responda uma mensagem ou marque alguém</div>
     </div>
   </div>
 
@@ -17,11 +17,26 @@
 
   <div class="card" style="margin-bottom:16px">
     <div class="card-body">
-      <form method="POST" action="{{ url_for('mural_nova') }}">
+      <div id="respondendoBanner" style="display:none;background:var(--surface-2);border:1px solid var(--border);
+           border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;display:flex;
+           align-items:center;gap:8px">
+        <span style="flex:1;min-width:0;color:var(--text-muted)">Respondendo a <strong id="respondendoAutor"></strong>: <span id="respondendoTexto" style="color:var(--text)"></span></span>
+        <button type="button" onclick="cancelarResposta()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px" title="Cancelar">✕</button>
+      </div>
+      <form method="POST" action="{{ url_for('mural_nova') }}" id="formMural">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="resposta_a_id" id="respostaAId" value="">
         <textarea name="texto" rows="2" maxlength="2000" placeholder="Escreva um recado pra equipe..." required
                   style="width:100%;resize:vertical"></textarea>
-        <div style="text-align:right;margin-top:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
+          <select name="mencionado_id" class="filter-select" style="font-size:12px;padding:6px 10px">
+            <option value="">Marcar alguém (opcional)…</option>
+            {% for u in todos_usuarios %}
+            {% if u.id != session.user_id %}
+            <option value="{{ u.id }}">@{{ u.username }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
           <button type="submit" class="btn btn-primary">Postar</button>
         </div>
       </form>
@@ -31,7 +46,7 @@
   <div style="display:flex;flex-direction:column;gap:10px" id="listaMural"
        data-ultimo-id="{{ mensagens[0].id if mensagens else 0 }}">
     {% for m in mensagens %}
-    <div class="card">
+    <div class="card" id="msgMural{{ m.id }}">
       <div class="card-body" style="padding:14px 16px">
         <div style="display:flex;gap:10px;align-items:flex-start">
           <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;overflow:hidden;
@@ -45,8 +60,22 @@
             <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
               <span style="font-weight:600;font-size:13px">{{ m.autor|nome_exibicao }}</span>
               <span style="font-size:11px;color:var(--text-muted)">{{ m.created_at.strftime('%d/%m/%Y às %H:%M') }}</span>
+              {% if m.editado_em %}<span style="font-size:10.5px;color:var(--text-muted);font-style:italic">(editado)</span>{% endif %}
+              {% if m.mencionado %}
+              <span style="font-size:10.5px;font-weight:700;color:var(--primary);background:var(--primary-light);padding:1px 7px;border-radius:20px">@{{ m.mencionado.username }}</span>
+              {% endif %}
             </div>
-            <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;word-break:break-word">{{ m.texto }}</div>
+            {% if m.resposta_a %}
+            <a href="#msgMural{{ m.resposta_a_id }}" style="display:block;font-size:11.5px;color:var(--text-muted);
+               border-left:2px solid var(--border);padding:3px 8px;margin-top:5px;text-decoration:none;
+               white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ↩ {{ m.resposta_a.autor.username if m.resposta_a.autor else '?' }}: {{ m.resposta_a.texto[:80] }}
+            </a>
+            {% elif m.resposta_a_id %}
+            <div style="font-size:11.5px;color:var(--text-muted);font-style:italic;margin-top:5px">↩ mensagem original excluída</div>
+            {% endif %}
+            <div class="mural-texto" style="font-size:13px;margin-top:4px;white-space:pre-wrap;word-break:break-word">{{ m.texto }}</div>
+            <textarea class="mural-editar-campo" style="display:none;width:100%;resize:vertical;font-size:13px;margin-top:4px" rows="2" maxlength="2000">{{ m.texto }}</textarea>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
               {% for e in emojis %}
               {% set reagido = (m.id, e) in minhas_reacoes %}
@@ -56,6 +85,11 @@
                 {{ e }}{% if qtd > 0 %} <span class="reacao-count">{{ qtd }}</span>{% endif %}
               </button>
               {% endfor %}
+              <button type="button" class="btn btn-sm btn-secondary" onclick="responderMural({{ m.id }}, '{{ m.autor.username|e }}', {{ m.texto[:60]|tojson }})">Responder</button>
+              {% if m.user_id == session.user_id %}
+              <button type="button" class="btn btn-sm btn-secondary mural-btn-editar" data-msg-id="{{ m.id }}" onclick="editarMural(this)">Editar</button>
+              <button type="button" class="btn btn-sm btn-secondary mural-btn-salvar" data-msg-id="{{ m.id }}" onclick="salvarEdicaoMural(this)" style="display:none">Salvar</button>
+              {% endif %}
               {% if m.user_id == session.user_id or session.role == 'admin' %}
               <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="margin-left:auto"
                     onsubmit="return confirm('Excluir esta mensagem?')">
@@ -114,6 +148,48 @@ function reagirMural(btn) {
     });
 }
 
+function responderMural(msgId, autor, textoResumo) {
+  document.getElementById('respostaAId').value = msgId;
+  document.getElementById('respondendoAutor').textContent = '@' + autor;
+  document.getElementById('respondendoTexto').textContent = textoResumo;
+  document.getElementById('respondendoBanner').style.display = 'flex';
+  document.querySelector('textarea[name="texto"]').focus();
+}
+function cancelarResposta() {
+  document.getElementById('respostaAId').value = '';
+  document.getElementById('respondendoBanner').style.display = 'none';
+}
+
+function editarMural(btn) {
+  const card = document.getElementById('msgMural' + btn.dataset.msgId);
+  card.querySelector('.mural-texto').style.display = 'none';
+  card.querySelector('.mural-editar-campo').style.display = 'block';
+  card.querySelector('.mural-btn-editar').style.display = 'none';
+  card.querySelector('.mural-btn-salvar').style.display = 'inline-flex';
+}
+function salvarEdicaoMural(btn) {
+  const msgId = btn.dataset.msgId;
+  const card = document.getElementById('msgMural' + msgId);
+  const campo = card.querySelector('.mural-editar-campo');
+  const texto = campo.value.trim();
+  if (!texto) return;
+  fetch(`/mural/${msgId}/editar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texto }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) { alert(data.erro || 'Não foi possível editar.'); return; }
+      const textoEl = card.querySelector('.mural-texto');
+      textoEl.textContent = data.texto;
+      textoEl.style.display = 'block';
+      campo.style.display = 'none';
+      card.querySelector('.mural-btn-editar').style.display = 'inline-flex';
+      card.querySelector('.mural-btn-salvar').style.display = 'none';
+    });
+}
+
 (function() {
   const lista = document.getElementById('listaMural');
   if (!lista) return;
@@ -122,9 +198,17 @@ function reagirMural(btn) {
     fetch(`/api/mural/novas-desde/${ultimoId}`)
       .then(r => r.json())
       .then(data => {
-        if (data.novas > 0) document.getElementById('avisoNovasMsgs').style.display = 'block';
+        if (data.novas === 0) return;
+        const textarea = document.querySelector('textarea[name="texto"]');
+        // Recarrega sozinho só se a pessoa não estiver no meio de escrever
+        // um recado — senão só mostra o aviso, pra não perder o rascunho.
+        if (textarea && textarea.value.trim()) {
+          document.getElementById('avisoNovasMsgs').style.display = 'block';
+        } else {
+          location.reload();
+        }
       });
-  }, 30000);
+  }, 20000);
 })();
 </script>
 {% endblock %}

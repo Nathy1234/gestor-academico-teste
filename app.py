@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.12.2'
+VERSAO = '1.13.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -666,15 +666,21 @@ class Destaque(db.Model):
     pessoa = db.relationship('User', foreign_keys=[user_id])
 
 class MuralMensagem(db.Model):
-    """Mural compartilhado da equipe — mensagem curta + reações em emoji.
-    Não é chat privado nem em tempo real: todo mundo vê tudo, atualiza ao
-    recarregar a tela."""
-    id         = db.Column(db.Integer, primary_key=True)
-    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    texto      = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    """Mural compartilhado da equipe — mensagem curta + reações em emoji,
+    resposta a outra mensagem (thread simples) e menção opcional a uma
+    pessoa. Atualiza sozinho pra quem está com a tela aberta (poll) e avisa
+    por e-mail quem foi marcado e não está no sistema."""
+    id            = db.Column(db.Integer, primary_key=True)
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    texto         = db.Column(db.Text, nullable=False)
+    resposta_a_id = db.Column(db.Integer, db.ForeignKey('mural_mensagem.id'))
+    mencionado_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    editado_em    = db.Column(db.DateTime)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     autor = db.relationship('User', foreign_keys=[user_id])
+    mencionado = db.relationship('User', foreign_keys=[mencionado_id])
+    resposta_a = db.relationship('MuralMensagem', remote_side=[id])
 
 class MuralReacao(db.Model):
     """Uma reação em emoji de um usuário numa mensagem do mural. Uma pessoa
@@ -2459,7 +2465,10 @@ def disciplina_toggle(disc_id):
     d.plataforma_ok = not d.plataforma_ok
     d.plataforma_em = datetime.utcnow() if d.plataforma_ok else None
     db.session.commit()
-    return jsonify({'ok': d.plataforma_ok, 'disc_id': disc_id})
+    return jsonify({
+        'ok': d.plataforma_ok, 'disc_id': disc_id,
+        'data_formatada': d.plataforma_em.strftime('%d/%m/%Y') if d.plataforma_em else None,
+    })
 
 @app.route('/curso/<int:course_id>/disciplinas/marcar-todas', methods=['POST'])
 @login_required
@@ -3824,17 +3833,63 @@ def mural():
             reacoes_por_msg.setdefault(msg_id, []).append({'emoji': emoji, 'qtd': qtd})
         minhas = MuralReacao.query.filter(MuralReacao.mensagem_id.in_(ids), MuralReacao.user_id == session['user_id']).all()
         minhas_reacoes = {(r.mensagem_id, r.emoji) for r in minhas}
+    todos_usuarios = User.query.order_by(User.username).all()
     return render_template('mural.html', mensagens=mensagens, emojis=EMOJIS_MURAL,
-                           reacoes_por_msg=reacoes_por_msg, minhas_reacoes=minhas_reacoes)
+                           reacoes_por_msg=reacoes_por_msg, minhas_reacoes=minhas_reacoes,
+                           todos_usuarios=todos_usuarios)
+
+def _notificar_mencao_mural(mensagem):
+    """Manda um e-mail pra quem foi marcado na mensagem — só dispara nesse
+    caso específico, mensagem solta não gera e-mail pra ninguém (evita spam)."""
+    if not mensagem.mencionado_id or mensagem.mencionado_id == mensagem.user_id:
+        return
+    alvo = User.query.get(mensagem.mencionado_id)
+    if not alvo or not alvo.email:
+        return
+    autor_nome = mensagem.autor.username if mensagem.autor else 'Alguém'
+    enviar_email(
+        alvo.email,
+        f'{autor_nome} marcou você no Mural da Equipe',
+        f'{autor_nome} escreveu no Mural e marcou você:\n\n'
+        f'"{mensagem.texto[:500]}"\n\n'
+        f'Acesse o sistema pra ver e responder: '
+        f'{request.url_root.rstrip("/")}{url_for("mural")}'
+    )
 
 @app.route('/mural/nova', methods=['POST'])
 @login_required
 def mural_nova():
     texto = request.form.get('texto', '').strip()
+    resposta_a_id = request.form.get('resposta_a_id', type=int)
+    mencionado_id = request.form.get('mencionado_id', type=int)
+    if resposta_a_id and not MuralMensagem.query.get(resposta_a_id):
+        resposta_a_id = None
+    if mencionado_id and not User.query.get(mencionado_id):
+        mencionado_id = None
     if texto:
-        db.session.add(MuralMensagem(user_id=session['user_id'], texto=texto[:2000]))
+        m = MuralMensagem(user_id=session['user_id'], texto=texto[:2000],
+                          resposta_a_id=resposta_a_id, mencionado_id=mencionado_id)
+        db.session.add(m)
         db.session.commit()
+        try:
+            _notificar_mencao_mural(m)
+        except Exception as e:
+            print(f'[ERRO E-MAIL MENÇÃO MURAL] {e}')
     return redirect(url_for('mural'))
+
+@app.route('/mural/<int:id>/editar', methods=['POST'])
+@login_required
+def mural_editar(id):
+    m = MuralMensagem.query.get_or_404(id)
+    if m.user_id != session['user_id']:
+        return jsonify({'ok': False, 'erro': 'Você só pode editar suas próprias mensagens.'}), 403
+    texto = (request.get_json(silent=True) or {}).get('texto', '').strip()
+    if not texto:
+        return jsonify({'ok': False, 'erro': 'Mensagem vazia.'}), 400
+    m.texto = texto[:2000]
+    m.editado_em = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'ok': True, 'texto': m.texto})
 
 @app.route('/mural/<int:id>/excluir', methods=['POST'])
 @login_required
@@ -3845,6 +3900,7 @@ def mural_excluir(id):
         flash('Você só pode excluir suas próprias mensagens.', 'danger')
         return redirect(url_for('mural'))
     MuralReacao.query.filter_by(mensagem_id=m.id).delete()
+    MuralMensagem.query.filter_by(resposta_a_id=m.id).update({'resposta_a_id': None})
     db.session.delete(m)
     db.session.commit()
     flash('Mensagem excluída.', 'success')
@@ -3872,9 +3928,22 @@ def mural_reagir(id):
 @app.route('/api/mural/novas-desde/<int:ultimo_id>')
 @login_required
 def api_mural_novas(ultimo_id):
-    """Consultado via JS pra saber se surgiram mensagens novas sem recarregar a página."""
-    total = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id).count()
-    return jsonify({'novas': total})
+    """Consultado via JS (de qualquer página, não só do Mural) pra saber se
+    surgiram mensagens novas sem recarregar — usado tanto pra atualizar a
+    lista sozinha quanto pro aviso no canto da tela."""
+    novas = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id)\
+        .order_by(MuralMensagem.id.asc()).limit(20).all()
+    meu_id = session['user_id']
+    return jsonify({
+        'novas': len(novas),
+        'ultimo_id': novas[-1].id if novas else ultimo_id,
+        'mensagens': [{
+            'id': m.id,
+            'autor': m.autor.username if m.autor else '?',
+            'texto': m.texto[:140],
+            'sou_mencionado': m.mencionado_id == meu_id,
+        } for m in novas if m.user_id != meu_id],
+    })
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
@@ -4796,25 +4865,24 @@ def seed_data():
             VendaModalidadeOpcao(label='Site', ordem=2),
         ])
         db.session.commit()
-    # Ferramentas padrão — checa por label (não por count==0) pra continuar
-    # funcionando mesmo depois que o admin já cadastrou/editou outras.
-    ferramentas_padrao = [
-        ('Kronos', 'https://kronoslabtecie.web.app/'),
-        ('Sistema Curadoria', 'https://sistema-curadoria.vercel.app/'),
-        ('Moodle Graduação ERP', 'https://moodle.fatecie.edu.br/course/index.php?categoryid=11752'),
-        ('Moodle Graduação WAE', 'https://www.eadunifatecie.com.br/'),
-        ('Moodle Pós ERP', 'https://moodleposead.unifatecie.edu.br/login/index.php?loginredirect=1'),
-        ('Moodle Cursos Técnicos ERP', 'https://moodle.evoluitec.app.br/course/index.php'),
-        ('Moodle LAV', 'https://lav.eadunifatecie.com.br/login/index.php'),
-        ('Microsoft Teams', 'https://teams.microsoft.com/'),
-    ]
-    maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
-    labels_existentes = {t.label for t in ExternalTool.query.all()}
-    for label, url in ferramentas_padrao:
-        if label not in labels_existentes:
-            maior_ordem += 1
-            db.session.add(ExternalTool(label=label, url=url, ordem=maior_ordem))
-    db.session.commit()
+    # Ferramentas padrão — só semeia na primeira vez (tabela vazia). Checar
+    # por label em vez de count==0 fazia uma ferramenta excluída pelo admin
+    # voltar sozinha no próximo cold start do servidor, porque o rótulo
+    # "sumia" da lista de existentes e o seed achava que faltava recriar.
+    if ExternalTool.query.count() == 0:
+        ferramentas_padrao = [
+            ('Kronos', 'https://kronoslabtecie.web.app/'),
+            ('Sistema Curadoria', 'https://sistema-curadoria.vercel.app/'),
+            ('Moodle Graduação ERP', 'https://moodle.fatecie.edu.br/course/index.php?categoryid=11752'),
+            ('Moodle Graduação WAE', 'https://www.eadunifatecie.com.br/'),
+            ('Moodle Pós ERP', 'https://moodleposead.unifatecie.edu.br/login/index.php?loginredirect=1'),
+            ('Moodle Cursos Técnicos ERP', 'https://moodle.evoluitec.app.br/course/index.php'),
+            ('Moodle LAV', 'https://lav.eadunifatecie.com.br/login/index.php'),
+            ('Microsoft Teams', 'https://teams.microsoft.com/'),
+        ]
+        for i, (label, url) in enumerate(ferramentas_padrao, start=1):
+            db.session.add(ExternalTool(label=label, url=url, ordem=i))
+        db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -5188,6 +5256,9 @@ def _run_migrations():
         ("course",     "categoria",        "VARCHAR(30) DEFAULT 'INOVA'"),
         ("external_tool", "embeddable",             "BOOLEAN"),
         ("external_tool", "embeddable_checado_em",  "TIMESTAMP"),
+        ("mural_mensagem", "resposta_a_id", "INTEGER"),
+        ("mural_mensagem", "mencionado_id", "INTEGER"),
+        ("mural_mensagem", "editado_em",    "TIMESTAMP"),
         ("discipline", "cod_moodle",       "VARCHAR(50)"),
         ("discipline", "titulacao",        "VARCHAR(50)"),
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),

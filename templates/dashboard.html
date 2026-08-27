@@ -831,15 +831,23 @@
   function compactar() {
     const cols = numColunas();
     let cursor = 0;
+    let ultimoEl = null, ultimoInicio = 0;
     container.querySelectorAll('.dash-widget').forEach(function(w) {
       if (getComputedStyle(w).display === 'none') return;
       let span = parseInt(w.dataset.size || '1', 10) || 1;
       if (span > cols) span = cols;
       if (cursor + span > cols) cursor = 0;
       w.style.gridColumn = (cursor + 1) + ' / span ' + span;
+      ultimoEl = w;
+      ultimoInicio = cursor;
       cursor += span;
       if (cursor >= cols) cursor = 0;
     });
+    // Se a última linha não fechou nas 4 colunas, estica o último widget
+    // até a borda em vez de deixar sobrar espaço vazio no fim da tela.
+    if (ultimoEl && cursor > 0) {
+      ultimoEl.style.gridColumn = (ultimoInicio + 1) + ' / span ' + (cols - ultimoInicio);
+    }
   }
 
   let resizeTimer = null;
@@ -869,14 +877,29 @@
     container.addEventListener('dragover', function(e) {
       if (!dragEl) return;
       e.preventDefault();
-      let closest = null, closestDist = Infinity;
+      // Prioridade 1: o widget que o cursor está literalmente em cima —
+      // assim um widget grande vizinho não "puxa" o drop pra ele só por
+      // ter o centro numericamente mais próximo do que um pequeno do lado.
+      let closest = null;
       container.querySelectorAll('.dash-widget').forEach(function(el) {
-        if (el === dragEl) return;
+        if (el === dragEl || closest) return;
         const r = el.getBoundingClientRect();
-        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-        const d = Math.hypot(e.clientX - cx, e.clientY - cy);
-        if (d < closestDist) { closestDist = d; closest = el; }
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          closest = el;
+        }
       });
+      // Prioridade 2 (fallback): mais próximo pelo centro, só quando o
+      // cursor não está em cima de widget nenhum (ex: num vão vazio).
+      if (!closest) {
+        let closestDist = Infinity;
+        container.querySelectorAll('.dash-widget').forEach(function(el) {
+          if (el === dragEl) return;
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+          const d = Math.hypot(e.clientX - cx, e.clientY - cy);
+          if (d < closestDist) { closestDist = d; closest = el; }
+        });
+      }
       if (!closest) return;
       const r = closest.getBoundingClientRect();
       const before = e.clientX < r.left + r.width / 2;

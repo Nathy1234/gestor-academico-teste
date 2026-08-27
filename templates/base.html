@@ -471,6 +471,63 @@
     {% endwith %}
 
     <script src="{{ url_for('static', filename='js/app.js') }}?v={{ versao }}"></script>
+    {% if session.user_id %}
+    <script>
+      // ── MURAL: aviso no canto da tela, em qualquer página ──────────────
+      // "Visto até" fica salvo neste navegador (localStorage) — cada
+      // aparelho/navegador marca o que já viu por conta própria.
+      (function() {
+        function ultimoIdVisto() {
+          return parseInt(localStorage.getItem('muralUltimoIdVisto') || '0', 10);
+        }
+        function marcarVisto(id) {
+          try { localStorage.setItem('muralUltimoIdVisto', String(id)); } catch (e) {}
+        }
+        function criarContainer() {
+          let c = document.getElementById('muralToasts');
+          if (c) return c;
+          c = document.createElement('div');
+          c.id = 'muralToasts';
+          document.body.appendChild(c);
+          return c;
+        }
+        function mostrarToast(m) {
+          if (window.location.pathname === '/mural') return;
+          const container = criarContainer();
+          const toast = document.createElement('div');
+          toast.className = 'mural-toast' + (m.sou_mencionado ? ' mural-toast-mencao' : '');
+          const titulo = document.createElement('div');
+          titulo.className = 'mural-toast-titulo';
+          titulo.textContent = m.sou_mencionado ? '📌 Você foi marcado no Mural' : '💬 Novo recado no Mural';
+          const corpo = document.createElement('div');
+          corpo.className = 'mural-toast-corpo';
+          const autorEl = document.createElement('strong');
+          autorEl.textContent = m.autor + ': ';
+          corpo.appendChild(autorEl);
+          corpo.appendChild(document.createTextNode(m.texto));
+          toast.appendChild(titulo);
+          toast.appendChild(corpo);
+          toast.addEventListener('click', () => { window.location.href = '{{ url_for("mural") }}'; });
+          container.appendChild(toast);
+          setTimeout(() => toast.remove(), 9000);
+        }
+        function verificar() {
+          const desde = ultimoIdVisto();
+          fetch('/api/mural/novas-desde/' + desde)
+            .then(r => r.json())
+            .then(data => {
+              if (!data.ultimo_id) return;
+              if (desde === 0) { marcarVisto(data.ultimo_id); return; }
+              (data.mensagens || []).forEach(mostrarToast);
+              marcarVisto(data.ultimo_id);
+            })
+            .catch(() => {});
+        }
+        verificar();
+        setInterval(verificar, 25000);
+      })();
+    </script>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>
