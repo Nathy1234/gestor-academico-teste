@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.13.1'
+VERSAO = '1.13.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -114,6 +114,11 @@ TIPOS_CURSO = [
     'evento', 'pratica_conectada', 'pratica_estagio',
     'projeto_ambiental', 'ggbr', 'integra_edu',
 ]
+
+# Matrizes Curriculares só faz sentido pra esses tipos — os demais (Rápido,
+# Terceiros, Evento, Prática Conectada/Estágio, Proj. Ambiental, Integra Edu)
+# não têm matriz nesse formato, então nem entram na tela.
+MATRIZES_TIPOS_PERMITIDOS = {'pos', 'profissionalizante', 'pacote', 'ggbr'}
 
 EQUIPE_INSERCAO = {'ADMIN', 'EVERSON', 'PEDRO', 'STEFANYE', 'LUCAS', 'FELIPE'}
 
@@ -3249,7 +3254,10 @@ def matrizes():
     # centenas de consultas, uma por curso). Inclui cursos sem nenhuma
     # disciplina ainda (ex: curso novo) pra eles aparecerem na Matriz
     # esperando a grade ser cadastrada, em vez de sumir da lista.
-    todos_para_chips = Course.query.order_by(Course.tipo, Course.nome).all()
+    # Só Pós/Profissionalizante/Pacote/GGBR — os demais tipos não têm
+    # matriz curricular nesse formato.
+    todos_para_chips = Course.query.filter(Course.tipo.in_(MATRIZES_TIPOS_PERMITIDOS))\
+        .order_by(Course.tipo, Course.nome).all()
 
     discs_by_course = {}
     ids_todos = [c.id for c in todos_para_chips]
@@ -3337,7 +3345,7 @@ def matrizes_marcar_tudo():
     filtro_status = data.get('status', '')
     filtro_insersor = data.get('insersor', '').strip()
     now = datetime.utcnow()
-    q = Course.query
+    q = Course.query.filter(Course.tipo.in_(MATRIZES_TIPOS_PERMITIDOS))
     if filtro_tipo:
         q = q.filter_by(tipo=filtro_tipo)
     if filtro_status:
@@ -3371,7 +3379,8 @@ def matrizes_relatorio():
     filtro_status = request.args.get('status', '')
     from sqlalchemy import exists as sql_exists
     import re
-    q = Course.query.filter(sql_exists().where(Discipline.course_id == Course.id))
+    q = Course.query.filter(sql_exists().where(Discipline.course_id == Course.id),
+                            Course.tipo.in_(MATRIZES_TIPOS_PERMITIDOS))
     if filtro_tipo:
         q = q.filter_by(tipo=filtro_tipo)
     if filtro_status:
@@ -3390,7 +3399,8 @@ def matrizes_relatorio():
         course_data.append({'course': c, 'disciplines': discs, 'total_ch': total_ch})
 
     tipos_disponiveis = [r[0] for r in db.session.query(Course.tipo).join(
-        Discipline, Discipline.course_id == Course.id).distinct().all()]
+        Discipline, Discipline.course_id == Course.id)
+        .filter(Course.tipo.in_(MATRIZES_TIPOS_PERMITIDOS)).distinct().all()]
     status_list = ['ativo', 'em_edicao', 'finalizado', 'descontinuado', 'oculto']
 
     return render_template('matrizes_relatorio.html', course_data=course_data,
@@ -3409,7 +3419,8 @@ def matrizes_exportar_excel():
     filtro_tipo   = request.args.get('tipo', '')
     filtro_status = request.args.get('status', '')
 
-    q = Course.query.filter(sql_exists().where(Discipline.course_id == Course.id))
+    q = Course.query.filter(sql_exists().where(Discipline.course_id == Course.id),
+                            Course.tipo.in_(MATRIZES_TIPOS_PERMITIDOS))
     if filtro_tipo:   q = q.filter_by(tipo=filtro_tipo)
     if filtro_status: q = q.filter_by(status=filtro_status)
     todos = q.order_by(Course.tipo, Course.nome).all()
