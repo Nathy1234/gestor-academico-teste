@@ -61,7 +61,7 @@
       {% macro chevron() %}<svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>{% endmacro %}
       {% macro handle() %}{% if is_admin_nav %}<span class="section-handle" title="Arraste para reorganizar as seções" onclick="event.stopPropagation()">⠿</span>{% endif %}{% endmacro %}
 
-      {% if can_cursos or can_cupons or can_reembolsos or can_pagamentos_terceiros or can_opcoes_curso or can_matrizes or can_banco_disciplinas or can_ia_assistente %}
+      {% if can_cursos or can_matrizes or can_banco_disciplinas or can_ia_assistente %}
       <div class="sidebar-section-block" data-section-id="inova_carreira" {% if is_admin_nav %}draggable="true"{% endif %}>
       <div class="nav-section" onclick="toggleSidebarSection(this)">{{ handle() }}<span class="section-title">INOVA CARREIRA</span>{{ chevron() }}</div>
       <div class="sidebar-section-items">
@@ -69,26 +69,6 @@
       <a href="{{ url_for('cursos') }}" data-item-id="cursos" class="nav-item {% if em_curso %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         Catálogo de Cursos
-      </a>
-      {% endif %}
-      {% if can_cupons %}
-      <a href="{{ url_for('cupons') }}" data-item-id="cupons" class="nav-item nav-sub {% if 'cupom' in request.endpoint %}active{% endif %}">
-        <span class="dot dot-orange"></span> Cupons
-      </a>
-      {% endif %}
-      {% if can_reembolsos %}
-      <a href="{{ url_for('reembolsos') }}" data-item-id="reembolsos" class="nav-item nav-sub {% if 'reembolso' in request.endpoint %}active{% endif %}">
-        <span class="dot dot-pink"></span> Reembolsos
-      </a>
-      {% endif %}
-      {% if can_pagamentos_terceiros %}
-      <a href="{{ url_for('pagamentos_terceiros') }}" data-item-id="pagamentos_terceiros" class="nav-item nav-sub {% if 'pagamento_terceiro' in request.endpoint %}active{% endif %}">
-        <span class="dot dot-green"></span> Pagamentos Terceiros
-      </a>
-      {% endif %}
-      {% if can_opcoes_curso %}
-      <a href="{{ url_for('video_presets') }}" data-item-id="opcoes_curso" class="nav-item nav-sub {% if request.endpoint in ['video_presets','venda_modalidade_excluir'] %}active{% endif %}">
-        <span class="dot dot-purple"></span> Opções de Curso
       </a>
       {% endif %}
       {% if can_matrizes %}
@@ -187,6 +167,14 @@
       <a href="{{ url_for('backup_lista') }}" class="nav-item {% if 'backup' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Backups
+      </a>
+      <a href="{{ url_for('cupons') }}" class="nav-item {% if 'cupom' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12.01V2h10.01l8.58 8.58a2 2 0 0 1 0 2.83Z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Cupons
+      </a>
+      <a href="{{ url_for('reembolsos') }}" class="nav-item {% if 'reembolso' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 8 8 8"/></svg>
+        Reembolsos
       </a>
       <a href="{{ url_for('pagamentos_terceiros') }}" class="nav-item {% if 'pagamento_terceiro' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>

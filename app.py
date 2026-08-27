@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.12.0'
+VERSAO = '1.12.1'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -156,21 +156,17 @@ _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
 # por cima disso, na tela de editar usuário.
 MODULOS_CATALOGO = [
     {'id': 'cursos',               'label': 'Cursos (catálogo, Pacotes, busca)'},
-    {'id': 'cupons',               'label': 'Cupons'},
-    {'id': 'reembolsos',           'label': 'Reembolsos'},
-    {'id': 'pagamentos_terceiros', 'label': 'Pagamentos Terceiros'},
-    {'id': 'opcoes_curso',         'label': 'Opções de Curso'},
     {'id': 'matrizes',             'label': 'Matrizes Curriculares'},
     {'id': 'banco_disciplinas',    'label': 'Banco de Disciplinas'},
     {'id': 'ia_assistente',        'label': 'IA Assistente'},
     {'id': 'ferramentas',          'label': 'Ferramentas Externas'},
     {'id': 'historico',            'label': 'Histórico'},
 ]
-# Pagamentos Terceiros e Reembolsos são financeiro — começam só pro admin;
-# os demais já eram visíveis pra equipe por padrão, continuam assim.
+# Cupons, Reembolsos, Pagamentos Terceiros e Opções de Curso são financeiro/
+# admin — moram fixos dentro de ADMIN no menu (User.can_manage_*), nem
+# entram nesse padrão de visibilidade porque nunca aparecem em outro lugar.
 MODULOS_PADRAO_VISIVEL = {
-    'cursos': True, 'cupons': True, 'reembolsos': False, 'pagamentos_terceiros': False,
-    'opcoes_curso': False, 'matrizes': True, 'banco_disciplinas': True,
+    'cursos': True, 'matrizes': True, 'banco_disciplinas': True,
     'ia_assistente': True, 'ferramentas': True, 'historico': True,
 }
 
@@ -400,10 +396,13 @@ class User(db.Model):
         return not self._p().get(block_key)
 
     def can_manage_cupons(self):
-        return self._modulo_ok('cupons', 'block_cupons')
+        """Cupons é módulo financeiro — fixo só pro admin, mora dentro de
+        ADMIN no menu, não passa mais pelo padrão de visibilidade."""
+        return self.role == 'admin'
 
     def can_manage_reembolsos(self):
-        return self._modulo_ok('reembolsos', 'block_reembolsos')
+        """Mesma coisa: Reembolsos é fixo só pro admin."""
+        return self.role == 'admin'
 
     def can_view_historico(self):
         return self._modulo_ok('historico', 'block_historico')
@@ -430,10 +429,12 @@ class User(db.Model):
         return self._modulo_ok('ferramentas', 'block_ferramentas')
 
     def can_manage_pagamentos_terceiros(self):
-        return self._modulo_ok('pagamentos_terceiros', 'block_pagamentos_terceiros')
+        """Fixo só pro admin — mora dentro de ADMIN no menu."""
+        return self.role == 'admin'
 
     def can_manage_opcoes_curso(self):
-        return self._modulo_ok('opcoes_curso', 'block_opcoes_curso')
+        """Fixo só pro admin — mora dentro de ADMIN no menu."""
+        return self.role == 'admin'
 
     def can_change_own_password(self):
         if self.role == 'admin': return True
@@ -3701,13 +3702,11 @@ def usuario_editar(id):
 def _perms_from_form(d):
     keys = [
         'cursos_editar', 'cursos_excluir',
-        'cupons_gerenciar', 'reembolsos_gerenciar',
         'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
         'erp_moodle_acesso',
-        'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
+        'block_historico', 'block_trocar_senha',
         'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
         'block_ia_assistente', 'block_ferramentas',
-        'block_pagamentos_terceiros', 'block_opcoes_curso',
         'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}

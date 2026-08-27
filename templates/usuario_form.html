@@ -143,18 +143,6 @@
         <div class="perm-group">
           <div class="perm-group-header">Acesso permitido <span style="font-weight:400;text-transform:none;font-size:11px">— conceder a leitores</span></div>
           <label class="perm-item">
-            <input type="checkbox" name="perm_cupons_gerenciar" form="userForm"
-              {% if user and user.role=='admin' %}checked disabled
-              {% elif user and user.get_perm('cupons_gerenciar') %}checked{% endif %}>
-            <div><div class="perm-name">Acessar Cupons</div><div class="perm-desc">Ver e gerenciar cupons de desconto</div></div>
-          </label>
-          <label class="perm-item">
-            <input type="checkbox" name="perm_reembolsos_gerenciar" form="userForm"
-              {% if user and user.role=='admin' %}checked disabled
-              {% elif user and user.get_perm('reembolsos_gerenciar') %}checked{% endif %}>
-            <div><div class="perm-name">Acessar Reembolsos</div><div class="perm-desc">Ver e gerenciar solicitações de reembolso</div></div>
-          </label>
-          <label class="perm-item">
             <input type="checkbox" name="perm_historico_ver" form="userForm"
               {% if user and user.role=='admin' %}checked disabled
               {% elif user and user.get_perm('historico_ver') %}checked{% endif %}>
@@ -180,10 +168,11 @@
           </label>
         </div>
         <div style="font-size:11px;color:var(--text-muted);padding:0 16px 10px">
-          Pagamentos Terceiros, Opções de Curso e outros módulos financeiros/admin
-          são controlados no padrão global em
-          <a href="{{ url_for('admin_visibilidade') }}">Visibilidade</a> — aqui embaixo
-          só dá pra bloquear especificamente esta conta.
+          Cupons, Reembolsos, Pagamentos Terceiros e Opções de Curso são
+          módulos financeiros/admin — ficam fixos só pro admin, não têm
+          opção de liberar aqui. Os demais módulos têm um padrão global em
+          <a href="{{ url_for('admin_visibilidade') }}">Visibilidade</a>,
+          e aqui embaixo dá pra bloquear especificamente esta conta.
         </div>
 
         <!-- RESTRIÇÕES -->
@@ -219,30 +208,6 @@
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_ferramentas') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Ferramentas Externas</div><div class="perm-desc">Esconde a seção de Ferramentas Externas (Kronos, Moodles etc)</div></div>
-          </label>
-          <label class="perm-item">
-            <input type="checkbox" name="perm_block_cupons" form="userForm"
-              {% if user and user.role=='admin' %}disabled
-              {% elif user and user._p().get('block_cupons') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Cupons</div><div class="perm-desc">Esconde a seção de cupons</div></div>
-          </label>
-          <label class="perm-item">
-            <input type="checkbox" name="perm_block_reembolsos" form="userForm"
-              {% if user and user.role=='admin' %}disabled
-              {% elif user and user._p().get('block_reembolsos') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Reembolsos</div><div class="perm-desc">Esconde a seção de reembolsos</div></div>
-          </label>
-          <label class="perm-item">
-            <input type="checkbox" name="perm_block_pagamentos_terceiros" form="userForm"
-              {% if user and user.role=='admin' %}disabled
-              {% elif user and user._p().get('block_pagamentos_terceiros') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Pagamentos Terceiros</div><div class="perm-desc">Esconde a seção mesmo se o padrão global (Visibilidade) estiver liberado</div></div>
-          </label>
-          <label class="perm-item">
-            <input type="checkbox" name="perm_block_opcoes_curso" form="userForm"
-              {% if user and user.role=='admin' %}disabled
-              {% elif user and user._p().get('block_opcoes_curso') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#dc2626">Bloquear Opções de Curso</div><div class="perm-desc">Esconde a seção mesmo se o padrão global (Visibilidade) estiver liberado</div></div>
           </label>
           <label class="perm-item">
             <input type="checkbox" name="perm_block_historico" form="userForm"
@@ -299,13 +264,11 @@ function marcarTrocaSenha(userId, username) {
 
 const EDITOR_DEFAULTS = {
   cursos_editar: true, cursos_excluir: false,
-  cupons_gerenciar: true, reembolsos_gerenciar: true,
   historico_ver: true, usuarios_gerenciar: false, backup_gerenciar: false,
   erp_moodle_acesso: false,
-  block_cupons: false, block_reembolsos: false, block_historico: false,
+  block_historico: false,
   block_cursos: false, block_matrizes: false, block_banco_disciplinas: false,
   block_ia_assistente: false, block_ferramentas: false,
-  block_pagamentos_terceiros: false, block_opcoes_curso: false,
   block_trocar_senha: false, somente_erp_moodle: false,
 };
 
