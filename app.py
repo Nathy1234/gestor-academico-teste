@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.14.1'
+VERSAO = '1.14.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -155,6 +155,14 @@ DASHBOARD_WIDGETS = [
 ]
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
 
+# Versão do "significado" de row/col salvos em positions. Mudou de linha de
+# grid única (auto-height) pra unidade fixa de 40px + rowspan por widget —
+# uma posição salva no esquema antigo, se reaplicada literalmente no novo,
+# empilha os widgets uns em cima dos outros. Positions salvas com versão
+# diferente da atual são descartadas (o widget cai de volta pro
+# auto-posicionamento em mosaico) em vez de reaplicadas erradas.
+DASHBOARD_POSITIONS_VERSAO = 2
+
 # Catálogo de módulos do menu lateral cujo acesso o admin controla — visível
 # por padrão pra todo mundo, ou só pro admin, definido na tela Visibilidade
 # (/admin/visibilidade). Cada conta ainda pode ser bloqueada individualmente
@@ -231,7 +239,10 @@ def get_dashboard_prefs(user):
     for wid, tam in tamanhos_in.items():
         if wid in _DASHBOARD_WIDGET_IDS and isinstance(tam, int) and 1 <= tam <= 4:
             tamanhos[wid] = tam
-    posicoes_in = prefs.get('positions', {}) if isinstance(prefs.get('positions'), dict) else {}
+    posicoes_in = (prefs.get('positions', {})
+                   if isinstance(prefs.get('positions'), dict)
+                   and prefs.get('positions_versao') == DASHBOARD_POSITIONS_VERSAO
+                   else {})
     posicoes = {}
     for wid, pos in posicoes_in.items():
         if wid not in _DASHBOARD_WIDGET_IDS or not isinstance(pos, dict):
@@ -1503,7 +1514,8 @@ def dashboard_prefs_salvar():
             continue
         if 0 <= r <= 200 and 0 <= c <= 3:
             posicoes[wid] = {'row': r, 'col': c}
-    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos, 'sizes': tamanhos, 'positions': posicoes})
+    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos, 'sizes': tamanhos,
+                                        'positions': posicoes, 'positions_versao': DASHBOARD_POSITIONS_VERSAO})
     db.session.commit()
     return jsonify({'ok': True})
 
