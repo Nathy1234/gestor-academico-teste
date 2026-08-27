@@ -137,6 +137,10 @@
     'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1,
     'destaques': 2, 'erp_moodle_resumo': 3
   } %}
+  {# Cards pequenos de estatística — tamanho (largura) travado em 1 coluna
+     pra sempre caberem lado a lado numa linha, alinhados uns com os
+     outros. Não entram no botão de redimensionar (só arrastar). #}
+  {% set widgets_tamanho_fixo = ['ativos', 'em_edicao', 'finalizados', 'ocultos', 'descontinuados', 'reembolsos_pend', 'backup'] %}
   {# Altura de cada widget, em unidades de 40px (estimativa por tipo de
      conteúdo — a "Andamento"/"Cursos por Responsável" agora têm rolagem
      interna com limite, então dá pra prever a altura delas também). Isso
@@ -166,7 +170,7 @@
       {# sem acesso ao ERP Moodle — widget nem aparece #}
     {% else %}
     {% set pos = widgets_posicoes.get(wid) %}
-    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}" data-size="{{ widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}" data-rowspan="{{ widget_alturas.get(wid, 3) }}" data-row="{{ pos.row if pos is not none else '' }}" data-col="{{ pos.col if pos is not none else '' }}">
+    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}" data-size="{{ widget_sizes.get(wid, 1) if wid in widgets_tamanho_fixo else widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}" data-rowspan="{{ widget_alturas.get(wid, 3) }}" data-row="{{ pos.row if pos is not none else '' }}" data-col="{{ pos.col if pos is not none else '' }}">
       <div class="dash-widget-controls">
         <span class="dash-drag-handle" title="Arrastar pra reordenar">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px">
@@ -175,12 +179,14 @@
             <circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>
           </svg>
         </span>
+        {% if wid not in widgets_tamanho_fixo %}
         <button type="button" class="dash-widget-resize" onclick="dashCicleTamanho(this)" title="Mudar o tamanho deste widget">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
             <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
             <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
           </svg>
         </button>
+        {% endif %}
         <button type="button" class="dash-widget-toggle" onclick="dashToggleWidget(this)" title="Mostrar/ocultar este widget">
           <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
