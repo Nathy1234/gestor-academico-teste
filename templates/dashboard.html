@@ -818,6 +818,11 @@
   const container = document.getElementById('dashWidgets');
   let dragEl = null;
 
+  // Imagem 1x1 transparente usada como "sombra" do drag — anula a prévia
+  // padrão do navegador (ver dragstart mais abaixo).
+  const dashImagemVaziaDrag = new Image();
+  dashImagemVaziaDrag.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7';
+
   // Posiciona cada widget explicitamente (em vez de deixar o navegador
   // decidir sozinho com grid-auto-flow), pra nunca sobrar um buraco que
   // nenhum widget consiga preencher: cada um começa exatamente onde o
@@ -870,6 +875,13 @@
       ultimoAntes = null;
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', w.dataset.widget); } catch (err) {}
+      // Esconde a "sombra" que o navegador desenha sozinho seguindo o
+      // cursor durante o arrasto — sem isso, ela fica flutuando separada
+      // do card de verdade (que já reposicionamos ao vivo no grid),
+      // dando a impressão de estar preso ou duplicado no meio da tela.
+      try {
+        e.dataTransfer.setDragImage(dashImagemVaziaDrag, 0, 0);
+      } catch (err) {}
       setTimeout(function() { w.classList.add('dragging'); }, 0);
     });
 
