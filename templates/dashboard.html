@@ -137,15 +137,12 @@
     'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1,
     'destaques': 2, 'erp_moodle_resumo': 3
   } %}
-  {# Cards pequenos de estatística — tamanho (largura) travado em 1 coluna
-     pra sempre caberem lado a lado numa linha, alinhados uns com os
-     outros. Não entram no botão de redimensionar (só arrastar). #}
-  {% set widgets_tamanho_fixo = ['ativos', 'em_edicao', 'finalizados', 'ocultos', 'descontinuados', 'reembolsos_pend', 'backup'] %}
-  {# Altura de cada widget, em unidades de 40px (estimativa por tipo de
-     conteúdo — a "Andamento"/"Cursos por Responsável" agora têm rolagem
-     interna com limite, então dá pra prever a altura delas também). Isso
-     é o que abre espaço de verdade do lado de um widget grande pra
-     encaixar outro pequeno embaixo dos menores. #}
+  {# Altura padrão de cada widget, em unidades de 40px — só usada como
+     ponto de partida antes da primeira medição real no navegador, ou pra
+     quem nunca redimensionou esse widget manualmente (nesse caso a altura
+     é recalculada sozinha a partir do conteúdo real). Quem arrasta a alça
+     de redimensionar assume o controle daquele widget: a altura/largura
+     escolhida por ele passa a valer sempre, sem ser recalculada. #}
   {% set widget_alturas = {
     'grafico': 5, 'ativos': 3, 'em_edicao': 3,
     'finalizados': 2, 'ocultos': 2, 'descontinuados': 2,
@@ -170,7 +167,8 @@
       {# sem acesso ao ERP Moodle — widget nem aparece #}
     {% else %}
     {% set pos = widgets_posicoes.get(wid) %}
-    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}" data-size="{{ widget_sizes.get(wid, 1) if wid in widgets_tamanho_fixo else widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}" data-rowspan="{{ widget_alturas.get(wid, 3) }}" data-row="{{ pos.row if pos is not none else '' }}" data-col="{{ pos.col if pos is not none else '' }}">
+    {% set manual = 1 if (wid in widgets_tamanhos or wid in widgets_alturas_salvas) else 0 %}
+    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-manual="{{ manual }}" data-widget="{{ wid }}" data-size="{{ widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}" data-rowspan="{{ widgets_alturas_salvas.get(wid, widget_alturas.get(wid, 3)) }}" data-row="{{ pos.row if pos is not none else '' }}" data-col="{{ pos.col if pos is not none else '' }}">
       <div class="dash-widget-controls">
         <span class="dash-drag-handle" title="Arrastar pra reordenar">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px">
@@ -179,14 +177,11 @@
             <circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>
           </svg>
         </span>
-        {% if wid not in widgets_tamanho_fixo %}
-        <button type="button" class="dash-widget-resize" onclick="dashCicleTamanho(this)" title="Mudar o tamanho deste widget">
+        <button type="button" class="dash-widget-resize" onclick="dashResetTamanho(this)" title="Voltar a ajustar o tamanho automaticamente">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
-            <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-            <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+            <path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/>
           </svg>
         </button>
-        {% endif %}
         <button type="button" class="dash-widget-toggle" onclick="dashToggleWidget(this)" title="Mostrar/ocultar este widget">
           <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -196,6 +191,7 @@
           </svg>
         </button>
       </div>
+      <div class="dash-widget-resize-handle" draggable="false" title="Arrastar pra redimensionar (largura e altura)"></div>
 
       {% if wid == 'grafico' %}
       <a href="{{ url_for('cursos') }}" class="glass-link">
@@ -320,7 +316,7 @@
           </div>
           <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
         </div>
-        <div class="table-wrapper" style="max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
+        <div class="table-wrapper" style="scrollbar-width:thin;scrollbar-color:var(--border) transparent">
           <table style="width:100%">
             <thead>
               <tr>
@@ -439,7 +435,7 @@
           </div>
           <a href="{{ url_for('cursos') }}" class="btn btn-sm btn-secondary">Ver todos →</a>
         </div>
-        <div class="table-wrapper" style="max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
+        <div class="table-wrapper" style="scrollbar-width:thin;scrollbar-color:var(--border) transparent">
           {% if cursos_ins_stats %}
           <table style="width:100%">
             <thead>
@@ -550,7 +546,7 @@
           <div class="card-title">Atividade Recente</div>
           <a href="{{ url_for('historico') }}" class="btn btn-sm btn-secondary">Ver histórico →</a>
         </div>
-        <div style="padding:4px 0;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
+        <div class="card-body" style="padding:4px 0;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
           {% for log in recentes %}
           <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 20px;
                       border-bottom:1px solid var(--border);transition:background .12s"
@@ -680,7 +676,7 @@
           {% endif %}
         </div>
         {% if cursos_sem_resp %}
-        <div>
+        <div class="card-body" style="padding:0">
           {% for c in cursos_sem_resp %}
           <a href="{{ url_for('curso_detalhe', id=c.id) }}"
              style="display:flex;align-items:center;gap:10px;padding:7px 14px;
@@ -700,7 +696,7 @@
           {% endif %}
         </div>
         {% else %}
-        <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12.5px">
+        <div class="card-body" style="text-align:center;color:var(--text-muted);font-size:12.5px">
           Todo curso tem um responsável. 🎉
         </div>
         {% endif %}
@@ -880,8 +876,12 @@
   // menores debaixo dele em vez de alinhar todos na mesma linha.
   const GRUPO_ALTURA_UNIFORME = ['ativos', 'em_edicao', 'finalizados', 'ocultos', 'descontinuados', 'reembolsos_pend', 'backup'];
 
+  // Um widget que a pessoa redimensionou na mão (arrastando a alça) fica
+  // sob controle dela pra sempre — a medição automática não mexe mais
+  // nele, senão o ajuste manual seria desfeito no recarregamento seguinte.
   function medirAlturasReais() {
     container.querySelectorAll('.dash-widget').forEach(function(w) {
+      if (w.dataset.manual === '1') return;
       const conteudo = w.querySelector('.card, .stat-card');
       if (!conteudo) return;
       conteudo.style.height = 'auto';
@@ -895,13 +895,13 @@
     let maiorUniforme = 0;
     GRUPO_ALTURA_UNIFORME.forEach(function(wid) {
       const w = container.querySelector('.dash-widget[data-widget="' + wid + '"]');
-      if (!w) return;
+      if (!w || w.dataset.manual === '1') return;
       maiorUniforme = Math.max(maiorUniforme, parseInt(w.dataset.rowspan, 10) || 0);
     });
     if (maiorUniforme > 0) {
       GRUPO_ALTURA_UNIFORME.forEach(function(wid) {
         const w = container.querySelector('.dash-widget[data-widget="' + wid + '"]');
-        if (w) w.dataset.rowspan = String(maiorUniforme);
+        if (w && w.dataset.manual !== '1') w.dataset.rowspan = String(maiorUniforme);
       });
     }
   }
@@ -1074,26 +1074,73 @@
     }, true);
   }
 
+  // Alça de redimensionar no canto de cada widget: arrastar muda largura
+  // (colunas) e altura (linhas) livremente ao mesmo tempo, com o conteúdo
+  // se ajustando ao vivo. É um arrasto de mouse manual (mousemove/mouseup),
+  // não o drag-and-drop nativo usado pra reordenar — por isso a alça marca
+  // draggable="false" (ver template), pra não disparar o dragstart do
+  // widget (que trocaria de lugar) ao começar a redimensionar.
+  function initResizable() {
+    if (container.dataset.resizableInit) return;
+    container.dataset.resizableInit = '1';
+
+    let alvo = null, inicioX = 0, inicioY = 0, inicioSize = 1, inicioRowspan = 3, colsNoInicio = 4;
+
+    container.addEventListener('mousedown', function(e) {
+      const alca = e.target.closest('.dash-widget-resize-handle');
+      if (!alca || !container.classList.contains('dash-edit-mode')) return;
+      e.preventDefault();
+      alvo = alca.closest('.dash-widget');
+      alvo.classList.add('resizing');
+      inicioX = e.clientX;
+      inicioY = e.clientY;
+      inicioSize = parseInt(alvo.dataset.size, 10) || 1;
+      inicioRowspan = parseInt(alvo.dataset.rowspan, 10) || 3;
+      colsNoInicio = numColunas();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!alvo) return;
+      const rect = container.getBoundingClientRect();
+      const colWidth = (rect.width - GRID_GAP * (colsNoInicio - 1)) / colsNoInicio;
+      const deltaCols = Math.round((e.clientX - inicioX) / (colWidth + GRID_GAP));
+      const deltaRows = Math.round((e.clientY - inicioY) / (ROW_UNIT + GRID_GAP));
+
+      let novoSize = Math.max(1, Math.min(colsNoInicio, inicioSize + deltaCols));
+      let novoRowspan = Math.max(2, Math.min(30, inicioRowspan + deltaRows));
+
+      alvo.dataset.size = String(novoSize);
+      alvo.dataset.rowspan = String(novoRowspan);
+      alvo.dataset.manual = '1';
+      aplicarPosicoes();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!alvo) return;
+      alvo.classList.remove('resizing');
+      alvo = null;
+    });
+  }
+
   window.dashEntrarEdicao = function() {
     initSortable();
+    initResizable();
     container.classList.add('dash-edit-mode');
     container.querySelectorAll('.dash-widget').forEach(function(w) { w.setAttribute('draggable', 'true'); });
     document.getElementById('dashViewBar').style.display = 'none';
     document.getElementById('dashEditBar').style.display = 'flex';
   };
 
+  window.dashResetTamanho = function(btn) {
+    const w = btn.closest('.dash-widget');
+    w.dataset.manual = '0';
+    medirAlturasReais();
+    aplicarPosicoes();
+  };
+
   window.dashToggleWidget = function(btn) {
     const w = btn.closest('.dash-widget');
     w.classList.toggle('dash-widget-off');
-  };
-
-  window.dashCicleTamanho = function(btn) {
-    const w = btn.closest('.dash-widget');
-    const atual = parseInt(w.dataset.size || '1', 10);
-    const proximo = atual >= 4 ? 1 : atual + 1;
-    w.dataset.size = String(proximo);
-    medirAlturasReais();
-    aplicarPosicoes();
   };
 
   window.dashConcluirEdicao = async function() {
@@ -1102,9 +1149,16 @@
     const hidden = widgets.filter(function(w) { return w.classList.contains('dash-widget-off'); })
                            .map(function(w) { return w.dataset.widget; });
     const sizes = {};
+    const heights = {};
     const positions = {};
     widgets.forEach(function(w) {
-      sizes[w.dataset.widget] = parseInt(w.dataset.size || '1', 10);
+      // só salva tamanho/altura de quem foi redimensionado na mão — os
+      // demais continuam se ajustando sozinhos pro conteúdo real deles daqui
+      // pra frente, em vez de ficar preso no valor de hoje.
+      if (w.dataset.manual === '1') {
+        sizes[w.dataset.widget] = parseInt(w.dataset.size || '1', 10);
+        heights[w.dataset.widget] = parseInt(w.dataset.rowspan || '3', 10);
+      }
       positions[w.dataset.widget] = {
         row: parseInt(w.dataset.row, 10) || 0,
         col: parseInt(w.dataset.col, 10) || 0,
@@ -1114,7 +1168,7 @@
       const resp = await fetch('/dashboard/prefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: order, hidden: hidden, sizes: sizes, positions: positions })
+        body: JSON.stringify({ order: order, hidden: hidden, sizes: sizes, heights: heights, positions: positions })
       });
       const data = await resp.json();
       if (!data.ok) throw new Error(data.erro || 'Erro ao salvar.');
@@ -1134,7 +1188,7 @@
       const resp = await fetch('/dashboard/prefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: [], hidden: [], sizes: {}, positions: {} })
+        body: JSON.stringify({ order: [], hidden: [], sizes: {}, heights: {}, positions: {} })
       });
       const data = await resp.json();
       if (!data.ok) throw new Error(data.erro || 'Erro ao restaurar.');

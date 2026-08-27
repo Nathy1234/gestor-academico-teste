@@ -732,6 +732,14 @@ textarea { resize: vertical; min-height: 80px; }
 
 .dash-widget { position: relative; min-width: 0; }
 .dash-widget .card, .dash-widget .stat-card { height: 100%; }
+/* O card vira uma coluna flex: o cabeçalho fica com altura fixa e a área
+   de conteúdo (tabela/lista/texto) estica ou encolhe pra ocupar exatamente
+   o espaço que sobrar — assim, ao redimensionar o widget verticalmente
+   (alça no canto), o conteúdo se ajusta de verdade (mostra mais ou menos
+   linhas) em vez de sobrar espaço em branco ou cortar sem rolagem. */
+.dash-widgets .card { display: flex; flex-direction: column; }
+.dash-widgets .card > .card-body,
+.dash-widgets .card > .table-wrapper { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .dash-widget-off { display: none; }
 .dash-edit-mode .dash-widget-off { display: block; opacity: .38; filter: grayscale(70%); }
 .dash-edit-mode .dash-widget { outline: 2px dashed transparent; border-radius: 14px; transition: outline-color .12s; }
@@ -755,11 +763,27 @@ textarea { resize: vertical; min-height: 80px; }
 .dash-widget-off .icon-eye { display: none; }
 .dash-widget-off .icon-eye-off { display: block; }
 .dash-widget-resize {
-  min-width: 22px; height: 22px; padding: 0 5px; display: flex; align-items: center; justify-content: center;
+  display: none; min-width: 22px; height: 22px; padding: 0 5px; align-items: center; justify-content: center;
   gap: 3px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;
   border-radius: 5px; font-size: 10px; font-weight: 700;
 }
+/* só aparece quando o widget foi redimensionado manualmente (arrastando a
+   alça) — nesse caso o botão volta ele a se ajustar sozinho de novo */
+.dash-widget[data-manual="1"] .dash-widget-resize { display: flex; }
 .dash-widget-resize:hover { background: var(--surface-2); color: var(--text); }
+
+/* Alça no canto inferior direito — arrastar muda largura (colunas) e
+   altura (linhas) livremente, com o conteúdo do widget se ajustando ao
+   vivo (ver regras de flex acima). Só aparece em modo edição. */
+.dash-widget-resize-handle {
+  display: none; position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
+  z-index: 6; cursor: nwse-resize; border-radius: 0 0 10px 0;
+  background:
+    linear-gradient(135deg, transparent 0 40%, var(--border) 40% 46%, transparent 46% 60%, var(--border) 60% 66%, transparent 66% 80%, var(--border) 80% 86%, transparent 86%);
+}
+.dash-widget-resize-handle:hover { background-color: var(--primary-light); }
+.dash-edit-mode .dash-widget-resize-handle { display: block; }
+.dash-widget.resizing { opacity: .85; outline: 2px dashed var(--primary); }
 
 .inova-badge {
   display: inline-flex; align-items: center; font-size: 9px; font-weight: 700;
