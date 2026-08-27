@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.13.6'
+VERSAO = '1.14.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -214,12 +214,12 @@ def _widgets_dashboard_visiveis():
     return {k: salvo.get(k, v) for k, v in DASHBOARD_WIDGETS_PADRAO_VISIVEL.items()}
 
 def get_dashboard_prefs(user):
-    """Ordem, conjunto de ocultos e tamanhos personalizados da dashboard de
-    `user`, já mesclado com o catálogo atual (widgets desconhecidos/removidos
-    são descartados; widgets novos entram no fim, visíveis, no tamanho
-    padrão). `tamanhos` só tem entrada pros widgets que o usuário mudou de
-    tamanho manualmente — os demais usam o padrão do catálogo (definido no
-    template)."""
+    """Ordem, conjunto de ocultos, tamanhos e posições (linha/coluna) livres
+    da dashboard de `user`, já mesclado com o catálogo atual (widgets
+    desconhecidos/removidos são descartados; widgets novos entram no fim,
+    visíveis, no tamanho padrão e sem posição salva — o template calcula uma
+    posição inicial pra eles). `tamanhos`/`posicoes` só têm entrada pros
+    widgets que o usuário mudou manualmente."""
     try:
         prefs = json.loads(user.dashboard_prefs or '{}')
     except Exception:
@@ -231,8 +231,16 @@ def get_dashboard_prefs(user):
     for wid, tam in tamanhos_in.items():
         if wid in _DASHBOARD_WIDGET_IDS and isinstance(tam, int) and 1 <= tam <= 4:
             tamanhos[wid] = tam
+    posicoes_in = prefs.get('positions', {}) if isinstance(prefs.get('positions'), dict) else {}
+    posicoes = {}
+    for wid, pos in posicoes_in.items():
+        if wid not in _DASHBOARD_WIDGET_IDS or not isinstance(pos, dict):
+            continue
+        r, c = pos.get('row'), pos.get('col')
+        if isinstance(r, int) and isinstance(c, int) and 0 <= r <= 200 and 0 <= c <= 3:
+            posicoes[wid] = {'row': r, 'col': c}
     faltando = [w['id'] for w in DASHBOARD_WIDGETS if w['id'] not in ordem_salva]
-    return ordem_salva + faltando, ocultos, tamanhos
+    return ordem_salva + faltando, ocultos, tamanhos, posicoes
 
 def _insersor_contains(insersor_field, username):
     """Verifica se `username` está entre os insersores de um curso, aceitando
@@ -1370,7 +1378,7 @@ def dashboard():
         qtd = q_base.filter(Course.created_at >= ini, Course.created_at < fim).count()
         serie_mensal.append({'label': ini.strftime('%b'), 'qtd': qtd})
 
-    widgets_ordem, widgets_ocultos, widgets_tamanhos = get_dashboard_prefs(u)
+    widgets_ordem, widgets_ocultos, widgets_tamanhos, widgets_posicoes = get_dashboard_prefs(u)
     todos_usuarios = User.query.order_by(User.username).all() if is_admin else []
     # Padrão global (definido pelo admin em /admin/visibilidade) de quais
     # widgets ficam disponíveis pra quem não é admin — admin sempre vê tudo.
@@ -1425,6 +1433,7 @@ def dashboard():
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
         widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos, widgets_tamanhos=widgets_tamanhos,
+        widgets_posicoes=widgets_posicoes,
         widgets_liberados=widgets_liberados,
         dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios,
         total_sem_resp=total_sem_resp, cursos_sem_resp=cursos_sem_resp,
@@ -1448,15 +1457,15 @@ def dashboard_prefs_obter():
         alvo = User.query.get_or_404(target_id)
     else:
         alvo = u
-    ordem, ocultos, tamanhos = get_dashboard_prefs(alvo)
-    return jsonify({'ok': True, 'order': ordem, 'hidden': list(ocultos), 'sizes': tamanhos})
+    ordem, ocultos, tamanhos, posicoes = get_dashboard_prefs(alvo)
+    return jsonify({'ok': True, 'order': ordem, 'hidden': list(ocultos), 'sizes': tamanhos, 'positions': posicoes})
 
 @app.route('/dashboard/prefs', methods=['POST'])
 @login_required
 def dashboard_prefs_salvar():
-    """Salva a ordem/visibilidade/tamanho dos widgets — da própria conta, ou
-    (só admin) da conta de outro usuário indicada em user_id no corpo da
-    requisição."""
+    """Salva a ordem/visibilidade/tamanho/posição (linha e coluna livres) dos
+    widgets — da própria conta, ou (só admin) da conta de outro usuário
+    indicada em user_id no corpo da requisição."""
     u = User.query.get(session['user_id'])
     data = request.json or {}
     target_id = data.get('user_id')
@@ -1469,7 +1478,9 @@ def dashboard_prefs_salvar():
     ordem_in = data.get('order', [])
     ocultos_in = data.get('hidden', [])
     tamanhos_in = data.get('sizes', {})
-    if not isinstance(ordem_in, list) or not isinstance(ocultos_in, list) or not isinstance(tamanhos_in, dict):
+    posicoes_in = data.get('positions', {})
+    if (not isinstance(ordem_in, list) or not isinstance(ocultos_in, list)
+            or not isinstance(tamanhos_in, dict) or not isinstance(posicoes_in, dict)):
         return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
     ordem = [w for w in ordem_in if w in _DASHBOARD_WIDGET_IDS]
     ocultos = [w for w in ocultos_in if w in _DASHBOARD_WIDGET_IDS]
@@ -1482,7 +1493,17 @@ def dashboard_prefs_salvar():
                 continue
             if 1 <= tam <= 4:
                 tamanhos[wid] = tam
-    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos, 'sizes': tamanhos})
+    posicoes = {}
+    for wid, pos in posicoes_in.items():
+        if wid not in _DASHBOARD_WIDGET_IDS or not isinstance(pos, dict):
+            continue
+        try:
+            r, c = int(pos.get('row')), int(pos.get('col'))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= r <= 200 and 0 <= c <= 3:
+            posicoes[wid] = {'row': r, 'col': c}
+    alvo.dashboard_prefs = json.dumps({'order': ordem, 'hidden': ocultos, 'sizes': tamanhos, 'positions': posicoes})
     db.session.commit()
     return jsonify({'ok': True})
 
