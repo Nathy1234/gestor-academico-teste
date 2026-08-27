@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.13.4'
+VERSAO = '1.13.5'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4909,7 +4909,11 @@ def admin_importar_disciplinas():
 def _importar_ggbr_da_planilha():
     """Lê só a aba GGBR da planilha e cadastra os cursos que ainda não
     existem (confere por nome — não duplica se rodar de novo nem mexe em
-    curso de nenhum outro tipo)."""
+    curso de nenhum outro tipo). GGBR é um curso "rápido" simples — sem
+    módulos/disciplinas detalhados na planilha —, então a matriz dele vira
+    uma única disciplina com o próprio nome do curso (mesmo padrão já
+    usado pra Rápidos), só pra aparecer certo em Matrizes Curriculares.
+    Roda pra todo curso GGBR sem disciplina nenhuma, novo ou já existente."""
     import re as _re3
 
     def limpar_horas(val):
@@ -4929,13 +4933,14 @@ def _importar_ggbr_da_planilha():
     admin = User.query.filter_by(username='admin').first()
     admin_id = admin.id if admin else None
 
-    existentes = {c.nome.strip().upper() for c in Course.query.filter_by(tipo='ggbr').all()}
+    existentes = {c.nome.strip().upper(): c for c in Course.query.filter_by(tipo='ggbr').all()}
 
     import openpyxl
     excel_path = os.path.join(os.path.dirname(__file__), 'CURSOS INOVA - LINKS (1).xlsx')
     wb = openpyxl.load_workbook(excel_path)
 
-    total = 0
+    total_cursos = 0
+    total_discs = 0
     for shname in wb.sheetnames:
         if 'GGBR' in shname.upper():
             ws = wb[shname]
@@ -4943,32 +4948,48 @@ def _importar_ggbr_da_planilha():
                 if not is_numero(row[0]):
                     continue
                 nome = str(row[1] or '').strip()
-                if not nome or nome.upper() in existentes:
+                if not nome:
                     continue
-                c = Course(nome=nome[:300], tipo='ggbr', area=str(row[2] or '').strip()[:100],
-                          horas=limpar_horas(row[3])[:20], valor=limpar_valor(row[5])[:50],
-                          link_venda=str(row[4] or '').strip(), status='ativo',
-                          insersor='INOVA', created_by=admin_id)
-                db.session.add(c)
-                existentes.add(nome.upper())
-                total += 1
+                chave = nome.upper()
+                curso = existentes.get(chave)
+                if not curso:
+                    curso = Course(nome=nome[:300], tipo='ggbr', area=str(row[2] or '').strip()[:100],
+                              horas=limpar_horas(row[3])[:20], valor=limpar_valor(row[5])[:50],
+                              link_venda=str(row[4] or '').strip(), status='ativo',
+                              insersor='INOVA', created_by=admin_id)
+                    db.session.add(curso)
+                    db.session.flush()  # pega o id do curso pra já criar a disciplina dele
+                    existentes[chave] = curso
+                    total_cursos += 1
+                if Discipline.query.filter_by(course_id=curso.id).count() == 0:
+                    horas_disc = limpar_horas(row[3])
+                    db.session.add(Discipline(
+                        course_id=curso.id, ordem=1, nome=nome[:300],
+                        carga=f'{horas_disc}h' if horas_disc else None,
+                        plataforma_ok=True, plataforma_em=datetime.utcnow(),
+                    ))
+                    total_discs += 1
             break
     db.session.commit()
-    return total
+    return total_cursos, total_discs
 
 @app.route('/admin/importar-ggbr', methods=['POST'])
 @admin_required
 def admin_importar_ggbr():
     """Importa os cursos da aba GGBR da planilha que ainda não estão
-    cadastrados — não mexe em nenhum outro tipo de curso nem duplica."""
+    cadastrados e completa a matriz (1 disciplina por curso) de quem ainda
+    não tinha — não mexe em nenhum outro tipo de curso nem duplica."""
     try:
-        total = _importar_ggbr_da_planilha()
-        if total:
+        total_cursos, total_discs = _importar_ggbr_da_planilha()
+        if total_cursos or total_discs:
             log_action(session['user_id'], session['username'], 'importar', 'course', None,
-                       f'Importou {total} curso(s) GGBR da planilha')
-            flash(f'{total} curso(s) GGBR importado(s) com sucesso!', 'success')
+                       f'GGBR: {total_cursos} curso(s) novo(s), {total_discs} disciplina(s) na matriz')
+            partes = []
+            if total_cursos: partes.append(f'{total_cursos} curso(s) novo(s)')
+            if total_discs: partes.append(f'{total_discs} disciplina(s) na matriz')
+            flash(' e '.join(partes) + ' importado(s) com sucesso!', 'success')
         else:
-            flash('Nenhum curso GGBR novo pra importar — todos já estavam cadastrados.', 'info')
+            flash('Nada novo pra importar — cursos e matriz GGBR já estavam completos.', 'info')
     except Exception as e:
         flash(f'Erro ao importar GGBR: {e}', 'danger')
     return redirect(url_for('cursos', tipo='ggbr'))
