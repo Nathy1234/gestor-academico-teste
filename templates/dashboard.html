@@ -128,7 +128,9 @@
   <!-- WIDGETS DA DASHBOARD — ordem e visibilidade são por usuário ────── -->
   <div class="dash-widgets" id="dashWidgets">
   {% for wid in widgets_ordem %}
-    {% if wid == 'backup' and not ultimo_bk %}
+    {% if not is_admin and not widgets_liberados.get(wid, True) %}
+      {# admin desligou esse widget no padrão pra quem não é admin #}
+    {% elif wid == 'backup' and not ultimo_bk %}
       {# sem backup registrado ainda — nada pra mostrar/personalizar #}
     {% elif wid == 'reembolsos_pend' and not pode_ver_reembolsos %}
       {# sem permissão de reembolsos — widget nem aparece #}

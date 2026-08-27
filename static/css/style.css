@@ -151,6 +151,10 @@ body {
 .section-handle { cursor: grab; margin-right: 3px; user-select: none; }
 .sidebar-section-block.section-dragging { opacity: .4; }
 .sidebar-section-block.section-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; border-radius: 8px; }
+.nav-item[draggable="true"] { cursor: grab; }
+.nav-item[draggable="true"]:active { cursor: grabbing; }
+.nav-item.item-dragging { opacity: .4; }
+.nav-item.item-drop-target { outline: 2px dashed var(--primary); outline-offset: -2px; border-radius: 6px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .dot-purple { background: #c084fc; }
 .dot-blue   { background: #60a5fa; }

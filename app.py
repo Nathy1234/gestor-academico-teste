@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.11.2'
+VERSAO = '1.12.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -149,6 +149,68 @@ DASHBOARD_WIDGETS = [
     {'id': 'erp_moodle_resumo', 'label': 'ERP Moodle — Andamento'},
 ]
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
+
+# Catálogo de módulos do menu lateral cujo acesso o admin controla — visível
+# por padrão pra todo mundo, ou só pro admin, definido na tela Visibilidade
+# (/admin/visibilidade). Cada conta ainda pode ser bloqueada individualmente
+# por cima disso, na tela de editar usuário.
+MODULOS_CATALOGO = [
+    {'id': 'cursos',               'label': 'Cursos (catálogo, Pacotes, busca)'},
+    {'id': 'cupons',               'label': 'Cupons'},
+    {'id': 'reembolsos',           'label': 'Reembolsos'},
+    {'id': 'pagamentos_terceiros', 'label': 'Pagamentos Terceiros'},
+    {'id': 'opcoes_curso',         'label': 'Opções de Curso'},
+    {'id': 'matrizes',             'label': 'Matrizes Curriculares'},
+    {'id': 'banco_disciplinas',    'label': 'Banco de Disciplinas'},
+    {'id': 'ia_assistente',        'label': 'IA Assistente'},
+    {'id': 'ferramentas',          'label': 'Ferramentas Externas'},
+    {'id': 'historico',            'label': 'Histórico'},
+]
+# Pagamentos Terceiros e Reembolsos são financeiro — começam só pro admin;
+# os demais já eram visíveis pra equipe por padrão, continuam assim.
+MODULOS_PADRAO_VISIVEL = {
+    'cursos': True, 'cupons': True, 'reembolsos': False, 'pagamentos_terceiros': False,
+    'opcoes_curso': False, 'matrizes': True, 'banco_disciplinas': True,
+    'ia_assistente': True, 'ferramentas': True, 'historico': True,
+}
+
+# Mesma lógica pros widgets da dashboard — "Último Backup" e "Reembolsos
+# pendentes" são coisa de admin/financeiro, começam desligados pra quem não é.
+DASHBOARD_WIDGETS_PADRAO_VISIVEL = {
+    'grafico': True, 'ativos': True, 'em_edicao': True,
+    'finalizados': True, 'ocultos': True, 'descontinuados': True,
+    'andamento': True, 'por_responsavel': True, 'por_tipo': True,
+    'atividade': True, 'atalhos': True, 'backup': False,
+    'sem_responsavel': True, 'reembolsos_pend': False, 'notas': True,
+    'destaques': True, 'erp_moodle_resumo': True,
+}
+
+def _modulos_visiveis():
+    """Padrão global (definido pelo admin em /admin/visibilidade) de quais
+    módulos do menu ficam visíveis pra quem não é admin."""
+    setting = AppSetting.query.get('modulos_visiveis')
+    salvo = {}
+    if setting and setting.value:
+        try:
+            salvo = json.loads(setting.value)
+        except (ValueError, TypeError):
+            salvo = {}
+    return {k: salvo.get(k, v) for k, v in MODULOS_PADRAO_VISIVEL.items()}
+
+def _modulo_visivel(key):
+    return _modulos_visiveis().get(key, True)
+
+def _widgets_dashboard_visiveis():
+    """Padrão global de quais widgets da dashboard ficam disponíveis pra
+    quem não é admin escolher em "Personalizar"."""
+    setting = AppSetting.query.get('dashboard_widgets_visiveis')
+    salvo = {}
+    if setting and setting.value:
+        try:
+            salvo = json.loads(setting.value)
+        except (ValueError, TypeError):
+            salvo = {}
+    return {k: salvo.get(k, v) for k, v in DASHBOARD_WIDGETS_PADRAO_VISIVEL.items()}
 
 def get_dashboard_prefs(user):
     """Ordem, conjunto de ocultos e tamanhos personalizados da dashboard de
@@ -327,17 +389,24 @@ class User(db.Model):
     def can_delete(self):
         return self.role == 'admin' or self.get_perm('cursos_excluir')
 
+    def _modulo_ok(self, modulo_key, block_key):
+        """Admin/editor interno sempre vê tudo. Pra viewer/editor comum: só
+        aparece se o admin deixou o módulo visível por padrão (tela
+        Visibilidade) E essa conta específica não foi bloqueada individualmente."""
+        if self.role == 'admin':
+            return True
+        if not _modulo_visivel(modulo_key):
+            return False
+        return not self._p().get(block_key)
+
     def can_manage_cupons(self):
-        if self._p().get('block_cupons'): return False
-        return True  # todos os usuários logados têm acesso por padrão
+        return self._modulo_ok('cupons', 'block_cupons')
 
     def can_manage_reembolsos(self):
-        if self._p().get('block_reembolsos'): return False
-        return True  # todos os usuários logados têm acesso por padrão
+        return self._modulo_ok('reembolsos', 'block_reembolsos')
 
     def can_view_historico(self):
-        if self._p().get('block_historico'): return False
-        return True  # todos os usuários logados têm acesso por padrão
+        return self._modulo_ok('historico', 'block_historico')
 
     def can_manage_usuarios(self):
         return self.role == 'admin' or self.get_perm('usuarios_gerenciar')
@@ -346,30 +415,25 @@ class User(db.Model):
         return self.role == 'admin' or self.get_perm('backup_gerenciar')
 
     def can_view_cursos(self):
-        if self._p().get('block_cursos'): return False
-        return True  # todos os usuários logados têm acesso por padrão
+        return self._modulo_ok('cursos', 'block_cursos')
 
     def can_view_matrizes(self):
-        if self._p().get('block_matrizes'): return False
-        return True
+        return self._modulo_ok('matrizes', 'block_matrizes')
 
     def can_view_banco_disciplinas(self):
-        if self._p().get('block_banco_disciplinas'): return False
-        return True
+        return self._modulo_ok('banco_disciplinas', 'block_banco_disciplinas')
 
     def can_view_ia_assistente(self):
-        if self._p().get('block_ia_assistente'): return False
-        return True
+        return self._modulo_ok('ia_assistente', 'block_ia_assistente')
 
     def can_view_ferramentas(self):
-        if self._p().get('block_ferramentas'): return False
-        return True
+        return self._modulo_ok('ferramentas', 'block_ferramentas')
 
     def can_manage_pagamentos_terceiros(self):
-        return self.role == 'admin' or self.get_perm('pagamentos_terceiros_gerenciar')
+        return self._modulo_ok('pagamentos_terceiros', 'block_pagamentos_terceiros')
 
     def can_manage_opcoes_curso(self):
-        return self.role == 'admin' or self.get_perm('opcoes_curso_gerenciar')
+        return self._modulo_ok('opcoes_curso', 'block_opcoes_curso')
 
     def can_change_own_password(self):
         if self.role == 'admin': return True
@@ -869,6 +933,21 @@ def _sidebar_section_order():
     except (ValueError, TypeError):
         return []
 
+def _modulos_ordem():
+    """Ordem dos itens/subcategorias dentro de cada seção do menu (ex: a
+    ordem de Cursos/Cupons/Reembolsos/... dentro de INOVA CARREIRA) —
+    global, escolhida pelo admin, mesmo princípio da ordem das seções. Só
+    define POSIÇÃO — quem enxerga cada item continua sendo decidido pelas
+    permissões/visibilidade de cada um, isso aqui nunca libera nem esconde
+    nada."""
+    setting = AppSetting.query.get('modulos_ordem')
+    if not setting or not setting.value:
+        return []
+    try:
+        return json.loads(setting.value)
+    except (ValueError, TypeError):
+        return []
+
 @app.context_processor
 def inject_notificacoes():
     if 'user_id' not in session:
@@ -885,7 +964,7 @@ def inject_notificacoes():
             'solicitacoes_pendentes': [], 'solicitacoes_pendentes_count': 0,
             'can_cupons': False, 'can_reembolsos': False, 'can_historico': False,
             'can_erp_moodle': True, 'somente_erp_moodle': True, 'ferramentas_tools': [],
-            'sidebar_section_order': [],
+            'sidebar_section_order': [], 'modulos_ordem': [],
             'can_cursos': False, 'can_matrizes': False, 'can_banco_disciplinas': False,
             'can_ia_assistente': False, 'can_ferramentas': False,
             'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
@@ -944,6 +1023,7 @@ def inject_notificacoes():
         'somente_erp_moodle': False,
         'ferramentas_tools': ExternalTool.query.order_by(ExternalTool.ordem, ExternalTool.label).all() if u.can_view_ferramentas() else [],
         'sidebar_section_order': _sidebar_section_order(),
+        'modulos_ordem': _modulos_ordem(),
         'can_cursos': u.can_view_cursos(),
         'can_matrizes': u.can_view_matrizes(),
         'can_banco_disciplinas': u.can_view_banco_disciplinas(),
@@ -1280,6 +1360,9 @@ def dashboard():
 
     widgets_ordem, widgets_ocultos, widgets_tamanhos = get_dashboard_prefs(u)
     todos_usuarios = User.query.order_by(User.username).all() if is_admin else []
+    # Padrão global (definido pelo admin em /admin/visibilidade) de quais
+    # widgets ficam disponíveis pra quem não é admin — admin sempre vê tudo.
+    widgets_liberados = _widgets_dashboard_visiveis() if not is_admin else {}
 
     # Widget "Cursos sem responsável" — cursos com o campo insersor vazio,
     # ninguém cuidando deles ainda.
@@ -1330,6 +1413,7 @@ def dashboard():
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
         widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos, widgets_tamanhos=widgets_tamanhos,
+        widgets_liberados=widgets_liberados,
         dashboard_widgets=DASHBOARD_WIDGETS, todos_usuarios=todos_usuarios,
         total_sem_resp=total_sem_resp, cursos_sem_resp=cursos_sem_resp,
         pode_ver_reembolsos=pode_ver_reembolsos,
@@ -3458,6 +3542,33 @@ def historico():
 
 # ─── USUÁRIOS ──────────────────────────────────────────────────────────────────
 
+@app.route('/admin/visibilidade', methods=['GET', 'POST'])
+@admin_required
+def admin_visibilidade():
+    """Padrão global do que fica visível pros usuários não-admin — módulos
+    do menu lateral e widgets da dashboard. Não apaga nem sobrescreve
+    permissão individual nenhuma: quem já tinha uma conta bloqueada em algo
+    específico continua bloqueada, isso aqui só define o ponto de partida
+    pra quem não tem bloqueio/liberação própria."""
+    if request.method == 'POST':
+        modulos = {m['id']: (request.form.get(f"modulo_{m['id']}") == 'on') for m in MODULOS_CATALOGO}
+        widgets = {w['id']: (request.form.get(f"widget_{w['id']}") == 'on') for w in DASHBOARD_WIDGETS}
+        for key, valor in [('modulos_visiveis', modulos), ('dashboard_widgets_visiveis', widgets)]:
+            setting = AppSetting.query.get(key)
+            if not setting:
+                setting = AppSetting(key=key)
+                db.session.add(setting)
+            setting.value = json.dumps(valor)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'visibilidade', None,
+                   'Atualizou o padrão de visibilidade de módulos/widgets')
+        flash('Visibilidade padrão atualizada!', 'success')
+        return redirect(url_for('admin_visibilidade'))
+
+    return render_template('visibilidade.html',
+        modulos_catalogo=MODULOS_CATALOGO, modulos_visiveis=_modulos_visiveis(),
+        widgets_catalogo=DASHBOARD_WIDGETS, widgets_visiveis=_widgets_dashboard_visiveis())
+
 @app.route('/usuarios')
 @admin_required
 def usuarios():
@@ -3592,10 +3703,11 @@ def _perms_from_form(d):
         'cursos_editar', 'cursos_excluir',
         'cupons_gerenciar', 'reembolsos_gerenciar',
         'historico_ver', 'usuarios_gerenciar', 'backup_gerenciar',
-        'erp_moodle_acesso', 'pagamentos_terceiros_gerenciar', 'opcoes_curso_gerenciar',
+        'erp_moodle_acesso',
         'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
         'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
         'block_ia_assistente', 'block_ferramentas',
+        'block_pagamentos_terceiros', 'block_opcoes_curso',
         'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
@@ -4045,24 +4157,26 @@ def ferramenta_abrir(id):
         db.session.commit()
     return render_template('ferramenta_abrir.html', tool=t)
 
-DASHBOARD_BLOCOS_VALIDOS = {
-    'andamento_plataforma', 'cursos_responsavel', 'distribuicao_tipo',
-    'erp_moodle', 'atividade_recente', 'acesso_rapido', 'ultimo_backup',
-    'destaques',
-}
+_MODULOS_ORDEM_IDS = {m['id'] for m in MODULOS_CATALOGO}
 
-@app.route('/api/dashboard-layout', methods=['POST'])
-@login_required
-def api_dashboard_layout():
-    """Salva a ordem em que o usuário arrastou os cards do dashboard.
-    Fica gravada na própria conta — vale em qualquer aparelho que ele logar."""
+@app.route('/api/modulos-ordem', methods=['POST'])
+@admin_required
+def api_modulos_ordem():
+    """Só admin mexe na ordem dos itens/subcategorias dentro das seções do
+    menu (ex: Cursos/Cupons/Reembolsos/... dentro de INOVA CARREIRA) — vale
+    globalmente pra todo mundo, igual a ordem das seções. Só reordena; quem
+    enxerga cada item continua sendo decidido pela permissão/visibilidade
+    de cada um."""
     data = request.get_json(silent=True) or {}
     ordem = data.get('order', [])
     if not isinstance(ordem, list):
         return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
-    ordem = [b for b in ordem if b in DASHBOARD_BLOCOS_VALIDOS]
-    u = User.query.get(session['user_id'])
-    u.dashboard_layout = json.dumps(ordem) if ordem else None
+    ordem = [s for s in ordem if s in _MODULOS_ORDEM_IDS]
+    setting = AppSetting.query.get('modulos_ordem')
+    if not setting:
+        setting = AppSetting(key='modulos_ordem')
+        db.session.add(setting)
+    setting.value = json.dumps(ordem) if ordem else None
     db.session.commit()
     return jsonify({'ok': True})
 

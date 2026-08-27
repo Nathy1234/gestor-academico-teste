@@ -110,6 +110,65 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 })();
 
+// ── ORDEM DOS ITENS (SUBCATEGORIAS) DENTRO DE CADA SEÇÃO ────────────
+// Mesmo princípio da ordem das seções acima: global, escolhida pelo
+// admin, vale pra todo mundo — só reordena, nunca decide quem vê o quê
+// (isso continua vindo das permissões/visibilidade de cada item).
+(function() {
+  const ordemSalva = window.MODULOS_ORDEM || [];
+  const ehAdmin = window.SIDEBAR_IS_ADMIN === true;
+
+  document.querySelectorAll('.sidebar-section-items').forEach(lista => {
+    const itens = {};
+    lista.querySelectorAll(':scope > .nav-item[data-item-id]').forEach(a => { itens[a.dataset.itemId] = a; });
+    if (ordemSalva.length) {
+      ordemSalva.forEach(id => { if (itens[id]) lista.appendChild(itens[id]); });
+    }
+    if (!ehAdmin) return;
+
+    let arrastando = null;
+    lista.querySelectorAll(':scope > .nav-item[data-item-id]').forEach(a => {
+      a.setAttribute('draggable', 'true');
+      a.addEventListener('dragstart', () => {
+        arrastando = a;
+        a.classList.add('item-dragging');
+      });
+      a.addEventListener('dragend', () => {
+        a.classList.remove('item-dragging');
+        lista.querySelectorAll('.item-drop-target').forEach(el => el.classList.remove('item-drop-target'));
+        arrastando = null;
+        salvarOrdemItens();
+      });
+      a.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (!arrastando || arrastando === a) return;
+        lista.querySelectorAll('.item-drop-target').forEach(el => el.classList.remove('item-drop-target'));
+        a.classList.add('item-drop-target');
+      });
+      a.addEventListener('dragleave', () => a.classList.remove('item-drop-target'));
+      a.addEventListener('drop', e => {
+        e.preventDefault();
+        a.classList.remove('item-drop-target');
+        if (!arrastando || arrastando === a) return;
+        const todos = Array.from(lista.querySelectorAll(':scope > .nav-item[data-item-id]'));
+        const posArrastando = todos.indexOf(arrastando);
+        const posAlvo = todos.indexOf(a);
+        if (posArrastando < posAlvo) a.after(arrastando);
+        else a.before(arrastando);
+      });
+    });
+  });
+
+  function salvarOrdemItens() {
+    const ordem = Array.from(document.querySelectorAll('.sidebar-section-items > .nav-item[data-item-id]')).map(a => a.dataset.itemId);
+    fetch('/api/modulos-ordem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: ordem }),
+    });
+  }
+})();
+
 // ── THEME ────────────────────────────────────────────────────────
 function toggleTheme() {
   const html = document.documentElement;
