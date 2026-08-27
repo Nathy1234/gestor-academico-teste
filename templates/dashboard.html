@@ -860,6 +860,27 @@
     return valor.split(' ').filter(Boolean).length || 1;
   }
 
+  const ROW_UNIT = 40, GRID_GAP = 10;
+
+  // Cada widget tem uma altura de conteúdo diferente na vida real (nem
+  // sempre igual ao que a estimativa do servidor previa), então medimos a
+  // altura de verdade do card/stat-card de dentro de cada widget e
+  // convertemos pro rowspan correspondente — sem isso, dois cards do mesmo
+  // "tipo" podem ficar com alturas diferentes (um sobrando espaço embaixo,
+  // outro meio espremido) só por causa da estimativa não bater.
+  function medirAlturasReais() {
+    container.querySelectorAll('.dash-widget').forEach(function(w) {
+      const conteudo = w.querySelector('.card, .stat-card');
+      if (!conteudo) return;
+      conteudo.style.height = 'auto';
+      const h = conteudo.scrollHeight;
+      conteudo.style.height = '';
+      if (h > 0) {
+        w.dataset.rowspan = String(Math.max(1, Math.ceil((h + GRID_GAP) / (ROW_UNIT + GRID_GAP))));
+      }
+    });
+  }
+
   function aplicarPosicoes() {
     const cols = numColunas();
     container.querySelectorAll('.dash-widget').forEach(function(w) {
@@ -922,7 +943,7 @@
   let resizeTimer = null;
   window.addEventListener('resize', function() {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(aplicarPosicoes, 150);
+    resizeTimer = setTimeout(function() { medirAlturasReais(); aplicarPosicoes(); }, 150);
   });
 
   function initSortable() {
@@ -970,40 +991,52 @@
         reflowAgendado = false;
         if (!dragEl) return;
 
-        // Prioridade 1: o widget que o cursor está literalmente em cima —
-        // assim um widget grande vizinho não "puxa" o drop pra ele só por
-        // ter o centro numericamente mais próximo do que um pequeno do lado.
-        let alvo = null;
-        container.querySelectorAll('.dash-widget').forEach(function(el) {
-          if (el === dragEl || alvo) return;
-          const r = el.getBoundingClientRect();
-          if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
-            alvo = el;
-          }
-        });
-        // Prioridade 2 (fallback): mais próximo pelo centro, só quando o
-        // cursor não está em cima de widget nenhum (ex: num vão vazio).
-        if (!alvo) {
-          let distMin = Infinity;
-          container.querySelectorAll('.dash-widget').forEach(function(el) {
-            if (el === dragEl) return;
-            const r = el.getBoundingClientRect();
-            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-            const d = Math.hypot(clientX - cx, clientY - cy);
-            if (d < distMin) { distMin = d; alvo = el; }
-          });
-        }
-        if (!alvo || alvo === ultimoAlvo) return;
-        ultimoAlvo = alvo;
+        // Calcula a célula (linha/coluna) por baixo do cursor diretamente
+        // pela posição em pixels — não mais pelo widget mais próximo. Isso
+        // permite soltar num vão vazio de verdade (ex: do lado de um card
+        // pequeno) sem que o sistema "puxe" o drop pro widget vizinho mais
+        // próximo, que era o motivo de não dar pra encaixar nada ali.
+        const cols = numColunas();
+        let size = parseInt(dragEl.dataset.size || '1', 10) || 1;
+        if (size > cols) size = cols;
+        const rowSpanDrag = parseInt(dragEl.dataset.rowspan, 10) || 3;
 
-        // Troca de lugar: cada um assume a linha/coluna que era do outro.
-        // Solta exatamente onde você mandar — nada mais é recalculado
-        // sozinho pelo resto da tela.
-        const rowD = dragEl.dataset.row, colD = dragEl.dataset.col;
-        dragEl.dataset.row = alvo.dataset.row;
-        dragEl.dataset.col = alvo.dataset.col;
-        alvo.dataset.row = rowD;
-        alvo.dataset.col = colD;
+        const rect = container.getBoundingClientRect();
+        const colWidth = (rect.width - GRID_GAP * (cols - 1)) / cols;
+        let col = Math.floor((clientX - rect.left) / (colWidth + GRID_GAP));
+        if (isNaN(col)) col = 0;
+        col = Math.max(0, Math.min(col, cols - size));
+        let row = Math.floor((clientY - rect.top) / (ROW_UNIT + GRID_GAP));
+        if (isNaN(row) || row < 0) row = 0;
+
+        if (ultimoAlvo && ultimoAlvo.row === row && ultimoAlvo.col === col) return;
+        ultimoAlvo = { row: row, col: col };
+
+        // Só troca de lugar com outro widget se a célula alvo realmente
+        // colidir com o espaço que ele ocupa; se estiver vazia, o card
+        // arrastado só ocupa essa posição, sem mexer em mais nada.
+        let colidiu = null;
+        container.querySelectorAll('.dash-widget').forEach(function(el) {
+          if (el === dragEl || colidiu) return;
+          const r0 = parseInt(el.dataset.row, 10) || 0;
+          const c0 = parseInt(el.dataset.col, 10) || 0;
+          const s0 = parseInt(el.dataset.size, 10) || 1;
+          const rs0 = parseInt(el.dataset.rowspan, 10) || 3;
+          const sobrepoeCol = col < c0 + s0 && col + size > c0;
+          const sobrepoeLinha = row < r0 + rs0 && row + rowSpanDrag > r0;
+          if (sobrepoeCol && sobrepoeLinha) colidiu = el;
+        });
+
+        if (colidiu) {
+          const rowD = dragEl.dataset.row, colD = dragEl.dataset.col;
+          dragEl.dataset.row = colidiu.dataset.row;
+          dragEl.dataset.col = colidiu.dataset.col;
+          colidiu.dataset.row = rowD;
+          colidiu.dataset.col = colD;
+        } else {
+          dragEl.dataset.row = String(row);
+          dragEl.dataset.col = String(col);
+        }
         aplicarPosicoes();
       });
     });
@@ -1034,6 +1067,7 @@
     const atual = parseInt(w.dataset.size || '1', 10);
     const proximo = atual >= 4 ? 1 : atual + 1;
     w.dataset.size = String(proximo);
+    medirAlturasReais();
     aplicarPosicoes();
   };
 
@@ -1085,6 +1119,7 @@
     }
   };
 
+  medirAlturasReais();
   posicionarNovosWidgets();
   aplicarPosicoes();
 })();
