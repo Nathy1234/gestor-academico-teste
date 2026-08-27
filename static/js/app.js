@@ -114,20 +114,23 @@ document.addEventListener('DOMContentLoaded', () => {
 // Mesmo princípio da ordem das seções acima: global, escolhida pelo
 // admin, vale pra todo mundo — só reordena, nunca decide quem vê o quê
 // (isso continua vindo das permissões/visibilidade de cada item).
-(function() {
-  const ordemSalva = window.MODULOS_ORDEM || [];
+// Serve tanto pros módulos fixos (Cursos/Matrizes/...) quanto pras
+// ferramentas externas (lista dinâmica, cadastrada pelo admin) — cada
+// grupo usa seu próprio atributo de id e seu próprio endpoint de salvar,
+// mas o mecanismo de arrastar é o mesmo.
+function initItemDragReorder(itemSelector, ordemSalva, endpointUrl, extrairId) {
   const ehAdmin = window.SIDEBAR_IS_ADMIN === true;
 
   document.querySelectorAll('.sidebar-section-items').forEach(lista => {
     const itens = {};
-    lista.querySelectorAll(':scope > .nav-item[data-item-id]').forEach(a => { itens[a.dataset.itemId] = a; });
+    lista.querySelectorAll(':scope > ' + itemSelector).forEach(a => { itens[extrairId(a)] = a; });
     if (ordemSalva.length) {
       ordemSalva.forEach(id => { if (itens[id]) lista.appendChild(itens[id]); });
     }
     if (!ehAdmin) return;
 
     let arrastando = null;
-    lista.querySelectorAll(':scope > .nav-item[data-item-id]').forEach(a => {
+    lista.querySelectorAll(':scope > ' + itemSelector).forEach(a => {
       a.setAttribute('draggable', 'true');
       a.addEventListener('dragstart', () => {
         arrastando = a;
@@ -137,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         a.classList.remove('item-dragging');
         lista.querySelectorAll('.item-drop-target').forEach(el => el.classList.remove('item-drop-target'));
         arrastando = null;
-        salvarOrdemItens();
+        salvarOrdem();
       });
       a.addEventListener('dragover', e => {
         e.preventDefault();
@@ -150,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         a.classList.remove('item-drop-target');
         if (!arrastando || arrastando === a) return;
-        const todos = Array.from(lista.querySelectorAll(':scope > .nav-item[data-item-id]'));
+        const todos = Array.from(lista.querySelectorAll(':scope > ' + itemSelector));
         const posArrastando = todos.indexOf(arrastando);
         const posAlvo = todos.indexOf(a);
         if (posArrastando < posAlvo) a.after(arrastando);
@@ -159,15 +162,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  function salvarOrdemItens() {
-    const ordem = Array.from(document.querySelectorAll('.sidebar-section-items > .nav-item[data-item-id]')).map(a => a.dataset.itemId);
-    fetch('/api/modulos-ordem', {
+  function salvarOrdem() {
+    const ordem = Array.from(document.querySelectorAll('.sidebar-section-items > ' + itemSelector)).map(extrairId);
+    fetch(endpointUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ order: ordem }),
     });
   }
-})();
+}
+
+initItemDragReorder('.nav-item[data-item-id]', window.MODULOS_ORDEM || [], '/api/modulos-ordem', a => a.dataset.itemId);
+// ferramentas já chegam do servidor na ordem certa (ORDER BY ExternalTool.ordem)
+// — não precisa reordenar de novo no carregamento, só habilitar o arrastar.
+initItemDragReorder('.nav-item[data-tool-id]', [], '/api/ferramentas-ordem', a => a.dataset.toolId);
 
 // ── THEME ────────────────────────────────────────────────────────
 function toggleTheme() {

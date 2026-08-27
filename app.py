@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.12.1'
+VERSAO = '1.12.2'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4176,6 +4176,27 @@ def api_modulos_ordem():
         setting = AppSetting(key='modulos_ordem')
         db.session.add(setting)
     setting.value = json.dumps(ordem) if ordem else None
+    db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/api/ferramentas-ordem', methods=['POST'])
+@admin_required
+def api_ferramentas_ordem():
+    """Só admin mexe na ordem das ferramentas externas no menu — grava
+    direto no campo `ordem` de cada uma (mesmo campo já usado quando uma
+    ferramenta nova é cadastrada), vale globalmente pra todo mundo."""
+    data = request.get_json(silent=True) or {}
+    ordem = data.get('order', [])
+    if not isinstance(ordem, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    try:
+        ids = [int(i) for i in ordem]
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    tools = {t.id: t for t in ExternalTool.query.filter(ExternalTool.id.in_(ids)).all()}
+    for posicao, tool_id in enumerate(ids):
+        if tool_id in tools:
+            tools[tool_id].ordem = posicao
     db.session.commit()
     return jsonify({'ok': True})
 
