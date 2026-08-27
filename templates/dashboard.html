@@ -868,6 +868,12 @@
   // convertemos pro rowspan correspondente — sem isso, dois cards do mesmo
   // "tipo" podem ficar com alturas diferentes (um sobrando espaço embaixo,
   // outro meio espremido) só por causa da estimativa não bater.
+  // Cards pequenos de estatística (1 coluna, texto curto) devem ter todos a
+  // mesma altura pra caber lado a lado numa linha só — sem isso, um ring
+  // card um pouco mais alto que os outros faz o mosaico empilhar os
+  // menores debaixo dele em vez de alinhar todos na mesma linha.
+  const GRUPO_ALTURA_UNIFORME = ['ativos', 'em_edicao', 'finalizados', 'ocultos', 'descontinuados', 'reembolsos_pend', 'backup'];
+
   function medirAlturasReais() {
     container.querySelectorAll('.dash-widget').forEach(function(w) {
       const conteudo = w.querySelector('.card, .stat-card');
@@ -879,6 +885,19 @@
         w.dataset.rowspan = String(Math.max(1, Math.ceil((h + GRID_GAP) / (ROW_UNIT + GRID_GAP))));
       }
     });
+
+    let maiorUniforme = 0;
+    GRUPO_ALTURA_UNIFORME.forEach(function(wid) {
+      const w = container.querySelector('.dash-widget[data-widget="' + wid + '"]');
+      if (!w) return;
+      maiorUniforme = Math.max(maiorUniforme, parseInt(w.dataset.rowspan, 10) || 0);
+    });
+    if (maiorUniforme > 0) {
+      GRUPO_ALTURA_UNIFORME.forEach(function(wid) {
+        const w = container.querySelector('.dash-widget[data-widget="' + wid + '"]');
+        if (w) w.dataset.rowspan = String(maiorUniforme);
+      });
+    }
   }
 
   function aplicarPosicoes() {
