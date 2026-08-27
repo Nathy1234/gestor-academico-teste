@@ -848,24 +848,54 @@
 
   function compactar() {
     const cols = numColunas();
+    // 1ª passada: agrupa os widgets visíveis em linhas, do jeito que
+    // caberiam normalmente (cada um do tamanho que já tem).
+    const linhas = [[]];
     let cursor = 0;
-    let ultimoEl = null, ultimoInicio = 0;
     container.querySelectorAll('.dash-widget').forEach(function(w) {
       if (getComputedStyle(w).display === 'none') return;
       let span = parseInt(w.dataset.size || '1', 10) || 1;
       if (span > cols) span = cols;
-      if (cursor + span > cols) cursor = 0;
-      w.style.gridColumn = (cursor + 1) + ' / span ' + span;
-      ultimoEl = w;
-      ultimoInicio = cursor;
+      if (cursor + span > cols) { linhas.push([]); cursor = 0; }
+      linhas[linhas.length - 1].push({ el: w, span: span });
       cursor += span;
-      if (cursor >= cols) cursor = 0;
+      if (cursor >= cols) { linhas.push([]); cursor = 0; }
     });
-    // Se a última linha não fechou nas 4 colunas, estica o último widget
-    // até a borda em vez de deixar sobrar espaço vazio no fim da tela.
-    if (ultimoEl && cursor > 0) {
-      ultimoEl.style.gridColumn = (ultimoInicio + 1) + ' / span ' + (cols - ultimoInicio);
-    }
+    if (linhas.length && linhas[linhas.length - 1].length === 0) linhas.pop();
+
+    // 2ª passada: qualquer linha que não fechou as 4 colunas (não só a
+    // última — um widget grande logo depois de uma linha quase cheia
+    // também pode deixar sobra no meio) distribui o espaço entre os
+    // widgets dela, cada um crescendo mais ou menos na proporção do
+    // tamanho que já tinha — dois widgets do mesmo tamanho na mesma linha
+    // continuam do mesmo tamanho um do lado do outro, em vez de um ficar
+    // bem maior que o outro à toa.
+    linhas.forEach(function(linha) {
+      const totalUsado = linha.reduce(function(soma, item) { return soma + item.span; }, 0);
+      let extra = cols - totalUsado;
+      if (extra > 0 && linha.length) {
+        // dá +1 coluna por vez pro widget que, proporcionalmente ao seu
+        // tamanho original, está "ficando pra trás" dos outros da linha —
+        // assim quem começou maior continua maior, só que todos crescem
+        // juntos até preencher a linha.
+        const cresceu = linha.map(function() { return 0; });
+        while (extra > 0) {
+          let alvo = 0, pior = Infinity;
+          for (let i = 0; i < linha.length; i++) {
+            const proporcao = (linha[i].span + cresceu[i]) / linha[i].span;
+            if (proporcao < pior) { pior = proporcao; alvo = i; }
+          }
+          cresceu[alvo]++;
+          extra--;
+        }
+        linha.forEach(function(item, i) { item.span += cresceu[i]; });
+      }
+      let col = 1;
+      linha.forEach(function(item) {
+        item.el.style.gridColumn = col + ' / span ' + item.span;
+        col += item.span;
+      });
+    });
   }
 
   let resizeTimer = null;
