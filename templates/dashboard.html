@@ -860,10 +860,14 @@
     if (container.dataset.sortableInit) return;
     container.dataset.sortableInit = '1';
 
+    let ultimoAlvo = null, ultimoAntes = null, reflowAgendado = false;
+
     container.addEventListener('dragstart', function(e) {
       const w = e.target.closest('.dash-widget');
       if (!w || !container.classList.contains('dash-edit-mode')) return;
       dragEl = w;
+      ultimoAlvo = null;
+      ultimoAntes = null;
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', w.dataset.widget); } catch (err) {}
       setTimeout(function() { w.classList.add('dragging'); }, 0);
@@ -872,39 +876,61 @@
     container.addEventListener('dragend', function() {
       if (dragEl) dragEl.classList.remove('dragging');
       dragEl = null;
+      ultimoAlvo = null;
+      ultimoAntes = null;
     });
 
     container.addEventListener('dragover', function(e) {
       if (!dragEl) return;
       e.preventDefault();
-      // Prioridade 1: o widget que o cursor está literalmente em cima —
-      // assim um widget grande vizinho não "puxa" o drop pra ele só por
-      // ter o centro numericamente mais próximo do que um pequeno do lado.
-      let closest = null;
-      container.querySelectorAll('.dash-widget').forEach(function(el) {
-        if (el === dragEl || closest) return;
-        const r = el.getBoundingClientRect();
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-          closest = el;
-        }
-      });
-      // Prioridade 2 (fallback): mais próximo pelo centro, só quando o
-      // cursor não está em cima de widget nenhum (ex: num vão vazio).
-      if (!closest) {
-        let closestDist = Infinity;
+
+      // Só recalcula a posição (e mexe no DOM) uma vez por frame, nunca a
+      // cada pixel que o mouse anda — chamar insertBefore()/compactar() em
+      // toda pancada de dragover (dispara dezenas de vezes por segundo)
+      // era a causa do card ficar "flutuando"/sobrepondo os outros.
+      if (reflowAgendado) return;
+      reflowAgendado = true;
+      const clientX = e.clientX, clientY = e.clientY;
+
+      requestAnimationFrame(function() {
+        reflowAgendado = false;
+        if (!dragEl) return;
+
+        // Prioridade 1: o widget que o cursor está literalmente em cima —
+        // assim um widget grande vizinho não "puxa" o drop pra ele só por
+        // ter o centro numericamente mais próximo do que um pequeno do lado.
+        let alvo = null;
         container.querySelectorAll('.dash-widget').forEach(function(el) {
-          if (el === dragEl) return;
+          if (el === dragEl || alvo) return;
           const r = el.getBoundingClientRect();
-          const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-          const d = Math.hypot(e.clientX - cx, e.clientY - cy);
-          if (d < closestDist) { closestDist = d; closest = el; }
+          if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+            alvo = el;
+          }
         });
-      }
-      if (!closest) return;
-      const r = closest.getBoundingClientRect();
-      const before = e.clientX < r.left + r.width / 2;
-      closest.parentNode.insertBefore(dragEl, before ? closest : closest.nextSibling);
-      compactar();
+        // Prioridade 2 (fallback): mais próximo pelo centro, só quando o
+        // cursor não está em cima de widget nenhum (ex: num vão vazio).
+        if (!alvo) {
+          let distMin = Infinity;
+          container.querySelectorAll('.dash-widget').forEach(function(el) {
+            if (el === dragEl) return;
+            const r = el.getBoundingClientRect();
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            const d = Math.hypot(clientX - cx, clientY - cy);
+            if (d < distMin) { distMin = d; alvo = el; }
+          });
+        }
+        if (!alvo) return;
+        const r = alvo.getBoundingClientRect();
+        const antes = clientX < r.left + r.width / 2;
+
+        // Nada mudou desde a última vez — não mexe no DOM à toa.
+        if (alvo === ultimoAlvo && antes === ultimoAntes) return;
+        ultimoAlvo = alvo;
+        ultimoAntes = antes;
+
+        alvo.parentNode.insertBefore(dragEl, antes ? alvo : alvo.nextSibling);
+        compactar();
+      });
     });
 
     // em modo edição, clique não deve navegar pelos links dos cards
