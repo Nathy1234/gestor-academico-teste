@@ -137,6 +137,19 @@
     'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1,
     'destaques': 2, 'erp_moodle_resumo': 3
   } %}
+  {# Altura de cada widget, em unidades de 40px (estimativa por tipo de
+     conteúdo — a "Andamento"/"Cursos por Responsável" agora têm rolagem
+     interna com limite, então dá pra prever a altura delas também). Isso
+     é o que abre espaço de verdade do lado de um widget grande pra
+     encaixar outro pequeno embaixo dos menores. #}
+  {% set widget_alturas = {
+    'grafico': 5, 'ativos': 3, 'em_edicao': 3,
+    'finalizados': 2, 'ocultos': 2, 'descontinuados': 2,
+    'andamento': 10, 'por_responsavel': 9, 'por_tipo': 8,
+    'atividade': 8, 'atalhos': 7, 'backup': 3,
+    'sem_responsavel': 8, 'reembolsos_pend': 2, 'notas': 4,
+    'destaques': 3, 'erp_moodle_resumo': 4
+  } %}
 
   <!-- WIDGETS DA DASHBOARD — ordem e visibilidade são por usuário ────── -->
   <div class="dash-widgets" id="dashWidgets">
@@ -153,7 +166,7 @@
       {# sem acesso ao ERP Moodle — widget nem aparece #}
     {% else %}
     {% set pos = widgets_posicoes.get(wid) %}
-    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}" data-size="{{ widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}" data-row="{{ pos.row if pos is not none else '' }}" data-col="{{ pos.col if pos is not none else '' }}">
+    <div class="dash-widget{% if wid in widgets_ocultos %} dash-widget-off{% endif %}" data-widget="{{ wid }}" data-size="{{ widgets_tamanhos.get(wid, widget_sizes.get(wid, 1)) }}" data-rowspan="{{ widget_alturas.get(wid, 3) }}" data-row="{{ pos.row if pos is not none else '' }}" data-col="{{ pos.col if pos is not none else '' }}">
       <div class="dash-widget-controls">
         <span class="dash-drag-handle" title="Arrastar pra reordenar">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px">
@@ -301,7 +314,7 @@
           </div>
           <a href="{{ url_for('matrizes') }}" class="btn btn-sm btn-secondary">Ver matrizes →</a>
         </div>
-        <div class="table-wrapper">
+        <div class="table-wrapper" style="max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
           <table style="width:100%">
             <thead>
               <tr>
@@ -420,7 +433,7 @@
           </div>
           <a href="{{ url_for('cursos') }}" class="btn btn-sm btn-secondary">Ver todos →</a>
         </div>
-        <div class="table-wrapper">
+        <div class="table-wrapper" style="max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent">
           {% if cursos_ins_stats %}
           <table style="width:100%">
             <thead>
@@ -858,33 +871,51 @@
       w.dataset.col = String(col);
       let row = parseInt(w.dataset.row, 10);
       if (isNaN(row) || row < 0) row = 0;
+      const rowSpan = parseInt(w.dataset.rowspan, 10) || 3;
       w.style.gridColumn = (col + 1) + ' / span ' + size;
-      w.style.gridRow = String(row + 1);
+      w.style.gridRow = (row + 1) + ' / span ' + rowSpan;
     });
   }
 
+  // Layout inicial tipo "mosaico": cada widget sem posição salva ainda
+  // (conta nova, ou widget novo no catálogo) entra na coluna(s) onde
+  // sobra menos espaço livre embaixo dos vizinhos — evita sobreposição e
+  // já aproveita bem os espaços de altura diferente entre eles.
   function posicionarNovosWidgets() {
     const cols = numColunas();
     const semPosicao = [];
-    let maxRow = -1;
+    const proximaLinhaPorCol = new Array(cols).fill(0);
     container.querySelectorAll('.dash-widget').forEach(function(w) {
       if (w.dataset.row === '') {
         semPosicao.push(w);
-      } else {
-        const r = parseInt(w.dataset.row, 10);
-        if (!isNaN(r)) maxRow = Math.max(maxRow, r);
+        return;
+      }
+      const r = parseInt(w.dataset.row, 10) || 0;
+      let c = parseInt(w.dataset.col, 10) || 0;
+      let size = parseInt(w.dataset.size, 10) || 1;
+      const rowSpan = parseInt(w.dataset.rowspan, 10) || 3;
+      if (size > cols) size = cols;
+      if (c > cols - size) c = Math.max(0, cols - size);
+      for (let i = c; i < c + size; i++) {
+        proximaLinhaPorCol[i] = Math.max(proximaLinhaPorCol[i], r + rowSpan);
       }
     });
     if (!semPosicao.length) return;
-    let row = maxRow + 1, cursor = 0;
     semPosicao.forEach(function(w) {
       let size = parseInt(w.dataset.size || '1', 10) || 1;
       if (size > cols) size = cols;
-      if (cursor + size > cols) { row++; cursor = 0; }
-      w.dataset.row = String(row);
-      w.dataset.col = String(cursor);
-      cursor += size;
-      if (cursor >= cols) { row++; cursor = 0; }
+      const rowSpan = parseInt(w.dataset.rowspan, 10) || 3;
+      let melhorCol = 0, melhorLinha = Infinity;
+      for (let c = 0; c <= cols - size; c++) {
+        let linhaNecessaria = 0;
+        for (let i = c; i < c + size; i++) linhaNecessaria = Math.max(linhaNecessaria, proximaLinhaPorCol[i]);
+        if (linhaNecessaria < melhorLinha) { melhorLinha = linhaNecessaria; melhorCol = c; }
+      }
+      w.dataset.row = String(melhorLinha);
+      w.dataset.col = String(melhorCol);
+      for (let i = melhorCol; i < melhorCol + size; i++) {
+        proximaLinhaPorCol[i] = melhorLinha + rowSpan;
+      }
     });
   }
 

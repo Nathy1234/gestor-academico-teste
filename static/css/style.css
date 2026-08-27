@@ -694,12 +694,13 @@ textarea { resize: vertical; min-height: 80px; }
    Admin pode editar a de qualquer usuário pelo modal "Dashboards da equipe". */
 .dash-widgets {
   display: grid; grid-template-columns: repeat(4, 1fr);
-  /* grid-auto-flow: row (não dense) — a posição de cada widget é calculada
-     e atribuída explicitamente via JS (função compactar() no template),
-     então o navegador só precisa continuar pra próxima linha em ordem,
-     nunca tentar "encaixar" um item numa linha anterior por conta própria. */
-  grid-auto-flow: row; gap: 10px; margin-bottom: 16px;
-  align-items: start;
+  /* Cada widget tem linha, coluna, largura E altura explícitas, atribuídas
+     via JS (função aplicarPosicoes() no template) — o navegador não decide
+     posição nenhuma sozinho. grid-auto-rows fixo (unidade de 40px) é o que
+     permite um widget alto e um baixo ficarem lado a lado sem que a linha
+     toda vire da altura do maior: cada um ocupa só as próprias linhas, e o
+     que sobra do lado do widget baixo continua livre pra receber outro. */
+  grid-auto-flow: row; grid-auto-rows: 40px; gap: 10px; margin-bottom: 16px;
 }
 /* dashboard mais compacta — reduz cards/textos/ícones só aqui dentro,
    sem afetar essas mesmas classes usadas em outras telas do sistema */
