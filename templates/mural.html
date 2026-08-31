@@ -5,10 +5,26 @@
   <div class="page-header">
     <div>
       <div class="page-title">Mural da Equipe</div>
-      <div class="page-subtitle">Recados rápidos pra todo mundo — reaja com emoji, sem precisar de aba separada</div>
+      <div class="page-subtitle">Recados públicos pra todo mundo, ou conversas privadas — marcar alguém abre uma conversa só entre vocês dois</div>
     </div>
   </div>
 
+  <div class="mural-tabs">
+    <a href="{{ url_for('mural') }}" class="mural-tab {% if aba == 'publico' %}active{% endif %}">💬 Mural</a>
+    {% for c in conversas %}
+    <a href="{{ url_for('mural', aba=c.id) }}" class="mural-tab {% if contato and contato.id == c.id %}active{% endif %}">🔒 {{ c|nome_exibicao }}</a>
+    {% endfor %}
+    <select class="mural-tab-nova" onchange="if(this.value) window.location.href='{{ url_for('mural') }}?aba=' + this.value">
+      <option value="">+ Nova conversa…</option>
+      {% for uu in todos_usuarios %}
+      {% if not conversas or uu.id not in conversas|map(attribute='id')|list %}
+      <option value="{{ uu.id }}">{{ uu|nome_exibicao }}</option>
+      {% endif %}
+      {% endfor %}
+    </select>
+  </div>
+
+  {% if aba == 'publico' %}
   <div id="avisoNovasMsgs" style="display:none;margin-bottom:12px">
     <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;color:var(--primary)" onclick="location.reload()">
       ↻ Tem mensagem nova — clique pra atualizar
@@ -74,9 +90,99 @@
     </div></div>
     {% endfor %}
   </div>
+
+  {% else %}
+  <!-- CONVERSA PRIVADA -->
+  <div class="card mural-chat">
+    <div class="card-header" style="display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;overflow:hidden;
+                  background:linear-gradient(135deg,var(--primary),#d9640a);display:flex;
+                  align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px">
+        {% if contato.foto %}
+        <img src="{{ url_for('usuario_foto', id=contato.id) }}" style="width:100%;height:100%;object-fit:cover">
+        {% else %}{{ contato.username[0]|upper }}{% endif %}
+      </div>
+      <div class="card-title">{{ contato|nome_exibicao }}</div>
+      <span class="badge badge-oculto" style="font-size:10px;margin-left:auto">🔒 Só vocês dois veem</span>
+    </div>
+    <div class="mural-chat-corpo" id="chatCorpo">
+      {% for m in mensagens %}
+      {% set minha = m.user_id == session.user_id %}
+      <div class="mural-bolha-linha {% if minha %}minha{% endif %}">
+        <div class="mural-bolha">
+          <div class="mural-bolha-texto">{{ m.texto }}</div>
+          <div class="mural-bolha-meta">
+            {{ m.created_at.strftime('%d/%m %H:%M') }}
+            {% if m.user_id == session.user_id %}
+            <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="display:inline"
+                  onsubmit="return confirm('Excluir esta mensagem?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" title="Excluir">✕</button>
+            </form>
+            {% endif %}
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+            {% for e in emojis %}
+            {% set reagido = (m.id, e) in minhas_reacoes %}
+            {% set qtd = (reacoes_por_msg.get(m.id, []) | selectattr('emoji', 'equalto', e) | map(attribute='qtd') | first) or 0 %}
+            {% if reagido or qtd > 0 %}
+            <button type="button" class="btn-reacao {% if reagido %}is-active{% endif %}"
+                    data-msg-id="{{ m.id }}" data-emoji="{{ e }}" onclick="reagirMural(this)" style="font-size:11px;padding:1px 6px">
+              {{ e }}{% if qtd > 0 %} <span class="reacao-count">{{ qtd }}</span>{% endif %}
+            </button>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div style="text-align:center;color:var(--text-muted);padding:32px;font-size:13px">
+        Ainda não há mensagens com {{ contato|nome_exibicao }} — mande a primeira!
+      </div>
+      {% endfor %}
+    </div>
+    <div class="card-body" style="border-top:1px solid var(--border)">
+      <form method="POST" action="{{ url_for('mural_nova') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="mencionado_id" value="{{ contato.id }}">
+        <textarea name="texto" rows="2" maxlength="2000" placeholder="Mensagem privada para {{ contato|nome_exibicao }}..." required
+                  style="width:100%;resize:vertical"></textarea>
+        <div style="text-align:right;margin-top:8px">
+          <button type="submit" class="btn btn-primary">Enviar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <style>
+.mural-tabs {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px;
+}
+.mural-tab {
+  padding: 7px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
+  text-decoration: none; color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid transparent; transition: all .12s;
+}
+.mural-tab:hover { border-color: var(--primary); color: var(--text); }
+.mural-tab.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+.mural-tab-nova {
+  font-size: 12px; padding: 6px 10px; border-radius: 20px; margin-left: auto;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.mural-chat-corpo { padding: 16px; max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.mural-bolha-linha { display: flex; }
+.mural-bolha-linha.minha { justify-content: flex-end; }
+.mural-bolha {
+  max-width: 70%; background: var(--surface-2); border-radius: 12px; padding: 8px 12px;
+}
+.mural-bolha-linha.minha .mural-bolha { background: var(--primary-light); }
+.mural-bolha-texto { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.mural-bolha-meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.mural-bolha-meta button { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 11px; padding: 0; }
+.mural-bolha-meta button:hover { color: #dc2626; }
 .btn-reacao {
   border: 1px solid var(--border); background: var(--surface-2); border-radius: 20px;
   padding: 3px 10px; font-size: 13px; cursor: pointer; transition: all .12s;
@@ -116,6 +222,8 @@ function reagirMural(btn) {
 
 (function() {
   const lista = document.getElementById('listaMural');
+  const chat = document.getElementById('chatCorpo');
+  if (chat) chat.scrollTop = chat.scrollHeight;
   if (!lista) return;
   const ultimoId = lista.dataset.ultimoId || '0';
   setInterval(() => {

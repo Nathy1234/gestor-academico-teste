@@ -471,6 +471,88 @@
       {% endfor %}
     {% endwith %}
 
+    {% if session.user_id %}
+    <script>
+      // ── MURAL: aviso no canto da tela, em qualquer página ──────────────
+      // Dois tipos de aviso, visualmente diferentes: recado público (💬,
+      // some sozinho) e mensagem privada (🔒, mais destacada, fica até a
+      // pessoa fechar ou clicar). "Visto até" fica salvo neste navegador
+      // (localStorage) — cada aparelho marca o que já viu por conta própria.
+      (function() {
+        function ultimoVisto(chave) {
+          return parseInt(localStorage.getItem(chave) || '0', 10);
+        }
+        function marcarVisto(chave, id) {
+          try { localStorage.setItem(chave, String(id)); } catch (e) {}
+        }
+        function criarContainer() {
+          let c = document.getElementById('muralToasts');
+          if (c) return c;
+          c = document.createElement('div');
+          c.id = 'muralToasts';
+          document.body.appendChild(c);
+          return c;
+        }
+        function mostrarToastPublico(m) {
+          if (window.location.pathname === '/mural') return;
+          const container = criarContainer();
+          const toast = document.createElement('div');
+          toast.className = 'mural-toast';
+          toast.innerHTML = '<div class="mural-toast-titulo">💬 Novo recado no Mural</div><div class="mural-toast-corpo"></div>';
+          const corpo = toast.querySelector('.mural-toast-corpo');
+          const autorEl = document.createElement('strong');
+          autorEl.textContent = m.autor + ': ';
+          corpo.appendChild(autorEl);
+          corpo.appendChild(document.createTextNode(m.texto));
+          toast.addEventListener('click', () => { window.location.href = '{{ url_for("mural") }}'; });
+          container.appendChild(toast);
+          setTimeout(() => toast.remove(), 9000);
+        }
+        function mostrarToastPrivada(m) {
+          const container = criarContainer();
+          const toast = document.createElement('div');
+          toast.className = 'mural-toast mural-toast-privada';
+          toast.innerHTML = '<div class="mural-toast-titulo">🔒 Mensagem privada de ' + m.autor + '</div>' +
+                             '<div class="mural-toast-corpo"></div>' +
+                             '<button type="button" class="mural-toast-fechar" title="Fechar">✕</button>';
+          toast.querySelector('.mural-toast-corpo').textContent = m.texto;
+          toast.addEventListener('click', () => { window.location.href = '{{ url_for("mural") }}?aba=' + m.autor_id; });
+          toast.querySelector('.mural-toast-fechar').addEventListener('click', (ev) => { ev.stopPropagation(); toast.remove(); });
+          container.appendChild(toast);
+          setTimeout(() => toast.remove(), 20000);
+        }
+        function verificarPublicas() {
+          const chave = 'muralUltimoIdVisto';
+          const desde = ultimoVisto(chave);
+          fetch('/api/mural/novas-desde/' + desde)
+            .then(r => r.json())
+            .then(data => {
+              if (!data.ultimo_id) return;
+              if (desde === 0) { marcarVisto(chave, data.ultimo_id); return; }
+              (data.mensagens || []).forEach(mostrarToastPublico);
+              marcarVisto(chave, data.ultimo_id);
+            })
+            .catch(() => {});
+        }
+        function verificarPrivadas() {
+          const chave = 'muralPrivadaUltimoIdVisto';
+          const desde = ultimoVisto(chave);
+          fetch('/api/mural/privadas-desde/' + desde)
+            .then(r => r.json())
+            .then(data => {
+              if (!data.ultimo_id) return;
+              if (desde === 0) { marcarVisto(chave, data.ultimo_id); return; }
+              (data.mensagens || []).forEach(mostrarToastPrivada);
+              marcarVisto(chave, data.ultimo_id);
+            })
+            .catch(() => {});
+        }
+        verificarPublicas();
+        verificarPrivadas();
+        setInterval(() => { verificarPublicas(); verificarPrivadas(); }, 25000);
+      })();
+    </script>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

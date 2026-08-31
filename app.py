@@ -492,15 +492,19 @@ class AppSetting(db.Model):
     value = db.Column(db.Text)
 
 class MuralMensagem(db.Model):
-    """Mural compartilhado da equipe — mensagem curta + reações em emoji.
-    Não é chat privado nem em tempo real: todo mundo vê tudo, atualiza ao
-    recarregar a tela."""
-    id         = db.Column(db.Integer, primary_key=True)
-    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    texto      = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    """Mural compartilhado da equipe (mensagem pública, todo mundo vê) ou uma
+    mensagem privada de uma conversa 1-a-1 quando mencionado_id/privada estão
+    preenchidos — nesse caso só autor e mencionado enxergam. Reage com emoji
+    do mesmo jeito nos dois casos."""
+    id            = db.Column(db.Integer, primary_key=True)
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    texto         = db.Column(db.Text, nullable=False)
+    mencionado_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # com quem é a conversa privada
+    privada       = db.Column(db.Boolean, default=False)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     autor = db.relationship('User', foreign_keys=[user_id])
+    mencionado = db.relationship('User', foreign_keys=[mencionado_id])
 
 class MuralReacao(db.Model):
     """Uma reação em emoji de um usuário numa mensagem do mural. Uma pessoa
@@ -3482,10 +3486,7 @@ def usuario_excluir(id):
 
 EMOJIS_MURAL = ['👍', '❤️', '😂', '🎉', '👏', '🔥', '😮', '🙏']
 
-@app.route('/mural')
-@login_required
-def mural():
-    mensagens = MuralMensagem.query.order_by(MuralMensagem.created_at.desc()).limit(80).all()
+def _mural_reacoes(mensagens, meu_id):
     reacoes_por_msg = {}
     minhas_reacoes = set()
     if mensagens:
@@ -3494,18 +3495,84 @@ def mural():
             .filter(MuralReacao.mensagem_id.in_(ids)).group_by(MuralReacao.mensagem_id, MuralReacao.emoji).all()
         for msg_id, emoji, qtd in rows:
             reacoes_por_msg.setdefault(msg_id, []).append({'emoji': emoji, 'qtd': qtd})
-        minhas = MuralReacao.query.filter(MuralReacao.mensagem_id.in_(ids), MuralReacao.user_id == session['user_id']).all()
+        minhas = MuralReacao.query.filter(MuralReacao.mensagem_id.in_(ids), MuralReacao.user_id == meu_id).all()
         minhas_reacoes = {(r.mensagem_id, r.emoji) for r in minhas}
+    return reacoes_por_msg, minhas_reacoes
+
+def _mural_minhas_conversas(meu_id):
+    """Lista de pessoas com quem já troquei mensagem privada, mais recente
+    primeiro."""
+    enviei = db.session.query(MuralMensagem.mencionado_id, db.func.max(MuralMensagem.created_at))\
+        .filter_by(privada=True, user_id=meu_id).group_by(MuralMensagem.mencionado_id)
+    recebi = db.session.query(MuralMensagem.user_id, db.func.max(MuralMensagem.created_at))\
+        .filter_by(privada=True, mencionado_id=meu_id).group_by(MuralMensagem.user_id)
+    ultima_por_contato = {}
+    for contato_id, quando in list(enviei.all()) + list(recebi.all()):
+        if contato_id is None:
+            continue
+        if contato_id not in ultima_por_contato or quando > ultima_por_contato[contato_id]:
+            ultima_por_contato[contato_id] = quando
+    if not ultima_por_contato:
+        return []
+    usuarios = {u.id: u for u in User.query.filter(User.id.in_(ultima_por_contato.keys())).all()}
+    return sorted(
+        (usuarios[cid] for cid in ultima_por_contato if cid in usuarios),
+        key=lambda c: ultima_por_contato[c.id], reverse=True
+    )
+
+@app.route('/mural')
+@login_required
+def mural():
+    u = User.query.get(session['user_id'])
+    aba = request.args.get('aba', 'publico')
+    contato = None
+    if aba != 'publico':
+        contato = User.query.get(aba) if aba.isdigit() else None
+        if not contato or contato.id == u.id:
+            aba = 'publico'
+            contato = None
+
+    if contato:
+        mensagens = MuralMensagem.query.filter(
+            MuralMensagem.privada == True,
+            db.or_(
+                db.and_(MuralMensagem.user_id == u.id, MuralMensagem.mencionado_id == contato.id),
+                db.and_(MuralMensagem.user_id == contato.id, MuralMensagem.mencionado_id == u.id),
+            )
+        ).order_by(MuralMensagem.created_at.asc()).limit(300).all()
+    else:
+        mensagens = MuralMensagem.query.filter_by(privada=False).order_by(MuralMensagem.created_at.desc()).limit(80).all()
+
+    reacoes_por_msg, minhas_reacoes = _mural_reacoes(mensagens, u.id)
+    conversas = _mural_minhas_conversas(u.id)
+    if contato and contato.id not in {c.id for c in conversas}:
+        conversas = [contato] + conversas  # conversa nova, ainda sem mensagem enviada
+    todos_usuarios = User.query.filter(User.id != u.id).order_by(User.username).all()
+
     return render_template('mural.html', mensagens=mensagens, emojis=EMOJIS_MURAL,
-                           reacoes_por_msg=reacoes_por_msg, minhas_reacoes=minhas_reacoes)
+                           reacoes_por_msg=reacoes_por_msg, minhas_reacoes=minhas_reacoes,
+                           aba=aba, contato=contato, conversas=conversas, todos_usuarios=todos_usuarios)
 
 @app.route('/mural/nova', methods=['POST'])
 @login_required
 def mural_nova():
     texto = request.form.get('texto', '').strip()
-    if texto:
-        db.session.add(MuralMensagem(user_id=session['user_id'], texto=texto[:2000]))
-        db.session.commit()
+    mencionado_id = request.form.get('mencionado_id', type=int)
+    if not texto:
+        return redirect(url_for('mural'))
+    privada = False
+    if mencionado_id:
+        alvo = User.query.get(mencionado_id)
+        if not alvo or alvo.id == session['user_id']:
+            flash('Destinatário inválido.', 'danger')
+            return redirect(url_for('mural'))
+        privada = True
+    m = MuralMensagem(user_id=session['user_id'], texto=texto[:2000],
+                       mencionado_id=mencionado_id, privada=privada)
+    db.session.add(m)
+    db.session.commit()
+    if privada:
+        return redirect(url_for('mural', aba=mencionado_id))
     return redirect(url_for('mural'))
 
 @app.route('/mural/<int:id>/excluir', methods=['POST'])
@@ -3513,19 +3580,26 @@ def mural_nova():
 def mural_excluir(id):
     m = MuralMensagem.query.get_or_404(id)
     u = User.query.get(session['user_id'])
-    if m.user_id != u.id and u.role != 'admin':
+    # Mensagem privada só o próprio autor apaga — nem admin mexe em conversa
+    # alheia. Mensagem pública continua podendo ser removida pelo admin.
+    pode_excluir = (m.user_id == u.id) or (u.role == 'admin' and not m.privada)
+    aba_destino = (m.mencionado_id if m.user_id == u.id else m.user_id) if m.privada else 'publico'
+    if not pode_excluir:
         flash('Você só pode excluir suas próprias mensagens.', 'danger')
-        return redirect(url_for('mural'))
+        return redirect(url_for('mural', aba=aba_destino))
     MuralReacao.query.filter_by(mensagem_id=m.id).delete()
     db.session.delete(m)
     db.session.commit()
     flash('Mensagem excluída.', 'success')
-    return redirect(url_for('mural'))
+    return redirect(url_for('mural', aba=aba_destino or 'publico'))
 
 @app.route('/mural/<int:id>/reagir', methods=['POST'])
 @login_required
 def mural_reagir(id):
-    MuralMensagem.query.get_or_404(id)
+    m = MuralMensagem.query.get_or_404(id)
+    meu_id = session['user_id']
+    if m.privada and meu_id not in (m.user_id, m.mencionado_id):
+        return jsonify({'ok': False, 'erro': 'Você não faz parte dessa conversa.'}), 403
     data = request.get_json(silent=True) or {}
     emoji = (data.get('emoji') or '').strip()
     if not emoji or emoji not in EMOJIS_MURAL:
@@ -3544,9 +3618,35 @@ def mural_reagir(id):
 @app.route('/api/mural/novas-desde/<int:ultimo_id>')
 @login_required
 def api_mural_novas(ultimo_id):
-    """Consultado via JS pra saber se surgiram mensagens novas sem recarregar a página."""
-    total = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id).count()
-    return jsonify({'novas': total})
+    """Mensagens PÚBLICAS novas — usado tanto pro aviso 'atualizar' dentro da
+    aba Mural quanto pro toast genérico (💬) em qualquer tela."""
+    meu_id = session['user_id']
+    novas = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id, MuralMensagem.privada == False)\
+        .order_by(MuralMensagem.id.asc()).limit(20).all()
+    novas_de_outros = [m for m in novas if m.user_id != meu_id]
+    return jsonify({
+        'novas': len(novas_de_outros),
+        'ultimo_id': novas[-1].id if novas else ultimo_id,
+        'mensagens': [{'id': m.id, 'autor': m.autor.username if m.autor else '?', 'texto': m.texto[:140]}
+                      for m in novas_de_outros],
+    })
+
+@app.route('/api/mural/privadas-desde/<int:ultimo_id>')
+@login_required
+def api_mural_privadas(ultimo_id):
+    """Mensagens PRIVADAS novas endereçadas a mim — aviso separado (🔒),
+    visualmente diferente do aviso de recado público, e que abre direto a
+    conversa certa em vez do mural geral."""
+    meu_id = session['user_id']
+    novas = MuralMensagem.query.filter(
+        MuralMensagem.id > ultimo_id, MuralMensagem.privada == True, MuralMensagem.mencionado_id == meu_id
+    ).order_by(MuralMensagem.id.asc()).limit(20).all()
+    return jsonify({
+        'novas': len(novas),
+        'ultimo_id': novas[-1].id if novas else ultimo_id,
+        'mensagens': [{'id': m.id, 'autor': m.autor.username if m.autor else '?',
+                       'autor_id': m.user_id, 'texto': m.texto[:140]} for m in novas],
+    })
 
 # ─── FORMULÁRIOS ────────────────────────────────────────────────────────────────
 
