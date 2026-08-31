@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Formulários — Gestor{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Formulários</div>
+      <div class="page-subtitle">Pesquisas internas com indicadores por colaborador</div>
+    </div>
+    {% if session.role == 'admin' %}
+    <a href="{{ url_for('formulario_novo') }}" class="btn btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Novo Formulário
+    </a>
+    {% endif %}
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+    {% for f in forms %}
+    <div class="card" style="overflow:hidden">
+      <div style="height:4px;background:linear-gradient(90deg,var(--primary),#d9640a)"></div>
+      <div style="padding:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+          <div style="font-weight:700;font-size:15px">{{ f.titulo }}</div>
+          {% if f.ativo %}
+          <span class="badge badge-ativo" style="font-size:10px;flex-shrink:0">Ativo</span>
+          {% else %}
+          <span class="badge badge-oculto" style="font-size:10px;flex-shrink:0">Inativo</span>
+          {% endif %}
+        </div>
+        {% if f.descricao %}
+        <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">{{ f.descricao }}</div>
+        {% endif %}
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          <span>{{ participantes.get(f.id, 0) }} colaborador(es) responderam</span>
+          {% if f.id in minhas_respostas %}
+          <span class="badge badge-finalizado" style="font-size:10px">Você já respondeu</span>
+          {% endif %}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          {% if f.ativo %}
+          <a href="{{ url_for('formulario_responder', id=f.id) }}" class="btn btn-primary btn-sm">
+            {{ 'Editar resposta' if f.id in minhas_respostas and f.unica_resposta else 'Responder' }}
+          </a>
+          {% endif %}
+          {% if session.role == 'admin' %}
+          <a href="{{ url_for('formulario_indicadores', id=f.id) }}" class="btn btn-secondary btn-sm">Indicadores</a>
+          <a href="{{ url_for('formulario_editar', id=f.id) }}" class="btn btn-secondary btn-sm">Editar</a>
+          <form method="POST" action="{{ url_for('formulario_excluir', id=f.id) }}"
+                onsubmit="return confirm('Excluir o formulário &quot;{{ f.titulo }}&quot;? Só funciona se ainda não tiver respostas.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm" style="background:none;border:1px solid var(--border);color:#dc2626">Excluir</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card" style="padding:32px;text-align:center;color:var(--text-muted);grid-column:1/-1">
+      Nenhum formulário {{ 'cadastrado ainda' if session.role == 'admin' else 'disponível no momento' }}.
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

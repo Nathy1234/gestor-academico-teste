@@ -27,7 +27,7 @@
           <form method="POST" action="{{ url_for('usuario_foto_upload', id=user.id) }}" enctype="multipart/form-data" style="flex:1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="file" name="foto" accept="image/*" onchange="this.form.submit()" style="font-size:11px">
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Foto exibida nos Destaques (máx. 3MB)</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Foto de perfil (máx. 3MB)</div>
           </form>
         </div>
         {% endif %}
@@ -93,7 +93,7 @@
           <label class="form-group" style="margin-bottom:24px;display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" name="equipe" style="width:15px;height:15px"
               {% if not user or user.equipe %}checked{% endif %}>
-            <span>Faz parte da equipe <span style="font-weight:400;color:var(--text-muted);font-size:12px">— elegível pra Destaque da Semana/Mês</span></span>
+            <span>Faz parte da equipe</span>
           </label>
           {% if user %}
           <div style="margin-bottom:24px">

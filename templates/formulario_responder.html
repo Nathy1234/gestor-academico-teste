@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}{{ formulario.titulo }} — Gestor{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('formularios') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Formulários</a>
+      <div class="page-title" style="margin-top:6px">{{ formulario.titulo }}</div>
+      {% if formulario.descricao %}
+      <div class="page-subtitle">{{ formulario.descricao }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if ja_respondeu %}
+  <div class="alert alert-warning" style="max-width:640px">Você já respondeu esse formulário — enviar de novo atualiza sua resposta anterior.</div>
+  {% endif %}
+
+  <form method="POST" class="card" style="max-width:640px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card-body">
+      {% for p in perguntas %}
+      {% set item = valores_existentes.get(p.id) %}
+      <div class="form-group" style="margin-bottom:22px">
+        <label>{{ p.texto }}{% if p.obrigatoria %} <span style="color:#dc2626">*</span>{% endif %}</label>
+
+        {% if p.tipo == 'texto' %}
+        <textarea name="pergunta_{{ p.id }}" rows="3" {% if p.obrigatoria %}required{% endif %}>{{ item.valor_texto if item else '' }}</textarea>
+
+        {% elif p.tipo == 'numero' %}
+        <input type="number" step="any" name="pergunta_{{ p.id }}" {% if p.obrigatoria %}required{% endif %}
+               value="{{ item.valor_numero if item and item.valor_numero is not none else '' }}">
+
+        {% elif p.tipo == 'escala' %}
+        <div class="escala-opcoes">
+          {% for n in range(1, 6) %}
+          <label class="escala-item">
+            <input type="radio" name="pergunta_{{ p.id }}" value="{{ n }}"
+                   {% if item and item.valor_numero == n %}checked{% endif %} {% if p.obrigatoria %}required{% endif %}>
+            <span>{{ n }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);max-width:230px">
+          <span>Muito insatisfeito</span><span>Muito satisfeito</span>
+        </div>
+
+        {% elif p.tipo == 'multipla_escolha' %}
+        <div class="opcoes-radio">
+          {% for opcao in p.lista_opcoes() %}
+          <label class="opcao-radio-item">
+            <input type="radio" name="pergunta_{{ p.id }}" value="{{ opcao }}"
+                   {% if item and item.valor_texto == opcao %}checked{% endif %} {% if p.obrigatoria %}required{% endif %}>
+            <span>{{ opcao }}</span>
+          </label>
+          {% endfor %}
+        </div>
+
+        {% elif p.tipo == 'sim_nao' %}
+        <div class="opcoes-radio" style="flex-direction:row;gap:20px">
+          <label class="opcao-radio-item">
+            <input type="radio" name="pergunta_{{ p.id }}" value="Sim" {% if item and item.valor_texto == 'Sim' %}checked{% endif %} {% if p.obrigatoria %}required{% endif %}>
+            <span>Sim</span>
+          </label>
+          <label class="opcao-radio-item">
+            <input type="radio" name="pergunta_{{ p.id }}" value="Não" {% if item and item.valor_texto == 'Não' %}checked{% endif %} {% if p.obrigatoria %}required{% endif %}>
+            <span>Não</span>
+          </label>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div style="color:var(--text-muted);text-align:center;padding:20px">Este formulário ainda não tem perguntas.</div>
+      {% endfor %}
+
+      {% if perguntas %}
+      <div style="display:flex;gap:10px">
+        <a href="{{ url_for('formularios') }}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">{{ 'Atualizar resposta' if ja_respondeu else 'Enviar resposta' }}</button>
+      </div>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<style>
+.escala-opcoes { display: flex; gap: 8px; margin-bottom: 4px; }
+.escala-item { position: relative; }
+.escala-item input { position: absolute; opacity: 0; }
+.escala-item span {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--border);
+  cursor: pointer; font-weight: 600; transition: all .12s;
+}
+.escala-item input:checked + span { background: var(--primary); border-color: var(--primary); color: #fff; }
+.escala-item:hover span { border-color: var(--primary); }
+.opcoes-radio { display: flex; flex-direction: column; gap: 8px; }
+.opcao-radio-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all .12s;
+}
+.opcao-radio-item:hover { border-color: var(--primary); }
+.opcao-radio-item input { width: 15px; height: 15px; flex-shrink: 0; }
+</style>
+{% endblock %}

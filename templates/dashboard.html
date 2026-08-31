@@ -135,7 +135,7 @@
     'andamento': 2, 'por_responsavel': 2, 'por_tipo': 2,
     'atividade': 3, 'atalhos': 1, 'backup': 1,
     'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1,
-    'destaques': 2, 'erp_moodle_resumo': 3
+    'erp_moodle_resumo': 3
   } %}
   {# Altura padrão de cada widget, em unidades de 40px — só usada como
      ponto de partida antes da primeira medição real no navegador, ou pra
@@ -149,7 +149,7 @@
     'andamento': 10, 'por_responsavel': 9, 'por_tipo': 8,
     'atividade': 8, 'atalhos': 7, 'backup': 3,
     'sem_responsavel': 8, 'reembolsos_pend': 2, 'notas': 4,
-    'destaques': 3, 'erp_moodle_resumo': 4
+    'erp_moodle_resumo': 4
   } %}
 
   <!-- WIDGETS DA DASHBOARD — ordem e visibilidade são por usuário ────── -->
@@ -161,8 +161,6 @@
       {# sem backup registrado ainda — nada pra mostrar/personalizar #}
     {% elif wid == 'reembolsos_pend' and not pode_ver_reembolsos %}
       {# sem permissão de reembolsos — widget nem aparece #}
-    {% elif wid == 'destaques' and not (destaque_semana or destaque_mes or is_admin) %}
-      {# ninguém em destaque ainda e não é admin pra poder escolher — nada pra mostrar #}
     {% elif wid == 'erp_moodle_resumo' and not pode_ver_erp_moodle %}
       {# sem acesso ao ERP Moodle — widget nem aparece #}
     {% else %}
@@ -727,37 +725,6 @@
                            border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;
                            background:var(--surface-2);color:var(--text)"
                     oninput="dashNotasAgendar()">{{ usuario_atual.notas_pessoais or '' }}</textarea>
-        </div>
-      </div>
-
-      {% elif wid == 'destaques' %}
-      <div class="card">
-        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
-          <div class="card-title">Destaques</div>
-          {% if is_admin %}
-          <a href="{{ url_for('destaques') }}" class="btn btn-sm btn-secondary">Gerenciar →</a>
-          {% endif %}
-        </div>
-        <div class="card-body" style="display:flex;gap:20px;flex-wrap:wrap">
-          {% for tipo, atual, titulo in [('semana', destaque_semana, 'Semana'), ('mes', destaque_mes, 'Mês')] %}
-          <div style="flex:1;min-width:180px;display:flex;align-items:center;gap:10px">
-            <div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;overflow:hidden;
-                        background:linear-gradient(135deg,var(--primary),#d9640a);display:flex;
-                        align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px">
-              {% if atual and atual.pessoa.foto %}
-              <img src="{{ url_for('usuario_foto', id=atual.pessoa.id) }}" style="width:100%;height:100%;object-fit:cover">
-              {% elif atual %}{{ atual.pessoa.username[0]|upper }}{% else %}—{% endif %}
-            </div>
-            <div style="min-width:0">
-              <div style="font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--text-muted);text-transform:uppercase">Destaque da {{ titulo }}</div>
-              {% if atual %}
-              <div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ atual.pessoa|nome_exibicao }}</div>
-              {% else %}
-              <div style="font-size:11.5px;color:var(--text-muted)">Ainda não escolhido</div>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
         </div>
       </div>
 

@@ -52,6 +52,10 @@
         <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Mural da Equipe
       </a>
+      <a href="{{ url_for('formularios') }}" class="nav-item {% if 'formulario' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Formulários
+      </a>
       {% set em_curso = request.endpoint in ['cursos','curso_detalhe','curso_novo','curso_editar','pacotes'] %}
       {% set is_admin_nav = session.role == 'admin' %}
       {% set secoes_padrao = ['inova_carreira','ferramentas','erp_moodle','gestao','admin'] %}
@@ -183,10 +187,6 @@
       <a href="{{ url_for('video_presets') }}" class="nav-item {% if request.endpoint in ['video_presets','venda_modalidade_excluir'] %}active{% endif %}">
         <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
         Opções de Curso
-      </a>
-      <a href="{{ url_for('destaques') }}" class="nav-item {% if request.endpoint in ['destaques','destaque_excluir'] %}active{% endif %}">
-        <svg viewBox="0 0 24 24"><path d="M12 2l2.6 6.6L21 9.3l-5 4.6L17.4 21 12 17.3 6.6 21 8 13.9l-5-4.6 6.4-.7z"/></svg>
-        Destaques
       </a>
       <a href="{{ url_for('admin_visibilidade') }}" class="nav-item {% if request.endpoint=='admin_visibilidade' %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
