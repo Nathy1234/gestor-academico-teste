@@ -87,6 +87,7 @@ def _insersor_contains(insersor_field, username):
     return False
 
 EMAIL_DOMINIO_PERMITIDO = '@fatecie.edu.br'
+DIAS_INATIVIDADE = 7  # a partir de quantos dias sem logar alguém entra na lista de inativos
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 if not os.environ.get('SECRET_KEY'):
     print('[AVISO] SECRET_KEY não definida nas variáveis de ambiente. '
@@ -199,6 +200,7 @@ class User(db.Model):
     must_change_password = db.Column(db.Boolean, default=False)
     role         = db.Column(db.String(20), default='viewer')  # admin, editor, viewer
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
+    ultimo_login = db.Column(db.DateTime)  # usado pra listar colaboradores inativos e avisar quem voltou
     dashboard_layout = db.Column(db.Text)  # JSON: ordem dos cards do dashboard escolhida pelo usuário
     dashboard_ocultos = db.Column(db.Text)  # JSON: lista de block_id desligados pelo usuário (só exibição — não apaga dado nenhum)
     equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe?
@@ -922,7 +924,13 @@ def login():
         if u and check_pw(u.password, request.form['password']):
             if not u.password.startswith(('pbkdf2:', 'scrypt:')):
                 u.password = hash_pw(request.form['password'])
-                db.session.commit()
+            # Se ficou ausente por um tempo, avisa a própria pessoa ao voltar
+            # (calcula ANTES de sobrescrever ultimo_login com o login de agora).
+            if u.ultimo_login and (datetime.utcnow() - u.ultimo_login).days >= DIAS_INATIVIDADE:
+                dias_fora = (datetime.utcnow() - u.ultimo_login).days
+                flash(f'Bem-vindo(a) de volta! Fazia {dias_fora} dia(s) que você não entrava no sistema.', 'success')
+            u.ultimo_login = datetime.utcnow()
+            db.session.commit()
             session.permanent = True
             session['user_id'] = u.id
             session['username'] = u.username
@@ -3324,7 +3332,24 @@ def usuarios():
         'pratica_conectada': 'Prática', 'pratica_estagio': 'Estágio',
         'projeto_ambiental': 'Proj. Amb.', 'ggbr': 'GGBR', 'integra_edu': 'Integra',
     }
-    return render_template('usuarios.html', users=users, stats=stats, tipo_label=TIPO_LABEL)
+
+    # Colaboradores que sumiram — sem login há DIAS_INATIVIDADE dias ou mais,
+    # ou que nunca chegaram a logar (conta criada há tempo e nunca acessou).
+    agora = datetime.utcnow()
+    inativos = []
+    for u in users:
+        if u.role == 'admin':
+            continue
+        if u.ultimo_login:
+            dias = (agora - u.ultimo_login).days
+        else:
+            dias = (agora - u.created_at).days if u.created_at else 0
+        if dias >= DIAS_INATIVIDADE:
+            inativos.append({'user': u, 'dias': dias, 'nunca_logou': u.ultimo_login is None})
+    inativos.sort(key=lambda x: x['dias'], reverse=True)
+
+    return render_template('usuarios.html', users=users, stats=stats, tipo_label=TIPO_LABEL,
+                           inativos=inativos, dias_inatividade=DIAS_INATIVIDADE)
 
 
 @app.route('/usuarios/<int:id>/cursos')
@@ -5313,7 +5338,8 @@ def _run_migrations():
                            ("must_change_password", "BOOLEAN DEFAULT false"),
                            ("nome", "VARCHAR(200)"), ("dashboard_layout", "TEXT"),
                            ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
-                           ("foto_mimetype", "VARCHAR(50)"), ("dashboard_ocultos", "TEXT")]:
+                           ("foto_mimetype", "VARCHAR(50)"), ("dashboard_ocultos", "TEXT"),
+                           ("ultimo_login", "TIMESTAMP")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
