@@ -15,6 +15,26 @@
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <div class="card-title">Colar Resposta do Solicitante</div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="copiarModeloPerguntas()">
+        Copiar modelo de perguntas
+      </button>
+    </div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+        Mande o modelo pra quem está pedindo o curso (WhatsApp, e-mail...). Quando a pessoa responder,
+        cole a resposta inteira aqui embaixo e clique em "Extrair para os campos" — preenche Nome, Carga
+        Horária, Valor e Data de Finalização sozinho, e organiza o resto em Observações.
+      </div>
+      <textarea id="colarRespostaTexto" rows="6" placeholder="Cole aqui a resposta que a pessoa te mandou..."></textarea>
+      <div style="margin-top:8px;text-align:right">
+        <button type="button" class="btn btn-primary btn-sm" onclick="extrairRespostaEvento()">Extrair para os campos</button>
+      </div>
+    </div>
+  </div>
+
   <form method="POST" id="courseForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="disciplinas_json" id="disciplinas_json" value="">
@@ -242,6 +262,79 @@
 </div>
 
 <script>
+// ── COLAR RESPOSTA DO SOLICITANTE / MODELO DE PERGUNTAS ────────────
+const MODELO_PERGUNTAS_EVENTO = `NOME:
+CAPA (760x480px) - link se já tiver:
+QUANTAS HORAS:
+VALOR:
+VAI TER CUPOM? E SE TIVER QUAL A PORCENTAGEM:
+SE TIVER CRONOGRAMA, COPIE E COLE AQUI:
+QUAL A DATA PARA EMISSÃO DO CERTIFICADO?
+VAI TER BANCO DE QUESTÕES?
+PRAZO PARA ENTREGA DESSE EVENTO?`;
+
+function copiarModeloPerguntas() {
+  navigator.clipboard.writeText(MODELO_PERGUNTAS_EVENTO).then(() => {
+    alert('Modelo copiado! Cole na conversa com quem vai responder.');
+  });
+}
+
+function _normalizarLabelCampo(s) {
+  return s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z? ]/g, '').trim();
+}
+
+function extrairRespostaEvento() {
+  const texto = document.getElementById('colarRespostaTexto').value;
+  if (!texto.trim()) { alert('Cole o texto da resposta primeiro.'); return; }
+
+  let nome = '', horas = '', valor = '', prazoTxt = '';
+  const obsExtra = [];
+
+  texto.split('\n').forEach(linhaOriginal => {
+    const linha = linhaOriginal.trim();
+    if (!linha) return;
+    // O modelo usa ":" na maioria das perguntas, mas "?" em algumas
+    // ("...CERTIFICADO?", "...BANCO DE QUESTÕES?") — aceita os dois,
+    // usando o que aparecer primeiro na linha.
+    const idxDoisPontos = linha.indexOf(':');
+    const idxInterrogacao = linha.indexOf('?');
+    let idx = -1;
+    if (idxDoisPontos !== -1 && idxInterrogacao !== -1) idx = Math.min(idxDoisPontos, idxInterrogacao);
+    else if (idxDoisPontos !== -1) idx = idxDoisPontos;
+    else idx = idxInterrogacao;
+    if (idx === -1) { obsExtra.push(linhaOriginal); return; }
+    const label = _normalizarLabelCampo(linha.slice(0, idx));
+    const valorTxt = linha.slice(idx + 1).trim();
+
+    if (label.includes('NOME')) nome = valorTxt;
+    else if (label.includes('HORAS')) horas = valorTxt;
+    else if (label.includes('VALOR')) valor = valorTxt;
+    else if (label.includes('PRAZO')) { prazoTxt = valorTxt; obsExtra.push(linhaOriginal); }
+    else obsExtra.push(linhaOriginal);
+  });
+
+  if (nome) { const el = document.querySelector('[name="nome"]'); if (el) el.value = nome; }
+  if (horas) { const el = document.querySelector('[name="horas"]'); if (el) el.value = horas; }
+  if (valor) { const el = document.querySelector('[name="valor"]'); if (el) el.value = valor; }
+
+  const obsField = document.querySelector('[name="obs"]');
+  if (obsField && obsExtra.length) {
+    const bloco = 'Recebido do solicitante:\n' + obsExtra.join('\n');
+    obsField.value = obsField.value ? obsField.value + '\n\n' + bloco : bloco;
+  }
+
+  if (prazoTxt) {
+    const m = prazoTxt.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m) {
+      const iso = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      const campoData = document.querySelector('[name="data_finalizacao"]');
+      if (campoData) campoData.value = iso;
+    }
+  }
+
+  alert('Dados extraídos! Confira os campos preenchidos antes de salvar.');
+}
+
 // Initialize matrix with existing data
 const existingDisc = {{ disc_json|tojson if disc_json else '[]' }};
 const mapped = existingDisc.map(d => ({

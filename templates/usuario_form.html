@@ -27,7 +27,7 @@
           <form method="POST" action="{{ url_for('usuario_foto_upload', id=user.id) }}" enctype="multipart/form-data" style="flex:1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="file" name="foto" accept="image/*" onchange="this.form.submit()" style="font-size:11px">
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Foto exibida nos Destaques (máx. 3MB)</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Foto de perfil (máx. 3MB)</div>
           </form>
         </div>
         {% endif %}
@@ -82,7 +82,7 @@
           <label class="form-group" style="margin-bottom:24px;display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" name="equipe" style="width:15px;height:15px"
               {% if not user or user.equipe %}checked{% endif %}>
-            <span>Faz parte da equipe <span style="font-weight:400;color:var(--text-muted);font-size:12px">— elegível pra Destaque da Semana/Mês</span></span>
+            <span>Faz parte da equipe</span>
           </label>
           {% if user %}
           <div style="margin-bottom:24px">
@@ -216,6 +216,12 @@
             <div><div class="perm-name" style="color:#dc2626">Bloquear Ferramentas Externas</div><div class="perm-desc">Esconde a seção de Ferramentas Externas (Kronos, Moodles etc)</div></div>
           </label>
           <label class="perm-item">
+            <input type="checkbox" name="perm_block_formularios" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_formularios') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Formulários</div><div class="perm-desc">Esconde os Formulários internos — a pessoa não vê nem responde</div></div>
+          </label>
+          <label class="perm-item">
             <input type="checkbox" name="perm_block_cupons" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_cupons') %}checked{% endif %}>
@@ -287,7 +293,7 @@ const EDITOR_DEFAULTS = {
   erp_moodle_acesso: false, pagamentos_terceiros_gerenciar: false, opcoes_curso_gerenciar: false,
   block_cupons: false, block_reembolsos: false, block_historico: false,
   block_cursos: false, block_matrizes: false, block_banco_disciplinas: false,
-  block_ia_assistente: false, block_ferramentas: false,
+  block_ia_assistente: false, block_ferramentas: false, block_formularios: false,
   block_trocar_senha: false, somente_erp_moodle: false,
 };
 

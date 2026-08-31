@@ -201,8 +201,8 @@ class User(db.Model):
     permissoes   = db.Column(db.Text, default='{}')  # JSON com permissoes especificas
     dashboard_layout = db.Column(db.Text)  # JSON: ordem dos cards do dashboard escolhida pelo usuário
     dashboard_ocultos = db.Column(db.Text)  # JSON: lista de block_id desligados pelo usuário (só exibição — não apaga dado nenhum)
-    equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe? usado em Destaques e Avisos
-    foto         = db.Column(db.LargeBinary)  # foto de perfil, exibida nos Destaques
+    equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe?
+    foto         = db.Column(db.LargeBinary)  # foto de perfil de exibição
     foto_mimetype = db.Column(db.String(50))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -264,6 +264,10 @@ class User(db.Model):
     def can_view_ferramentas(self):
         if self._p().get('block_ferramentas'): return False
         return True
+
+    def can_view_formularios(self):
+        if self._p().get('block_formularios'): return False
+        return True  # todos os usuários logados respondem por padrão; só admin cria/edita
 
     def can_manage_pagamentos_terceiros(self):
         return self.role == 'admin' or self.get_perm('pagamentos_terceiros_gerenciar')
@@ -487,19 +491,6 @@ class AppSetting(db.Model):
     key   = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.Text)
 
-class Destaque(db.Model):
-    """Destaque da Semana / do Mês — escolhido manualmente pelo admin,
-    aparece no dashboard com a foto da pessoa."""
-    id            = db.Column(db.Integer, primary_key=True)
-    tipo          = db.Column(db.String(10), nullable=False)  # 'semana' ou 'mes'
-    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    periodo_label = db.Column(db.String(100))  # texto livre, ex: "Semana de 18 a 24/08"
-    observacao    = db.Column(db.Text)
-    created_by    = db.Column(db.Integer, db.ForeignKey('user.id'))
-    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
-
-    pessoa = db.relationship('User', foreign_keys=[user_id])
-
 class MuralMensagem(db.Model):
     """Mural compartilhado da equipe — mensagem curta + reações em emoji.
     Não é chat privado nem em tempo real: todo mundo vê tudo, atualiza ao
@@ -522,6 +513,62 @@ class MuralReacao(db.Model):
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint('mensagem_id', 'user_id', 'emoji', name='uq_reacao'),)
+
+TIPOS_PERGUNTA_FORMULARIO = ('texto', 'numero', 'escala', 'multipla_escolha', 'sim_nao')
+
+class Formulario(db.Model):
+    """Formulário interno pra levantar indicadores da equipe — cada colaborador
+    logado responde por si. Editar a estrutura depois nunca pode corromper o
+    que já foi respondido (ver _salvar_perguntas_formulario)."""
+    id             = db.Column(db.Integer, primary_key=True)
+    titulo         = db.Column(db.String(200), nullable=False)
+    descricao      = db.Column(db.Text)
+    ativo          = db.Column(db.Boolean, default=True)    # aparece pra responder
+    unica_resposta = db.Column(db.Boolean, default=True)    # True: reenviar atualiza a resposta da pessoa; False: cada envio vira um registro novo (pesquisa periódica)
+    created_by     = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at     = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class FormularioPergunta(db.Model):
+    id            = db.Column(db.Integer, primary_key=True)
+    formulario_id = db.Column(db.Integer, db.ForeignKey('formulario.id'), nullable=False)
+    texto         = db.Column(db.Text, nullable=False)
+    tipo          = db.Column(db.String(20), nullable=False)   # texto, numero, escala, multipla_escolha, sim_nao
+    opcoes        = db.Column(db.Text)     # JSON list de strings — só multipla_escolha
+    obrigatoria   = db.Column(db.Boolean, default=True)
+    ordem         = db.Column(db.Integer, default=0)
+    ativa         = db.Column(db.Boolean, default=True)    # False = removida do form, mas mantida pro histórico/indicadores
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def lista_opcoes(self):
+        try:
+            return json.loads(self.opcoes or '[]')
+        except (ValueError, TypeError):
+            return []
+
+class FormularioResposta(db.Model):
+    id            = db.Column(db.Integer, primary_key=True)
+    formulario_id = db.Column(db.Integer, db.ForeignKey('formulario.id'), nullable=False)
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    enviado_em    = db.Column(db.DateTime, default=datetime.utcnow)
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    colaborador = db.relationship('User', foreign_keys=[user_id])
+
+class FormularioRespostaItem(db.Model):
+    """Guarda um retrato da pergunta (texto/tipo) no momento em que foi
+    respondida — assim, editar a pergunta depois nunca muda o que já foi
+    registrado nem os indicadores já calculados a partir disso."""
+    id             = db.Column(db.Integer, primary_key=True)
+    resposta_id    = db.Column(db.Integer, db.ForeignKey('formulario_resposta.id'), nullable=False)
+    pergunta_id    = db.Column(db.Integer, db.ForeignKey('formulario_pergunta.id'), nullable=False)
+    pergunta_texto = db.Column(db.Text)
+    pergunta_tipo  = db.Column(db.String(20))
+    valor_texto    = db.Column(db.Text)     # texto livre, opção escolhida ou 'Sim'/'Não'
+    valor_numero   = db.Column(db.Float)    # número ou escala
+
+    resposta = db.relationship('FormularioResposta', backref='itens', foreign_keys=[resposta_id])
+    pergunta = db.relationship('FormularioPergunta', foreign_keys=[pergunta_id])
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -632,7 +679,8 @@ def _resumo_mudancas(antes, depois, labels):
         partes.append(f'{label}: "{va_show}" → "{vn_show}"')
     return '; '.join(partes)
 
-BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment, ErpMoodleItem]
+BACKUP_MODELOS = [User, Course, Discipline, AuditLog, Coupon, Refund, ThirdPartyPayment, ErpMoodleItem,
+                  Formulario, FormularioPergunta, FormularioResposta, FormularioRespostaItem]
 
 def _serializar_valor(v):
     if isinstance(v, (datetime, date)):
@@ -776,6 +824,7 @@ def inject_notificacoes():
             'can_cursos': False, 'can_matrizes': False, 'can_banco_disciplinas': False,
             'can_ia_assistente': False, 'can_ferramentas': False,
             'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
+            'can_formularios': False,
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -836,6 +885,7 @@ def inject_notificacoes():
         'can_ferramentas': u.can_view_ferramentas(),
         'can_pagamentos_terceiros': u.can_manage_pagamentos_terceiros(),
         'can_opcoes_curso': u.can_manage_opcoes_curso(),
+        'can_formularios': u.can_view_formularios(),
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -1166,9 +1216,10 @@ def dashboard():
         dashboard_layout = json.loads(u.dashboard_layout) if u.dashboard_layout else []
     except (ValueError, TypeError):
         dashboard_layout = []
-
-    destaque_semana = _destaque_atual('semana')
-    destaque_mes = _destaque_atual('mes')
+    try:
+        widgets_ocultos = json.loads(u.dashboard_ocultos) if u.dashboard_ocultos else []
+    except (ValueError, TypeError):
+        widgets_ocultos = []
 
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
@@ -1180,8 +1231,7 @@ def dashboard():
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
         erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando,
-        dashboard_layout=dashboard_layout,
-        destaque_semana=destaque_semana, destaque_mes=destaque_mes)
+        dashboard_layout=dashboard_layout, widgets_ocultos=widgets_ocultos)
 
 # ─── COURSES ───────────────────────────────────────────────────────────────────
 
@@ -3370,7 +3420,7 @@ def _perms_from_form(d):
         'erp_moodle_acesso', 'pagamentos_terceiros_gerenciar', 'opcoes_curso_gerenciar',
         'block_cupons', 'block_reembolsos', 'block_historico', 'block_trocar_senha',
         'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
-        'block_ia_assistente', 'block_ferramentas',
+        'block_ia_assistente', 'block_ferramentas', 'block_formularios',
         'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
@@ -3427,48 +3477,6 @@ def usuario_excluir(id):
     log_action(session['user_id'], session['username'], 'excluir', 'user', id, username)
     flash(f'Usuário "{username}" excluído.', 'success')
     return redirect(url_for('usuarios'))
-
-# ─── DESTAQUE DA SEMANA / DO MÊS ────────────────────────────────────────────────
-# Escolhido manualmente pelo admin — sempre vale o mais recente cadastrado de
-# cada tipo. Mantém o histórico dos anteriores (não apaga ao trocar).
-
-def _destaque_atual(tipo):
-    return Destaque.query.filter_by(tipo=tipo).order_by(Destaque.created_at.desc()).first()
-
-@app.route('/destaques', methods=['GET', 'POST'])
-@admin_required
-def destaques():
-    if request.method == 'POST':
-        d = request.form
-        tipo = d.get('tipo')
-        user_id = d.get('user_id', type=int)
-        if tipo not in ('semana', 'mes') or not user_id:
-            flash('Escolha o tipo e a pessoa.', 'danger')
-        else:
-            item = Destaque(
-                tipo=tipo, user_id=user_id,
-                periodo_label=d.get('periodo_label', '').strip(),
-                observacao=d.get('observacao', '').strip(),
-                created_by=session['user_id'],
-            )
-            db.session.add(item)
-            db.session.commit()
-            log_action(session['user_id'], session['username'], 'criar', 'destaque', item.id, item.periodo_label)
-            flash('Destaque registrado!', 'success')
-        return redirect(url_for('destaques'))
-    equipe = User.query.filter_by(equipe=True).order_by(User.username).all()
-    historico = Destaque.query.order_by(Destaque.created_at.desc()).limit(20).all()
-    return render_template('destaques.html', equipe=equipe, historico=historico,
-                           destaque_semana=_destaque_atual('semana'), destaque_mes=_destaque_atual('mes'))
-
-@app.route('/destaques/<int:id>/excluir', methods=['POST'])
-@admin_required
-def destaque_excluir(id):
-    d = Destaque.query.get_or_404(id)
-    db.session.delete(d)
-    db.session.commit()
-    flash('Destaque removido.', 'success')
-    return redirect(url_for('destaques'))
 
 # ─── MURAL DA EQUIPE (mensagens + reação em emoji) ─────────────────────────────
 
@@ -3539,6 +3547,300 @@ def api_mural_novas(ultimo_id):
     """Consultado via JS pra saber se surgiram mensagens novas sem recarregar a página."""
     total = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id).count()
     return jsonify({'novas': total})
+
+# ─── FORMULÁRIOS ────────────────────────────────────────────────────────────────
+
+def _formulario_pergunta_tem_resposta(pergunta_id):
+    return db.session.query(FormularioRespostaItem.id).filter_by(pergunta_id=pergunta_id).first() is not None
+
+def _salvar_perguntas_formulario(formulario, d):
+    """Cria/atualiza as perguntas a partir do form de edição (campos
+    perguntas[i][...]). Regra de ouro: editar a estrutura NUNCA pode
+    corromper respostas já dadas.
+    - Pergunta que já tem resposta não pode trocar de tipo (ignora o tipo
+      enviado e mantém o original).
+    - Opção de múltipla escolha que já foi escolhida por alguém nunca some
+      da lista, mesmo que o admin a remova na tela — só dá pra adicionar
+      opções novas.
+    - Remover uma pergunta sem resposta apaga de vez; remover uma que já
+      tem resposta apenas desativa (ativa=False), preservando o histórico."""
+    total = int(d.get('perguntas_total') or 0)
+    ordem = 0
+    for i in range(total):
+        prefixo = f'perguntas[{i}]'
+        texto = (d.get(f'{prefixo}[texto]') or '').strip()
+        if not texto:
+            continue
+        tipo = d.get(f'{prefixo}[tipo]') or 'texto'
+        if tipo not in TIPOS_PERGUNTA_FORMULARIO:
+            tipo = 'texto'
+        obrigatoria = d.get(f'{prefixo}[obrigatoria]') == 'on'
+        removida = d.get(f'{prefixo}[removida]') == '1'
+        opcoes_novas = [o.strip() for o in (d.get(f'{prefixo}[opcoes]') or '').split('\n') if o.strip()]
+        pergunta_id = d.get(f'{prefixo}[id]')
+
+        if pergunta_id:
+            p = FormularioPergunta.query.filter_by(id=int(pergunta_id), formulario_id=formulario.id).first()
+            if not p:
+                continue
+            tem_resposta = _formulario_pergunta_tem_resposta(p.id)
+            p.texto = texto
+            p.obrigatoria = obrigatoria
+            if not tem_resposta:
+                p.tipo = tipo
+            if p.tipo == 'multipla_escolha':
+                usadas = {v for (v,) in db.session.query(FormularioRespostaItem.valor_texto)
+                          .filter_by(pergunta_id=p.id).distinct().all() if v}
+                for opcao_usada in usadas:
+                    if opcao_usada not in opcoes_novas:
+                        opcoes_novas.append(opcao_usada)
+                p.opcoes = json.dumps(opcoes_novas, ensure_ascii=False)
+            if removida:
+                if tem_resposta:
+                    p.ativa = False
+                else:
+                    db.session.delete(p)
+                    continue
+            else:
+                p.ativa = True
+            p.ordem = ordem
+        else:
+            if removida:
+                continue
+            p = FormularioPergunta(formulario_id=formulario.id, texto=texto, tipo=tipo,
+                                    obrigatoria=obrigatoria, ordem=ordem, ativa=True)
+            if tipo == 'multipla_escolha':
+                p.opcoes = json.dumps(opcoes_novas, ensure_ascii=False)
+            db.session.add(p)
+        ordem += 1
+
+@app.route('/formularios')
+@perm_check('can_view_formularios')
+def formularios():
+    u = User.query.get(session['user_id'])
+    if u.role == 'admin':
+        forms = Formulario.query.order_by(Formulario.created_at.desc()).all()
+    else:
+        forms = Formulario.query.filter_by(ativo=True).order_by(Formulario.created_at.desc()).all()
+    minhas_respostas = {r.formulario_id for r in FormularioResposta.query.filter_by(user_id=u.id).all()}
+    participantes = dict(
+        db.session.query(FormularioResposta.formulario_id, db.func.count(db.func.distinct(FormularioResposta.user_id)))
+        .group_by(FormularioResposta.formulario_id).all()
+    )
+    return render_template('formularios.html', forms=forms, minhas_respostas=minhas_respostas,
+                           participantes=participantes)
+
+@app.route('/formularios/novo', methods=['GET', 'POST'])
+@admin_required
+def formulario_novo():
+    if request.method == 'POST':
+        d = request.form
+        titulo = (d.get('titulo') or '').strip()
+        if not titulo:
+            flash('Dê um título ao formulário.', 'danger')
+            return redirect(url_for('formulario_novo'))
+        f = Formulario(titulo=titulo, descricao=(d.get('descricao') or '').strip(),
+                       ativo=(d.get('ativo') == 'on'), unica_resposta=(d.get('unica_resposta') == 'on'),
+                       created_by=session['user_id'])
+        db.session.add(f)
+        db.session.flush()
+        _salvar_perguntas_formulario(f, d)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'criar', 'formulario', f.id, f.titulo)
+        flash('Formulário criado!', 'success')
+        return redirect(url_for('formularios'))
+    return render_template('formulario_form.html', formulario=None, perguntas=[], tem_resposta_ids=set())
+
+@app.route('/formularios/<int:id>/editar', methods=['GET', 'POST'])
+@admin_required
+def formulario_editar(id):
+    f = Formulario.query.get_or_404(id)
+    if request.method == 'POST':
+        d = request.form
+        titulo = (d.get('titulo') or '').strip()
+        if not titulo:
+            flash('Dê um título ao formulário.', 'danger')
+            return redirect(url_for('formulario_editar', id=id))
+        f.titulo = titulo
+        f.descricao = (d.get('descricao') or '').strip()
+        f.ativo = (d.get('ativo') == 'on')
+        f.unica_resposta = (d.get('unica_resposta') == 'on')
+        _salvar_perguntas_formulario(f, d)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'formulario', f.id, f.titulo)
+        flash('Formulário atualizado!', 'success')
+        return redirect(url_for('formularios'))
+    perguntas = FormularioPergunta.query.filter_by(formulario_id=f.id, ativa=True)\
+        .order_by(FormularioPergunta.ordem).all()
+    tem_resposta_ids = {p.id for p in perguntas if _formulario_pergunta_tem_resposta(p.id)}
+    return render_template('formulario_form.html', formulario=f, perguntas=perguntas, tem_resposta_ids=tem_resposta_ids)
+
+@app.route('/formularios/<int:id>/excluir', methods=['POST'])
+@admin_required
+def formulario_excluir(id):
+    f = Formulario.query.get_or_404(id)
+    if FormularioResposta.query.filter_by(formulario_id=f.id).first():
+        flash('Este formulário já tem respostas registradas — não pode ser excluído. Desative-o em vez disso, pra preservar o histórico.', 'danger')
+        return redirect(url_for('formularios'))
+    FormularioPergunta.query.filter_by(formulario_id=f.id).delete()
+    db.session.delete(f)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'formulario', id, f.titulo)
+    flash('Formulário excluído.', 'success')
+    return redirect(url_for('formularios'))
+
+@app.route('/formularios/<int:id>/responder', methods=['GET', 'POST'])
+@perm_check('can_view_formularios')
+def formulario_responder(id):
+    f = Formulario.query.get_or_404(id)
+    u = User.query.get(session['user_id'])
+    if not f.ativo and u.role != 'admin':
+        flash('Este formulário não está mais recebendo respostas.', 'warning')
+        return redirect(url_for('formularios'))
+    perguntas = FormularioPergunta.query.filter_by(formulario_id=f.id, ativa=True)\
+        .order_by(FormularioPergunta.ordem).all()
+
+    resposta_existente = None
+    valores_existentes = {}
+    if f.unica_resposta:
+        resposta_existente = FormularioResposta.query.filter_by(formulario_id=f.id, user_id=u.id).first()
+        if resposta_existente:
+            valores_existentes = {i.pergunta_id: i for i in
+                                  FormularioRespostaItem.query.filter_by(resposta_id=resposta_existente.id).all()}
+
+    if request.method == 'POST':
+        d = request.form
+        for p in perguntas:
+            valor = (d.get(f'pergunta_{p.id}') or '').strip()
+            if p.obrigatoria and not valor:
+                flash(f'A pergunta "{p.texto}" é obrigatória.', 'danger')
+                return redirect(url_for('formulario_responder', id=id))
+
+        if f.unica_resposta and resposta_existente:
+            resposta = resposta_existente
+            FormularioRespostaItem.query.filter_by(resposta_id=resposta.id).delete()
+        else:
+            resposta = FormularioResposta(formulario_id=f.id, user_id=u.id)
+            db.session.add(resposta)
+            db.session.flush()
+
+        for p in perguntas:
+            valor = (d.get(f'pergunta_{p.id}') or '').strip()
+            if not valor:
+                continue
+            item = FormularioRespostaItem(resposta_id=resposta.id, pergunta_id=p.id,
+                                           pergunta_texto=p.texto, pergunta_tipo=p.tipo)
+            if p.tipo in ('numero', 'escala'):
+                try:
+                    item.valor_numero = float(valor.replace(',', '.'))
+                except ValueError:
+                    continue
+            else:
+                item.valor_texto = valor[:2000]
+            db.session.add(item)
+
+        db.session.commit()
+        flash('Resposta enviada! Obrigado.', 'success')
+        return redirect(url_for('formularios'))
+
+    return render_template('formulario_responder.html', formulario=f, perguntas=perguntas,
+                           valores_existentes=valores_existentes, ja_respondeu=bool(resposta_existente))
+
+@app.route('/formularios/<int:id>/indicadores')
+@admin_required
+def formulario_indicadores(id):
+    f = Formulario.query.get_or_404(id)
+    perguntas = FormularioPergunta.query.filter_by(formulario_id=f.id).order_by(FormularioPergunta.ordem).all()
+    colaborador_id = request.args.get('colaborador', type=int)
+
+    respostas_q = FormularioResposta.query.filter_by(formulario_id=f.id)
+    if colaborador_id:
+        respostas_q = respostas_q.filter_by(user_id=colaborador_id)
+    respostas = respostas_q.order_by(FormularioResposta.enviado_em.desc()).all()
+    resposta_ids = [r.id for r in respostas]
+
+    colaboradores = User.query.join(FormularioResposta, FormularioResposta.user_id == User.id)\
+        .filter(FormularioResposta.formulario_id == f.id).distinct().order_by(User.username).all()
+
+    indicadores = []
+    for p in perguntas:
+        if resposta_ids:
+            itens = FormularioRespostaItem.query.filter_by(pergunta_id=p.id)\
+                .filter(FormularioRespostaItem.resposta_id.in_(resposta_ids)).all()
+        else:
+            itens = []
+        ind = {'pergunta': p, 'total_respostas': len(itens)}
+        if p.tipo in ('numero', 'escala'):
+            valores = [i.valor_numero for i in itens if i.valor_numero is not None]
+            ind['media'] = round(sum(valores) / len(valores), 2) if valores else None
+            distrib = {}
+            for v in valores:
+                chave = int(v) if float(v).is_integer() else v
+                distrib[chave] = distrib.get(chave, 0) + 1
+            ind['distribuicao'] = sorted(distrib.items())
+        elif p.tipo in ('multipla_escolha', 'sim_nao'):
+            contagem = {}
+            for i in itens:
+                if i.valor_texto:
+                    contagem[i.valor_texto] = contagem.get(i.valor_texto, 0) + 1
+            ind['distribuicao'] = sorted(contagem.items(), key=lambda x: -x[1])
+        else:
+            ind['respostas_texto'] = sorted([
+                {'texto': i.valor_texto, 'colaborador': i.resposta.colaborador, 'data': i.resposta.enviado_em}
+                for i in itens if i.valor_texto
+            ], key=lambda x: x['data'], reverse=True)[:200]
+        indicadores.append(ind)
+
+    return render_template('formulario_indicadores.html', formulario=f, indicadores=indicadores,
+                           colaboradores=colaboradores, colaborador_selecionado=colaborador_id,
+                           total_respostas=len(respostas))
+
+@app.route('/formularios/<int:id>/exportar')
+@admin_required
+def formulario_exportar(id):
+    f = Formulario.query.get_or_404(id)
+    perguntas = FormularioPergunta.query.filter_by(formulario_id=f.id).order_by(FormularioPergunta.ordem).all()
+    respostas = FormularioResposta.query.filter_by(formulario_id=f.id).order_by(FormularioResposta.enviado_em).all()
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Respostas'
+
+    cabecalho = ['Colaborador', 'Enviado em'] + [
+        p.texto + (' (inativa)' if not p.ativa else '') for p in perguntas
+    ]
+    ws.append(cabecalho)
+    for col in range(1, len(cabecalho) + 1):
+        c = ws.cell(row=1, column=col)
+        c.font = Font(bold=True, color='FFFFFF')
+        c.fill = PatternFill('solid', fgColor='F2780D')
+        c.alignment = Alignment(wrap_text=True, vertical='center')
+
+    for r in respostas:
+        itens_por_pergunta = {i.pergunta_id: i for i in FormularioRespostaItem.query.filter_by(resposta_id=r.id).all()}
+        linha = [nome_exibicao(r.colaborador), r.enviado_em.strftime('%d/%m/%Y %H:%M')]
+        for p in perguntas:
+            item = itens_por_pergunta.get(p.id)
+            if not item:
+                linha.append('')
+            elif item.valor_numero is not None:
+                linha.append(item.valor_numero)
+            else:
+                linha.append(item.valor_texto or '')
+        ws.append(linha)
+
+    for col in range(1, len(cabecalho) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 26
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      as_attachment=True, download_name=f'formulario_{f.id}_respostas.xlsx')
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
@@ -3807,6 +4109,28 @@ def ferramenta_revalidar(id):
         flash(f'"{t.label}" ainda bloqueia — confira se a mudança já foi publicada do lado de lá.', 'danger')
     return redirect(url_for('ferramentas'))
 
+@app.route('/api/ferramentas-ordem', methods=['POST'])
+@admin_required
+def api_ferramentas_ordem():
+    """Salva a ordem em que o admin arrastou as ferramentas — vale pra
+    todo mundo, igual a ordem das seções do menu."""
+    data = request.get_json(silent=True) or {}
+    ordem_ids = data.get('order', [])
+    if not isinstance(ordem_ids, list):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    tools_por_id = {t.id: t for t in ExternalTool.query.all()}
+    for posicao, tool_id in enumerate(ordem_ids):
+        t = tools_por_id.get(tool_id if isinstance(tool_id, int) else None)
+        if t is None:
+            try:
+                t = tools_por_id.get(int(tool_id))
+            except (TypeError, ValueError):
+                t = None
+        if t:
+            t.ordem = posicao
+    db.session.commit()
+    return jsonify({'ok': True})
+
 @app.route('/ferramentas/<int:id>/abrir')
 @perm_check('can_view_ferramentas')
 def ferramenta_abrir(id):
@@ -3823,7 +4147,6 @@ def ferramenta_abrir(id):
 DASHBOARD_BLOCOS_VALIDOS = {
     'andamento_plataforma', 'cursos_responsavel', 'distribuicao_tipo',
     'erp_moodle', 'atividade_recente', 'acesso_rapido', 'ultimo_backup',
-    'destaques',
 }
 
 @app.route('/api/dashboard-layout', methods=['POST'])
@@ -3838,6 +4161,30 @@ def api_dashboard_layout():
     ordem = [b for b in ordem if b in DASHBOARD_BLOCOS_VALIDOS]
     u = User.query.get(session['user_id'])
     u.dashboard_layout = json.dumps(ordem) if ordem else None
+    db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/api/dashboard-widgets', methods=['POST'])
+@login_required
+def api_dashboard_widgets():
+    """Liga/desliga um widget do dashboard — só afeta o que aparece pra esse
+    usuário, nunca apaga o dado por trás (desligar e religar o widget mostra
+    tudo de novo, do jeito que estava)."""
+    data = request.get_json(silent=True) or {}
+    bloco = data.get('block_id', '')
+    visivel = data.get('visivel')
+    if bloco not in DASHBOARD_BLOCOS_VALIDOS or not isinstance(visivel, bool):
+        return jsonify({'ok': False, 'erro': 'Formato inválido.'}), 400
+    u = User.query.get(session['user_id'])
+    try:
+        ocultos = set(json.loads(u.dashboard_ocultos)) if u.dashboard_ocultos else set()
+    except (ValueError, TypeError):
+        ocultos = set()
+    if visivel:
+        ocultos.discard(bloco)
+    else:
+        ocultos.add(bloco)
+    u.dashboard_ocultos = json.dumps(sorted(ocultos)) if ocultos else None
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -4448,6 +4795,7 @@ def seed_data():
         ('Moodle Cursos Técnicos ERP', 'https://moodle.evoluitec.app.br/course/index.php'),
         ('Moodle LAV', 'https://lav.eadunifatecie.com.br/login/index.php'),
         ('Microsoft Teams', 'https://teams.microsoft.com/'),
+        ('Planilha OneDrive', 'https://1drv.ms/x/c/1417b9fa3c37aa74/IQC1uusDssRwR49_mOBgCvdBAQUlSu-KBmRH5fnb6d73voo?e=T0oWTz'),
     ]
     maior_ordem = db.session.query(db.func.max(ExternalTool.ordem)).scalar() or 0
     labels_existentes = {t.label for t in ExternalTool.query.all()}
@@ -4878,6 +5226,16 @@ def _run_migrations():
                     conn.rollback()
                 except Exception:
                     pass
+        # Feature "Destaque da Semana/Mês" foi removida de vez — apaga a
+        # tabela (e os registros que ela guardava) se ainda existir.
+        try:
+            conn.execute(db.text('DROP TABLE IF EXISTS destaque'))
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
 
 @app.before_request

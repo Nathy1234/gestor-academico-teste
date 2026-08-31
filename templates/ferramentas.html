@@ -37,10 +37,13 @@
     <div class="table-wrapper">
       {% if tools %}
       <table>
-        <thead><tr><th>Nome</th><th>Link</th><th>Abre aqui dentro?</th>{% if session.role=='admin' %}<th></th>{% endif %}</tr></thead>
-        <tbody>
+        <thead><tr>{% if session.role=='admin' %}<th style="width:24px"></th>{% endif %}<th>Nome</th><th>Link</th><th>Abre aqui dentro?</th>{% if session.role=='admin' %}<th></th>{% endif %}</tr></thead>
+        <tbody id="listaFerramentas">
           {% for t in tools %}
-          <tr>
+          <tr data-id="{{ t.id }}" {% if session.role=='admin' %}draggable="true" class="linha-ferramenta"{% endif %}>
+            {% if session.role == 'admin' %}
+            <td style="cursor:grab;color:var(--text-muted);text-align:center" title="Arraste para reordenar">⠿</td>
+            {% endif %}
             <td>
               <a href="{{ url_for('ferramenta_abrir', id=t.id) }}" style="color:var(--text);text-decoration:none;font-weight:500;display:flex;align-items:center;gap:8px">
                 <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:var(--primary);stroke-width:2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 20h8"/></svg>
@@ -116,6 +119,37 @@ document.querySelectorAll('.btn-editar-ferramenta').forEach(btn => {
     editarFerramenta(btn.dataset.id, btn.dataset.label, btn.dataset.url);
   });
 });
+
+// Arrastar linhas pra reordenar as ferramentas
+(function() {
+  const corpo = document.getElementById('listaFerramentas');
+  if (!corpo) return;
+  let arrastando = null;
+  corpo.querySelectorAll('.linha-ferramenta').forEach(linha => {
+    linha.addEventListener('dragstart', () => {
+      arrastando = linha;
+      linha.style.opacity = '.4';
+    });
+    linha.addEventListener('dragend', () => {
+      linha.style.opacity = '';
+      arrastando = null;
+      const ordem = Array.from(corpo.querySelectorAll('.linha-ferramenta')).map(l => parseInt(l.dataset.id, 10));
+      fetch('/api/ferramentas-ordem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: ordem }),
+      });
+    });
+    linha.addEventListener('dragover', e => e.preventDefault());
+    linha.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!arrastando || arrastando === linha) return;
+      const todas = Array.from(corpo.querySelectorAll('.linha-ferramenta'));
+      if (todas.indexOf(arrastando) < todas.indexOf(linha)) linha.after(arrastando);
+      else linha.before(arrastando);
+    });
+  });
+})();
 </script>
 {% endif %}
 {% endblock %}

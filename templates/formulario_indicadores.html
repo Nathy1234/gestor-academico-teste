@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block title %}Indicadores — {{ formulario.titulo }} — Gestor{% endblock %}
+{% block content %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('formularios') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Formulários</a>
+      <div class="page-title" style="margin-top:6px">Indicadores — {{ formulario.titulo }}</div>
+      <div class="page-subtitle">{{ total_respostas }} resposta(s){% if colaborador_selecionado %} de 1 colaborador selecionado{% endif %}</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <form method="GET" style="display:flex;gap:8px;align-items:center">
+        <select name="colaborador" class="filter-select" onchange="this.form.submit()">
+          <option value="">Todos os colaboradores</option>
+          {% for c in colaboradores %}
+          <option value="{{ c.id }}" {% if colaborador_selecionado == c.id %}selected{% endif %}>{{ c.nome or c.username }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <a href="{{ url_for('formulario_exportar', id=formulario.id) }}" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar planilha
+      </a>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px">
+    {% for ind in indicadores %}
+    {% set p = ind.pergunta %}
+    <div class="card {% if not p.ativa %}indicador-inativa{% endif %}">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div class="card-title">{{ p.texto }}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+            {{ ind.total_respostas }} resposta(s)
+            {% if not p.ativa %}· <span style="color:#dc2626">pergunta removida do formulário atual</span>{% endif %}
+          </div>
+        </div>
+        <span class="badge badge-oculto" style="font-size:10px">
+          {{ {'texto':'Texto livre','numero':'Número','escala':'Escala 1-5','multipla_escolha':'Múltipla escolha','sim_nao':'Sim/Não'}[p.tipo] }}
+        </span>
+      </div>
+      <div class="card-body">
+        {% if p.tipo in ('numero','escala') %}
+          {% if ind.media is not none %}
+          <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap">
+            <div style="text-align:center;flex-shrink:0">
+              <div style="font-size:32px;font-weight:800;color:var(--primary)">{{ ind.media }}</div>
+              <div style="font-size:11px;color:var(--text-muted)">média</div>
+            </div>
+            <div style="flex:1;min-width:240px;height:160px">
+              <canvas id="chart-{{ p.id }}"></canvas>
+            </div>
+          </div>
+          <script>
+            (function() {
+              const ctx = document.getElementById('chart-{{ p.id }}');
+              new Chart(ctx, {
+                type: 'bar',
+                data: {
+                  labels: {{ ind.distribuicao|map(attribute=0)|list|tojson }},
+                  datasets: [{ label: 'Respostas', data: {{ ind.distribuicao|map(attribute=1)|list|tojson }},
+                               backgroundColor: '#f2780d' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+              });
+            })();
+          </script>
+          {% else %}
+          <div style="color:var(--text-muted);font-size:13px">Sem respostas ainda.</div>
+          {% endif %}
+
+        {% elif p.tipo in ('multipla_escolha','sim_nao') %}
+          {% if ind.distribuicao %}
+          <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+            <div style="width:200px;height:200px;flex-shrink:0">
+              <canvas id="chart-{{ p.id }}"></canvas>
+            </div>
+            <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px">
+              {% for opcao, qtd in ind.distribuicao %}
+              <div style="display:flex;justify-content:space-between;font-size:13px">
+                <span>{{ opcao }}</span>
+                <strong>{{ qtd }} ({{ (qtd / ind.total_respostas * 100)|round(0, 'floor')|int }}%)</strong>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <script>
+            (function() {
+              const ctx = document.getElementById('chart-{{ p.id }}');
+              new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                  labels: {{ ind.distribuicao|map(attribute=0)|list|tojson }},
+                  datasets: [{ data: {{ ind.distribuicao|map(attribute=1)|list|tojson }},
+                               backgroundColor: ['#f2780d','#1d4ed8','#16a34a','#9333ea','#dc2626','#0891b2','#d97706','#64748b'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+              });
+            })();
+          </script>
+          {% else %}
+          <div style="color:var(--text-muted);font-size:13px">Sem respostas ainda.</div>
+          {% endif %}
+
+        {% else %}
+          {% if ind.respostas_texto %}
+          <div style="display:flex;flex-direction:column;gap:10px;max-height:280px;overflow-y:auto">
+            {% for r in ind.respostas_texto %}
+            <div style="border-bottom:1px solid var(--border);padding-bottom:8px">
+              <div style="font-size:13px">{{ r.texto }}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px">
+                {{ r.colaborador.nome or r.colaborador.username if r.colaborador else '—' }} · {{ r.data.strftime('%d/%m/%Y %H:%M') }}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div style="color:var(--text-muted);font-size:13px">Sem respostas ainda.</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="card" style="padding:32px;text-align:center;color:var(--text-muted)">Este formulário ainda não tem perguntas.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<style>.indicador-inativa { opacity: .7; }</style>
+{% endblock %}

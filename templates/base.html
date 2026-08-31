@@ -162,10 +162,16 @@
       {% endif %}
 
       {% if not somente_erp_moodle %}
-      {% if can_historico %}
+      {% if can_historico or can_formularios %}
       <div class="sidebar-section-block" data-section-id="gestao" {% if is_admin_nav %}draggable="true"{% endif %}>
       <div class="nav-section" onclick="toggleSidebarSection(this)">{{ handle() }}<span class="section-title">GESTÃO</span>{{ chevron() }}</div>
       <div class="sidebar-section-items">
+      {% if can_formularios %}
+      <a href="{{ url_for('formularios') }}" class="nav-item {% if 'formulario' in request.endpoint %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Formulários
+      </a>
+      {% endif %}
       {% if can_historico %}
       <a href="{{ url_for('historico') }}" class="nav-item {% if request.endpoint=='historico' %}active{% endif %}">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -187,10 +193,6 @@
       <a href="{{ url_for('backup_lista') }}" class="nav-item {% if 'backup' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Backups
-      </a>
-      <a href="{{ url_for('destaques') }}" class="nav-item {% if request.endpoint in ['destaques','destaque_excluir'] %}active{% endif %}">
-        <svg viewBox="0 0 24 24"><path d="M12 2l2.6 6.6L21 9.3l-5 4.6L17.4 21 12 17.3 6.6 21 8 13.9l-5-4.6 6.4-.7z"/></svg>
-        Destaques
       </a>
       </div>
       </div>
