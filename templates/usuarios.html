@@ -15,6 +15,38 @@
     </a>
   </div>
 
+  {% if inativos %}
+  <!-- COLABORADORES INATIVOS ──────────────────── -->
+  <div class="card" style="margin-bottom:24px;border-left:3px solid #d97706">
+    <div class="card-header">
+      <div class="card-title">⚠ Colaboradores sem acessar há {{ dias_inatividade }}+ dias</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
+        Não dispara nada sozinho — é só pra você saber quem sumiu e decidir se vale cobrar.
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Colaborador</th><th>Perfil</th><th>Última vez visto</th></tr></thead>
+        <tbody>
+          {% for item in inativos %}
+          <tr>
+            <td><strong>{{ item.user|nome_exibicao }}</strong></td>
+            <td>{{ item.user.role|title }}</td>
+            <td>
+              {% if item.nunca_logou %}
+              <span class="badge badge-descontinuado" style="font-size:10px">nunca acessou</span>
+              {% else %}
+              <span class="badge badge-em_edicao" style="font-size:10px">{{ item.dias }} dia(s) atrás</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- CARDS DE RESPONSABILIDADE ──────────────────── -->
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:24px">
     {% for u in users %}
