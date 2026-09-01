@@ -912,9 +912,10 @@ def nome_exibicao(u):
 def _agrupar_ferramentas(tools):
     """Agrupa ferramentas externas automaticamente por padrão do nome/URL,
     pra não empilhar tudo solto na barra lateral: rótulo começando com
-    'Moodle' vira o grupo MOODLE, link de pasta/Drive vira o grupo DRIVE —
-    o resto continua solto, como sempre foi. Zero configuração manual."""
-    grupos_ordem = ['MOODLE', 'DRIVE']
+    'Moodle' vira o grupo MOODLE, planilhas/links de disciplinas viram o
+    grupo DISCIPLINAS — mas um link direto de pasta do Drive fica solto
+    (não faz sentido um grupo de um item só). Zero configuração manual."""
+    grupos_ordem = ['MOODLE', 'DISCIPLINAS']
     grupos = {nome: [] for nome in grupos_ordem}
     soltas = []
     for t in tools:
@@ -922,8 +923,10 @@ def _agrupar_ferramentas(tools):
         url_low = (t.url or '').lower()
         if label_low.startswith('moodle'):
             grupos['MOODLE'].append(t)
-        elif 'drive.google.com' in url_low or 'drive' in label_low:
-            grupos['DRIVE'].append(t)
+        elif 'drive.google.com' in url_low:
+            soltas.append(t)
+        elif 'disc' in label_low:
+            grupos['DISCIPLINAS'].append(t)
         else:
             soltas.append(t)
     grupos_finais = [(nome, grupos[nome]) for nome in grupos_ordem if grupos[nome]]
