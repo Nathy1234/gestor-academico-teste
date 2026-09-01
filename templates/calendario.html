@@ -214,16 +214,18 @@
     </div>
   </div>
   {% else %}
-  <div style="display:flex;flex-direction:column;gap:12px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
     {% for r in todos_tipos_resumo %}
-    <a href="{{ url_for('calendario', aba='dashboard', tipo=r.nome) }}" class="card" style="padding:16px;text-decoration:none;color:inherit;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-      <div style="font-weight:700;font-size:14px;flex:1;min-width:160px">{{ r.nome }}</div>
-      <div><div style="font-size:18px;font-weight:700">{{ r.total }}</div><div style="font-size:10px;color:var(--text-muted)">Total</div></div>
-      <div><div style="font-size:18px;font-weight:700;color:#b35700">{{ r.pendentes }}</div><div style="font-size:10px;color:var(--text-muted)">Pendentes</div></div>
-      <div><div style="font-size:18px;font-weight:700;color:#15803d">{{ r.liberadas }}</div><div style="font-size:10px;color:var(--text-muted)">Liberadas</div></div>
+    <a href="{{ url_for('calendario', aba='dashboard', tipo=r.nome) }}" class="card" style="padding:12px 14px;text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+      <div style="font-weight:700;font-size:12.5px;line-height:1.3">{{ r.nome }}</div>
+      <div style="display:flex;gap:14px">
+        <div><div style="font-size:16px;font-weight:700">{{ r.total }}</div><div style="font-size:9.5px;color:var(--text-muted)">Total</div></div>
+        <div><div style="font-size:16px;font-weight:700;color:#b35700">{{ r.pendentes }}</div><div style="font-size:9.5px;color:var(--text-muted)">Pendentes</div></div>
+        <div><div style="font-size:16px;font-weight:700;color:#15803d">{{ r.liberadas }}</div><div style="font-size:9.5px;color:var(--text-muted)">Liberadas</div></div>
+      </div>
     </a>
     {% else %}
-    <div class="card" style="padding:32px;text-align:center;color:var(--text-muted)">Nenhum tipo cadastrado ainda.</div>
+    <div class="card" style="padding:32px;text-align:center;color:var(--text-muted);grid-column:1/-1">Nenhum tipo cadastrado ainda.</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -319,6 +321,12 @@
     {% elif total_arquivadas %}
     <a href="{{ url_for('calendario', aba='disciplinas', arquivadas=1, trimestre=trimestre_param) }}" class="btn btn-secondary btn-sm">Ver arquivadas ({{ total_arquivadas }})</a>
     {% endif %}
+    <a href="{{ url_for('calendario_disciplinas_exportar', tipo=tipo_detalhe, arquivadas=(1 if ver_arquivadas else none), trimestre=trimestre_param) }}" class="btn btn-secondary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Exportar Excel
+    </a>
     {% if is_admin %}
     <button type="button" class="btn btn-secondary" onclick="calMarcarLiberadasAbrir()">✅ Colar lista de liberadas no Moodle</button>
     {% endif %}

@@ -63,6 +63,7 @@
 
   <div class="pub-tabs">
     <button type="button" class="pub-tab active" data-painel="disciplinas" onclick="pubAbrirAba(this)">🗂 Disciplinas por Tipo</button>
+    <button type="button" class="pub-tab" data-painel="dashboard" onclick="pubAbrirAba(this)">📊 Dashboard</button>
     <button type="button" class="pub-tab" data-painel="demandas" onclick="pubAbrirAba(this)">📋 Demandas</button>
   </div>
 
@@ -93,6 +94,23 @@
         <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">Nenhuma disciplina cadastrada ainda.</div>
         {% endfor %}
       </div>
+    </div>
+  </div>
+
+  <div id="pubPainelDashboard" class="pub-painel">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      {% for r in todos_tipos_resumo %}
+      <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-weight:700;font-size:12.5px;line-height:1.3">{{ r.nome }}</div>
+        <div style="display:flex;gap:14px">
+          <div><div style="font-size:16px;font-weight:700">{{ r.total }}</div><div style="font-size:9.5px;color:var(--text-muted)">Total</div></div>
+          <div><div style="font-size:16px;font-weight:700;color:#b35700">{{ r.pendentes }}</div><div style="font-size:9.5px;color:var(--text-muted)">Pendentes</div></div>
+          <div><div style="font-size:16px;font-weight:700;color:#15803d">{{ r.liberadas }}</div><div style="font-size:9.5px;color:var(--text-muted)">Liberadas</div></div>
+        </div>
+      </div>
+      {% else %}
+      <div class="card" style="padding:32px;text-align:center;color:var(--text-muted);grid-column:1/-1">Nenhum tipo cadastrado ainda.</div>
+      {% endfor %}
     </div>
   </div>
 

@@ -4686,6 +4686,16 @@ def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False, trimestre
         resultado.append({'tipo': tipo_nome, 'submodulos': submodulos, 'total': total_tipo, 'liberadas': liberadas_tipo})
     return resultado
 
+def _resumo_de_tipo(grupo):
+    """Resumo (total/pendentes/liberadas/por etapa) de um grupo de
+    _disciplinas_agrupadas — usado no Dashboard interno e no público."""
+    por_status = {}
+    for sub in grupo['submodulos']:
+        for it in sub['itens']:
+            por_status[it.status] = por_status.get(it.status, 0) + 1
+    return {'nome': grupo['tipo'], 'total': grupo['total'], 'liberadas': grupo['liberadas'],
+            'pendentes': grupo['total'] - grupo['liberadas'], 'por_status': por_status}
+
 def _calendario_publico_ativo():
     setting = AppSetting.query.get('calendario_publico_ativo')
     if setting is None or setting.value is None:
@@ -4757,21 +4767,13 @@ def calendario():
         total_arquivadas_q = total_arquivadas_q.filter_by(modulo=tipo_detalhe)
     total_arquivadas = total_arquivadas_q.count() if not ver_arquivadas else sum(g['total'] for g in modulos)
 
-    def _resumo_de(grupo):
-        por_status = {}
-        for sub in grupo['submodulos']:
-            for it in sub['itens']:
-                por_status[it.status] = por_status.get(it.status, 0) + 1
-        return {'nome': grupo['tipo'], 'total': grupo['total'], 'liberadas': grupo['liberadas'],
-                'pendentes': grupo['total'] - grupo['liberadas'], 'por_status': por_status}
-
     tipo_resumo = None
     todos_tipos_resumo = []
     if aba == 'dashboard':
         if tipo_detalhe and modulos:
-            tipo_resumo = _resumo_de(modulos[0])
+            tipo_resumo = _resumo_de_tipo(modulos[0])
         else:
-            todos_tipos_resumo = [_resumo_de(g) for g in _disciplinas_agrupadas(incluir_arquivadas=ver_arquivadas)]
+            todos_tipos_resumo = [_resumo_de_tipo(g) for g in _disciplinas_agrupadas(incluir_arquivadas=ver_arquivadas)]
 
     modulos_cadastrados = ModuloCalendario.query.order_by(ModuloCalendario.ordem, ModuloCalendario.nome).all()
     submodulos_cadastrados = SubmoduloCalendario.query.order_by(
@@ -4809,9 +4811,10 @@ def calendario_publico():
         'responsavel': ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios()) or None,
     } for d in demandas]
     modulos = _disciplinas_agrupadas()
+    todos_tipos_resumo = [_resumo_de_tipo(g) for g in modulos]
 
     return render_template('calendario_publico.html',
-        demandas=demandas_view, modulos=modulos,
+        demandas=demandas_view, modulos=modulos, todos_tipos_resumo=todos_tipos_resumo,
         STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
         STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
 
@@ -5075,6 +5078,66 @@ def calendario_exportar():
     buf.seek(0)
     return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                       as_attachment=True, download_name=f'demandas_{date.today().isoformat()}.xlsx')
+
+@app.route('/calendario/disciplinas/exportar')
+@perm_check('can_view_calendario')
+def calendario_disciplinas_exportar():
+    """Exporta a listagem de Disciplinas por Tipo — respeita os mesmos
+    filtros da tela (tipo, trimestre de liberação, arquivadas ou não)."""
+    tipo_filtro = request.args.get('tipo') or ''
+    ver_arquivadas = request.args.get('arquivadas') == '1'
+    trimestre_filtro = None
+    trimestre_param = request.args.get('trimestre') or ''
+    if '-' in trimestre_param:
+        try:
+            ano_t, tri_t = trimestre_param.split('-')
+            trimestre_filtro = (int(ano_t), int(tri_t))
+        except ValueError:
+            pass
+
+    grupos = _disciplinas_agrupadas(tipo_filtro or None, incluir_arquivadas=ver_arquivadas,
+                                     trimestre_filtro=trimestre_filtro)
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Disciplinas'
+
+    cabecalho = ['Tipo', 'Módulo', 'Disciplina', 'Carga Horária', 'Professor', 'Andamento',
+                 'Liberada em', 'Observação', 'Arquivada']
+    ws.append(cabecalho)
+    for col in range(1, len(cabecalho) + 1):
+        c = ws.cell(row=1, column=col)
+        c.font = Font(bold=True, color='FFFFFF')
+        c.fill = PatternFill('solid', fgColor='F2780D')
+        c.alignment = Alignment(wrap_text=True, vertical='center')
+
+    for grupo in grupos:
+        for sub in grupo['submodulos']:
+            for it in sub['itens']:
+                ws.append([
+                    grupo['tipo'],
+                    '' if sub['submodulo'] == SEM_MODULO_LABEL else sub['submodulo'],
+                    it.nome,
+                    it.carga or '',
+                    it.professor or '',
+                    STATUS_DISC_MODULO_LABEL.get(it.status, it.status),
+                    it.status_em.strftime('%d/%m/%Y %H:%M') if it.status == 'liberada_moodle' and it.status_em else '',
+                    it.observacao or '',
+                    'Sim' if it.arquivado else '',
+                ])
+
+    for col, w in enumerate([22, 18, 34, 14, 22, 16, 16, 30, 12], start=1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      as_attachment=True, download_name=f'disciplinas_{date.today().isoformat()}.xlsx')
 
 # ─── CALENDÁRIO — TIPOS, MÓDULOS E IMPORTAÇÃO EM MASSA ──────────────────────────
 
