@@ -25,6 +25,34 @@
     </div>
   </div>
 
+  <details class="card" style="margin-bottom:16px">
+    <summary style="padding:12px 16px;cursor:pointer;font-weight:600;font-size:13px">Respostas individuais ({{ respostas|length }})</summary>
+    <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>Colaborador</th><th>Enviado em</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in respostas %}
+        <tr>
+          <td>{{ r.colaborador|nome_exibicao }}</td>
+          <td>{{ r.enviado_em.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td style="text-align:right">
+            <form method="POST" action="{{ url_for('formulario_resposta_excluir', form_id=formulario.id, resposta_id=r.id) }}"
+                  onsubmit="return confirm('Excluir a resposta de &quot;{{ (r.colaborador|nome_exibicao)|e }}&quot;? Essa ação não pode ser desfeita.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm" style="background:none;border:1px solid var(--border);color:#dc2626">Excluir</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px">Nenhuma resposta ainda.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+
   <div style="display:flex;flex-direction:column;gap:16px">
     {% for ind in indicadores %}
     {% set p = ind.pergunta %}

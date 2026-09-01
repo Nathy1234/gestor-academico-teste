@@ -4524,7 +4524,22 @@ def formulario_indicadores(id):
 
     return render_template('formulario_indicadores.html', formulario=f, indicadores=indicadores,
                            colaboradores=colaboradores, colaborador_selecionado=colaborador_id,
-                           total_respostas=len(respostas))
+                           total_respostas=len(respostas), respostas=respostas)
+
+@app.route('/formularios/<int:form_id>/respostas/<int:resposta_id>/excluir', methods=['POST'])
+@admin_required
+def formulario_resposta_excluir(form_id, resposta_id):
+    """Exclui a resposta de UM colaborador (não o formulário inteiro) — pra
+    tirar do indicador quem respondeu por engano, saiu da equipe etc."""
+    resposta = FormularioResposta.query.filter_by(id=resposta_id, formulario_id=form_id).first_or_404()
+    nome = nome_exibicao(resposta.colaborador)
+    FormularioRespostaItem.query.filter_by(resposta_id=resposta.id).delete()
+    db.session.delete(resposta)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'formulario_resposta', resposta_id,
+               f'resposta de {nome} no formulário #{form_id}')
+    flash(f'Resposta de {nome} excluída.', 'success')
+    return redirect(url_for('formulario_indicadores', id=form_id))
 
 @app.route('/formularios/<int:id>/exportar')
 @admin_required
