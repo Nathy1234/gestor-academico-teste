@@ -58,6 +58,7 @@
   <!-- ── ABAS ── -->
   <div class="cal-tabs">
     <a href="{{ url_for('calendario', aba='disciplinas') }}" class="cal-tab {% if aba == 'disciplinas' %}active{% endif %}">🗂 Disciplinas por Tipo</a>
+    <a href="{{ url_for('calendario', aba='dashboard') }}" class="cal-tab {% if aba == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
     <a href="{{ url_for('calendario', aba='lista') }}" class="cal-tab {% if aba == 'lista' %}active{% endif %}">📋 Lista de Demandas</a>
     <a href="{{ url_for('calendario', aba='calendario') }}" class="cal-tab {% if aba == 'calendario' %}active{% endif %}">📅 Calendário</a>
   </div>
@@ -183,11 +184,55 @@
   </div>
   {% endif %}
 
+  {% elif aba == 'dashboard' %}
+  <!-- ═══════════════════════ ABA: DASHBOARD (resumo por tipo) ═══════════════════════ -->
+  {% if tipo_detalhe and tipo_resumo %}
+  <div class="card" style="margin-bottom:16px;overflow:hidden;border:1.5px dashed var(--primary)">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+      <div class="card-title">📊 Resumo — {{ tipo_resumo.nome }}</div>
+      <a href="{{ url_for('calendario', aba='dashboard') }}" class="btn btn-secondary btn-sm">← Ver todos os tipos</a>
+    </div>
+    <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:22px;font-weight:700">{{ tipo_resumo.total }}</div>
+        <div style="font-size:10px;color:var(--text-muted)">Total de disciplinas</div>
+      </div>
+      <div>
+        <div style="font-size:22px;font-weight:700;color:#b35700">{{ tipo_resumo.pendentes }}</div>
+        <div style="font-size:10px;color:var(--text-muted)">Pendentes</div>
+      </div>
+      <div>
+        <div style="font-size:22px;font-weight:700;color:#15803d">{{ tipo_resumo.liberadas }}</div>
+        <div style="font-size:10px;color:var(--text-muted)">Liberadas no Moodle</div>
+      </div>
+      {% for s in STATUS_DISC %}
+      <div>
+        <div style="font-size:18px;font-weight:700">{{ tipo_resumo.por_status.get(s, 0) }}</div>
+        <div style="font-size:10px;color:var(--text-muted)">{{ STATUS_DISC_LABEL[s] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div style="display:flex;flex-direction:column;gap:12px">
+    {% for r in todos_tipos_resumo %}
+    <a href="{{ url_for('calendario', aba='dashboard', tipo=r.nome) }}" class="card" style="padding:16px;text-decoration:none;color:inherit;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div style="font-weight:700;font-size:14px;flex:1;min-width:160px">{{ r.nome }}</div>
+      <div><div style="font-size:18px;font-weight:700">{{ r.total }}</div><div style="font-size:10px;color:var(--text-muted)">Total</div></div>
+      <div><div style="font-size:18px;font-weight:700;color:#b35700">{{ r.pendentes }}</div><div style="font-size:10px;color:var(--text-muted)">Pendentes</div></div>
+      <div><div style="font-size:18px;font-weight:700;color:#15803d">{{ r.liberadas }}</div><div style="font-size:10px;color:var(--text-muted)">Liberadas</div></div>
+    </a>
+    {% else %}
+    <div class="card" style="padding:32px;text-align:center;color:var(--text-muted)">Nenhum tipo cadastrado ainda.</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% else %}
   <!-- ═══════════════════════ ABA: DISCIPLINAS POR TIPO ═══════════════════════ -->
   {% if not is_admin %}
   <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">
-    Só o admin cadastra/edita/exclui disciplinas, tipos e módulos. Qualquer um da equipe pode clicar no status de cada disciplina pra registrar em que etapa ela está.
+    Só o admin cadastra/edita/exclui disciplinas, tipos e módulos. Qualquer um da equipe pode clicar no status de cada disciplina (ou selecionar várias e aplicar de uma vez) pra registrar em que etapa ela está.
   </div>
   {% endif %}
 
@@ -221,36 +266,31 @@
     </div>
   </details>
 
-  {% if modulos_cadastrados %}
   <details class="cal-modulos-manager">
     <summary>⚙️ Gerenciar Módulos ({{ submodulos_cadastrados|length }})</summary>
     <div style="padding:14px 4px 4px">
-      {% for m in modulos_cadastrados %}
-      {% set subs_deste_tipo = submodulos_por_tipo.get(m.nome, []) %}
-      <div style="margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">{{ m.nome }}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-          {% for s in submodulos_cadastrados if s.tipo == m.nome %}
-          <span class="cal-modulo-chip">
-            <span class="cal-modulo-chip-nome" onclick="calSubmoduloRenomear({{ s.id }}, '{{ s.nome|e }}')" title="Clique pra renomear">{{ s.nome }}</span>
-            <form method="POST" action="{{ url_for('calendario_submodulo_excluir', id=s.id) }}" style="display:inline"
-                  onsubmit="return confirm('Excluir o módulo &quot;{{ s.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele.');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" title="Excluir módulo">✕</button>
-            </form>
-          </span>
-          {% else %}
-          <span style="font-size:11.5px;color:var(--text-muted)">Nenhum módulo em {{ m.nome }} ainda.</span>
-          {% endfor %}
-        </div>
-        <form method="POST" action="{{ url_for('calendario_submodulo_novo') }}" style="display:flex;gap:8px;max-width:360px">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="tipo" value="{{ m.nome }}">
-          <input type="text" name="nome" placeholder="Novo módulo em {{ m.nome }} (ex: Módulo 1)" maxlength="200" required style="flex:1">
-          <button type="submit" class="btn btn-secondary btn-sm">+ Adicionar</button>
-        </form>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
+        Cadastre o nome uma vez e ele fica disponível pra escolher dentro de qualquer Tipo — os nomes se repetindo entre Tipos não significa que a listagem se repete, cada combinação Tipo+Módulo tem suas próprias disciplinas.
       </div>
-      {% endfor %}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        {% for s in submodulos_cadastrados %}
+        <span class="cal-modulo-chip">
+          <span class="cal-modulo-chip-nome" onclick="calSubmoduloRenomear({{ s.id }}, '{{ s.nome|e }}')" title="Clique pra renomear">{{ s.nome }}</span>
+          <form method="POST" action="{{ url_for('calendario_submodulo_excluir', id=s.id) }}" style="display:inline"
+                onsubmit="return confirm('Excluir o módulo &quot;{{ s.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele (em nenhum tipo).');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" title="Excluir módulo">✕</button>
+          </form>
+        </span>
+        {% else %}
+        <span style="font-size:12px;color:var(--text-muted)">Nenhum módulo cadastrado ainda.</span>
+        {% endfor %}
+      </div>
+      <form method="POST" action="{{ url_for('calendario_submodulo_novo') }}" style="display:flex;gap:8px;max-width:360px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="nome" placeholder="Nome do novo módulo (ex: Módulo 1)" maxlength="200" required style="flex:1">
+        <button type="submit" class="btn btn-secondary btn-sm">+ Adicionar</button>
+      </form>
       <form id="calSubmoduloRenomearForm" method="POST" style="display:none">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="nome" id="calSubmoduloRenomearNome">
@@ -258,48 +298,17 @@
     </div>
   </details>
   {% endif %}
-  {% endif %}
 
-  {% if tipo_detalhe and tipo_resumo %}
-  <!-- ── PAINEL RESUMO DE UM TIPO ── -->
-  <div class="card" style="margin-bottom:16px;overflow:hidden;border:1.5px dashed var(--primary)">
-    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
-      <div class="card-title">📊 Resumo — {{ tipo_resumo.nome }}</div>
-      <a href="{{ url_for('calendario', aba='disciplinas') }}" class="btn btn-secondary btn-sm">← Ver todos os tipos</a>
-    </div>
-    <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap">
-      <div>
-        <div style="font-size:22px;font-weight:700">{{ tipo_resumo.total }}</div>
-        <div style="font-size:10px;color:var(--text-muted)">Total de disciplinas</div>
-      </div>
-      <div>
-        <div style="font-size:22px;font-weight:700;color:#b35700">{{ tipo_resumo.pendentes }}</div>
-        <div style="font-size:10px;color:var(--text-muted)">Pendentes</div>
-      </div>
-      <div>
-        <div style="font-size:22px;font-weight:700;color:#15803d">{{ tipo_resumo.liberadas }}</div>
-        <div style="font-size:10px;color:var(--text-muted)">Liberadas no Moodle</div>
-      </div>
-      {% for s in STATUS_DISC %}
-      <div>
-        <div style="font-size:18px;font-weight:700">{{ tipo_resumo.por_status.get(s, 0) }}</div>
-        <div style="font-size:10px;color:var(--text-muted)">{{ STATUS_DISC_LABEL[s] }}</div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  <form method="GET" action="{{ url_for('calendario') }}" class="filters">
-    <input type="hidden" name="aba" value="disciplinas">
-    {% if tipo_detalhe %}<input type="hidden" name="tipo" value="{{ tipo_detalhe }}">{% endif %}
+  <div class="filters">
     {% if ver_arquivadas %}
-    <input type="hidden" name="arquivadas" value="1">
-    <a href="{{ url_for('calendario', aba='disciplinas', tipo=tipo_detalhe) }}" class="btn btn-secondary btn-sm">← Ver ativas</a>
+    <a href="{{ url_for('calendario', aba='disciplinas') }}" class="btn btn-secondary btn-sm">← Ver ativas</a>
     {% elif total_arquivadas %}
-    <a href="{{ url_for('calendario', aba='disciplinas', tipo=tipo_detalhe, arquivadas=1) }}" class="btn btn-secondary btn-sm">Ver arquivadas ({{ total_arquivadas }})</a>
+    <a href="{{ url_for('calendario', aba='disciplinas', arquivadas=1) }}" class="btn btn-secondary btn-sm">Ver arquivadas ({{ total_arquivadas }})</a>
     {% endif %}
-  </form>
+    {% if is_admin %}
+    <button type="button" class="btn btn-secondary" onclick="calMarcarLiberadasAbrir()">✅ Colar lista de liberadas no Moodle</button>
+    {% endif %}
+  </div>
 
   {% if ver_arquivadas %}
   <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">📦 Mostrando disciplinas arquivadas — nada aqui foi apagado.</div>
@@ -307,9 +316,9 @@
 
   {% for grupo in modulos %}
   {% set tipo_cadastrado = modulos_cadastrados|selectattr('nome', 'equalto', grupo.tipo)|first %}
-  <details class="card cal-tipo-card" open>
+  <details class="card cal-tipo-card" data-tipo="{{ grupo.tipo }}">
     <summary class="card-header cal-tipo-summary">
-      <span class="cal-tipo-nome" onclick="event.preventDefault();window.location='{{ url_for('calendario', aba='disciplinas', tipo=grupo.tipo) }}'" title="Ver resumo deste tipo">{{ grupo.tipo }}</span>
+      <span class="cal-tipo-nome" onclick="event.preventDefault();window.location='{{ url_for('calendario', aba='dashboard', tipo=grupo.tipo) }}'" title="Ver resumo deste tipo no Dashboard">{{ grupo.tipo }}</span>
       <span style="flex:1"></span>
       <span class="badge {% if grupo.liberadas == grupo.total %}badge-ativo{% else %}badge-em_edicao{% endif %}">
         {{ grupo.liberadas }} de {{ grupo.total }} liberadas no Moodle
@@ -332,34 +341,49 @@
       {% endif %}
     </summary>
     {% for sub in grupo.submodulos %}
-    <details class="cal-submodulo-card" open>
+    <details class="cal-submodulo-card" data-tipo="{{ grupo.tipo }}" data-submodulo="{{ sub.submodulo }}">
       <summary class="cal-submodulo-summary">
         <span>{{ sub.submodulo }}</span>
         <span class="badge {% if sub.liberadas == sub.total %}badge-ativo{% else %}badge-em_edicao{% endif %}" style="font-size:10px">
           {{ sub.liberadas }}/{{ sub.total }}
         </span>
         {% if is_admin %}
-        {% set sub_cadastrado = submodulos_cadastrados|selectattr('tipo', 'equalto', grupo.tipo)|selectattr('nome', 'equalto', sub.submodulo)|first %}
-        {% if sub_cadastrado %}
         <span style="flex:1"></span>
-        <form method="POST" action="{{ url_for('calendario_submodulo_limpar', id=sub_cadastrado.id) }}"
+        <button type="button" class="btn btn-secondary btn-sm" data-tipo="{{ grupo.tipo }}"
+                data-submodulo="{{ '' if sub.submodulo == SEM_MODULO_LABEL else sub.submodulo }}"
+                data-linhas='{{ sub.linhas_texto|tojson }}'
+                onclick="event.stopPropagation();calListaEditarAbrir(this)">Editar lista</button>
+        <form method="POST" action="{{ url_for('calendario_disciplinas_limpar') }}"
               onclick="event.stopPropagation()"
-              onsubmit="return confirm('Apagar as {{ sub.total }} disciplina(s) de &quot;{{ sub.submodulo|e }}&quot;? O módulo continua cadastrado.');">
+              onsubmit="return confirm('Apagar as {{ sub.total }} disciplina(s) de &quot;{{ sub.submodulo|e }}&quot; em {{ grupo.tipo|e }}? O tipo e o módulo continuam cadastrados.');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="modulo" value="{{ grupo.tipo }}">
+          <input type="hidden" name="submodulo" value="{{ '' if sub.submodulo == SEM_MODULO_LABEL else sub.submodulo }}">
           <button type="submit" class="btn btn-danger btn-sm">Excluir listagem</button>
         </form>
         {% endif %}
-        {% endif %}
       </summary>
       <table class="table">
+        <thead>
+          <tr>
+            <th style="width:30px"><input type="checkbox" onchange="calMarcarTodos(this)" title="Selecionar todas"></th>
+            <th>Disciplina</th>
+            <th style="width:190px">Status</th>
+            {% if is_admin %}<th style="width:190px"></th>{% endif %}
+          </tr>
+        </thead>
         <tbody>
           {% for it in sub.itens %}
           <tr>
+            <td><input type="checkbox" class="cal-disc-check" value="{{ it.id }}"></td>
             <td>
               {{ it.nome }}
+              {% if it.carga or it.professor %}
+              <div style="font-size:11px;color:var(--text-muted)">{{ it.carga }}{% if it.carga and it.professor %} · {% endif %}{{ it.professor }}</div>
+              {% endif %}
               {% if it.observacao %}<div style="font-size:11px;color:var(--text-muted)">{{ it.observacao }}</div>{% endif %}
             </td>
-            <td style="width:190px">
+            <td>
               <form method="POST" action="{{ url_for('calendario_disciplina_status', id=it.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
@@ -371,9 +395,10 @@
               </form>
             </td>
             {% if is_admin %}
-            <td style="width:190px;white-space:nowrap">
+            <td style="white-space:nowrap">
               <button type="button" class="btn btn-secondary btn-sm" data-id="{{ it.id }}" data-modulo="{{ grupo.tipo }}" data-submodulo="{{ it.submodulo or '' }}"
-                      data-nome="{{ it.nome }}" data-obs="{{ it.observacao or '' }}" onclick="calDiscAbrirEditar(this)">Editar</button>
+                      data-nome="{{ it.nome }}" data-carga="{{ it.carga or '' }}" data-professor="{{ it.professor or '' }}"
+                      data-obs="{{ it.observacao or '' }}" onclick="calDiscAbrirEditar(this)">Editar</button>
               <form method="POST" action="{{ url_for('calendario_disciplina_arquivar', id=it.id) }}" style="display:inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
@@ -385,6 +410,15 @@
           {% endfor %}
         </tbody>
       </table>
+      <div class="cal-lote-bar">
+        <span style="font-size:11.5px;color:var(--text-muted)">Com as selecionadas:</span>
+        <select class="cal-lote-status">
+          {% for s in STATUS_DISC %}
+          <option value="{{ s }}">{{ STATUS_DISC_LABEL[s] }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="calAplicarLote(this)">Aplicar</button>
+      </div>
     </details>
     {% endfor %}
   </details>
@@ -399,6 +433,11 @@
   {% endfor %}
   {% endif %}
 </div>
+
+<form id="calLoteForm" method="POST" action="{{ url_for('calendario_disciplina_status_lote') }}" style="display:none">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+</form>
 
 <!-- ── MODAL: NOVA/EDITAR DEMANDA ── -->
 <div id="calModalOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calFecharModal()">
@@ -476,7 +515,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label>Tipo</label>
-            <select name="modulo" id="calDiscModulo" onchange="calDiscAtualizarSubmodulos()" required>
+            <select name="modulo" id="calDiscModulo" required>
               <option value="">Selecione…</option>
               {% for m in modulos_cadastrados %}
               <option value="{{ m.nome }}">{{ m.nome }}</option>
@@ -487,12 +526,25 @@
             <label>Módulo</label>
             <select name="submodulo" id="calDiscSubmodulo">
               <option value="">Sem módulo</option>
+              {% for s in submodulos_cadastrados %}
+              <option value="{{ s.nome }}">{{ s.nome }}</option>
+              {% endfor %}
             </select>
           </div>
         </div>
         <div class="form-group">
           <label>Disciplina</label>
           <input type="text" name="nome" id="calDiscNome" maxlength="300" required>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Carga horária</label>
+            <input type="text" name="carga" id="calDiscCarga" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label>Professor</label>
+            <input type="text" name="professor" id="calDiscProfessor" maxlength="200">
+          </div>
         </div>
         <div class="form-group">
           <label>Observação</label>
@@ -525,7 +577,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label>Tipo</label>
-            <select name="modulo" id="calImportModulo" onchange="calImportAtualizarSubmodulos()" required>
+            <select name="modulo" id="calImportModulo" required>
               <option value="">Selecione…</option>
               {% for m in modulos_cadastrados %}
               <option value="{{ m.nome }}">{{ m.nome }}</option>
@@ -536,17 +588,71 @@
             <label>Módulo</label>
             <select name="submodulo" id="calImportSubmodulo">
               <option value="">Sem módulo</option>
+              {% for s in submodulos_cadastrados %}
+              <option value="{{ s.nome }}">{{ s.nome }}</option>
+              {% endfor %}
             </select>
           </div>
         </div>
         <div class="form-group">
           <label>Disciplinas (uma por linha)</label>
-          <textarea name="linhas" rows="8" placeholder="Cole aqui, uma disciplina por linha" style="width:100%;resize:vertical" required></textarea>
+          <textarea name="linhas" rows="8" placeholder="Cole aqui, uma disciplina por linha. Colando direto de uma planilha (Excel/Sheets), a 2ª coluna vira carga horária e a 3ª vira professor automaticamente." style="width:100%;resize:vertical" required></textarea>
+          <div style="font-size:10.5px;color:var(--text-muted)">Dá pra colar direto de uma planilha: nome, carga horária e professor em colunas.</div>
         </div>
       </div>
       <div class="dash-modal-footer">
         <button type="button" class="btn btn-secondary" onclick="calImportFechar()">Cancelar</button>
         <button type="submit" class="btn btn-primary">Criar todas</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── MODAL: EDITAR LISTA INTEIRA (substitui tudo do módulo/tipo) ── -->
+<div id="calListaEditarOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calListaEditarFechar()">
+  <div class="dash-modal" style="max-width:520px">
+    <div class="dash-modal-header">
+      <div class="card-title" id="calListaEditarTitulo">Editar lista</div>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="calListaEditarFechar()">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('calendario_disciplinas_lista_editar') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="modulo" id="calListaEditarTipo">
+      <input type="hidden" name="submodulo" id="calListaEditarSubmodulo">
+      <div class="dash-modal-body" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11.5px;color:var(--text-muted)">
+          Edite, apague ou adicione linhas — ao salvar, essa lista inteira é substituída pelo texto abaixo.
+          O andamento de quem ficar com o nome exatamente igual ao de antes é preservado.
+        </div>
+        <textarea name="linhas" id="calListaEditarTextarea" rows="14" style="width:100%;resize:vertical;font-family:monospace;font-size:12.5px"></textarea>
+      </div>
+      <div class="dash-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="calListaEditarFechar()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar lista</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── MODAL: MARCAR LIBERADAS NO MOODLE (cola lista, acha em qualquer tipo/módulo) ── -->
+<div id="calMarcarLiberadasOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calMarcarLiberadasFechar()">
+  <div class="dash-modal" style="max-width:480px">
+    <div class="dash-modal-header">
+      <div class="card-title">Colar lista de liberadas no Moodle</div>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="calMarcarLiberadasFechar()">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('calendario_disciplinas_marcar_liberadas') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="dash-modal-body" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11.5px;color:var(--text-muted)">
+          Cole os nomes das disciplinas já liberadas no Moodle, um por linha — não precisa dizer o Tipo nem o Módulo,
+          o sistema procura o nome em tudo que já está cadastrado (em qualquer Tipo) e marca como "Liberada no Moodle" sozinho.
+        </div>
+        <textarea name="linhas" rows="10" placeholder="Cole aqui, um nome de disciplina por linha" style="width:100%;resize:vertical" required></textarea>
+      </div>
+      <div class="dash-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="calMarcarLiberadasFechar()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Marcar liberadas</button>
       </div>
     </form>
   </div>
@@ -634,6 +740,7 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
 .cal-submodulo-summary::before { content:'▸'; font-size:10px; transition:transform .15s; }
 .cal-submodulo-card[open] > .cal-submodulo-summary::before { transform:rotate(90deg); }
 .cal-submodulo-card .table { margin-top:-1px; }
+.cal-lote-bar { display:flex; align-items:center; gap:8px; padding:10px 16px; border-top:1px solid var(--border); background:var(--surface-2); }
 
 .table { width:100%; border-collapse:collapse; font-size:13px; }
 .table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:10px 12px; border-bottom:1px solid var(--border); }
@@ -737,34 +844,14 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
   }
 
   {% if is_admin %}
-  const CAL_SUBMODULOS_POR_TIPO = {{ submodulos_por_tipo|tojson }};
-
-  function calPreencherSubmodulos(select, tipo, valorAtual) {
-    const opcoes = CAL_SUBMODULOS_POR_TIPO[tipo] || [];
-    select.innerHTML = '<option value="">Sem módulo</option>';
-    opcoes.forEach(function(s) {
-      const opt = document.createElement('option');
-      opt.value = s.nome;
-      opt.textContent = s.nome;
-      select.appendChild(opt);
-    });
-    if (valorAtual) select.value = valorAtual;
-  }
-
-  function calDiscAtualizarSubmodulos() {
-    calPreencherSubmodulos(document.getElementById('calDiscSubmodulo'), document.getElementById('calDiscModulo').value, '');
-  }
-
-  function calImportAtualizarSubmodulos() {
-    calPreencherSubmodulos(document.getElementById('calImportSubmodulo'), document.getElementById('calImportModulo').value, '');
-  }
-
   function calDiscAbrirNova() {
     document.getElementById('calDiscModalTitulo').textContent = 'Nova Disciplina';
     document.getElementById('calDiscForm').action = "{{ url_for('calendario_disciplina_nova') }}";
     document.getElementById('calDiscModulo').value = '';
-    calPreencherSubmodulos(document.getElementById('calDiscSubmodulo'), '', '');
+    document.getElementById('calDiscSubmodulo').value = '';
     document.getElementById('calDiscNome').value = '';
+    document.getElementById('calDiscCarga').value = '';
+    document.getElementById('calDiscProfessor').value = '';
     document.getElementById('calDiscObs').value = '';
     document.getElementById('calDiscBtnExcluir').style.display = 'none';
     document.getElementById('calDiscModalOverlay').style.display = 'flex';
@@ -772,12 +859,13 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
 
   function calDiscAbrirEditar(btn) {
     const id = btn.getAttribute('data-id');
-    const tipo = btn.getAttribute('data-modulo');
     document.getElementById('calDiscModalTitulo').textContent = 'Editar Disciplina';
     document.getElementById('calDiscForm').action = '/calendario/disciplinas/' + id + '/editar';
-    document.getElementById('calDiscModulo').value = tipo;
-    calPreencherSubmodulos(document.getElementById('calDiscSubmodulo'), tipo, btn.getAttribute('data-submodulo'));
+    document.getElementById('calDiscModulo').value = btn.getAttribute('data-modulo');
+    document.getElementById('calDiscSubmodulo').value = btn.getAttribute('data-submodulo') || '';
     document.getElementById('calDiscNome').value = btn.getAttribute('data-nome');
+    document.getElementById('calDiscCarga').value = btn.getAttribute('data-carga') || '';
+    document.getElementById('calDiscProfessor').value = btn.getAttribute('data-professor') || '';
     document.getElementById('calDiscObs').value = btn.getAttribute('data-obs');
     document.getElementById('calDiscBtnExcluir').style.display = '';
     document.getElementById('calDiscBtnExcluir').setAttribute('data-id', id);
@@ -815,12 +903,70 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
   }
 
   function calImportAbrir() {
-    calPreencherSubmodulos(document.getElementById('calImportSubmodulo'), '', '');
     document.getElementById('calImportOverlay').style.display = 'flex';
   }
   function calImportFechar() {
     document.getElementById('calImportOverlay').style.display = 'none';
   }
+
+  function calListaEditarAbrir(btn) {
+    document.getElementById('calListaEditarTitulo').textContent =
+      'Editar lista — ' + btn.getAttribute('data-tipo') + (btn.getAttribute('data-submodulo') ? ' / ' + btn.getAttribute('data-submodulo') : '');
+    document.getElementById('calListaEditarTipo').value = btn.getAttribute('data-tipo');
+    document.getElementById('calListaEditarSubmodulo').value = btn.getAttribute('data-submodulo') || '';
+    document.getElementById('calListaEditarTextarea').value = JSON.parse(btn.getAttribute('data-linhas'));
+    document.getElementById('calListaEditarOverlay').style.display = 'flex';
+  }
+  function calListaEditarFechar() {
+    document.getElementById('calListaEditarOverlay').style.display = 'none';
+  }
+
+  function calMarcarLiberadasAbrir() {
+    document.getElementById('calMarcarLiberadasOverlay').style.display = 'flex';
+  }
+  function calMarcarLiberadasFechar() {
+    document.getElementById('calMarcarLiberadasOverlay').style.display = 'none';
+  }
+
+  function calMarcarTodos(headerCheckbox) {
+    const tabela = headerCheckbox.closest('table');
+    tabela.querySelectorAll('.cal-disc-check').forEach(function(cb) { cb.checked = headerCheckbox.checked; });
+  }
+
+  function calAplicarLote(btn) {
+    const card = btn.closest('.cal-submodulo-card');
+    const marcadas = Array.from(card.querySelectorAll('.cal-disc-check:checked')).map(function(cb) { return cb.value; });
+    if (!marcadas.length) { alert('Selecione ao menos uma disciplina.'); return; }
+    const status = card.querySelector('.cal-lote-status').value;
+    const form = document.getElementById('calLoteForm');
+    form.querySelectorAll('input[name="ids"]').forEach(function(el) { el.remove(); });
+    marcadas.forEach(function(id) {
+      const input = document.createElement('input');
+      input.type = 'hidden'; input.name = 'ids'; input.value = id;
+      form.appendChild(input);
+    });
+    let statusInput = form.querySelector('input[name="status"]');
+    if (!statusInput) {
+      statusInput = document.createElement('input');
+      statusInput.type = 'hidden'; statusInput.name = 'status';
+      form.appendChild(statusInput);
+    }
+    statusInput.value = status;
+    form.submit();
+  }
+
+  document.querySelectorAll('.cal-tipo-card').forEach(function(det) {
+    const key = 'calTipoAberto_' + det.dataset.tipo;
+    const salvo = localStorage.getItem(key);
+    det.open = salvo !== null ? salvo === '1' : true;
+    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+  });
+  document.querySelectorAll('.cal-submodulo-card').forEach(function(det) {
+    const key = 'calModuloAberto_' + det.dataset.tipo + '||' + det.dataset.submodulo;
+    const salvo = localStorage.getItem(key);
+    det.open = salvo !== null ? salvo === '1' : true;
+    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+  });
   {% endif %}
 </script>
 {% endblock %}
