@@ -174,6 +174,9 @@ MODULOS_CATALOGO = [
     {'id': 'ia_assistente',        'label': 'IA Assistente'},
     {'id': 'ferramentas',          'label': 'Ferramentas Externas'},
     {'id': 'historico',            'label': 'Histórico'},
+    {'id': 'mural',                'label': 'Mural da Equipe'},
+    {'id': 'formularios',          'label': 'Formulários'},
+    {'id': 'calendario',           'label': 'Calendário'},
 ]
 # Cupons, Reembolsos, Pagamentos Terceiros e Opções de Curso são financeiro/
 # admin — moram fixos dentro de ADMIN no menu (User.can_manage_*), nem
@@ -181,6 +184,7 @@ MODULOS_CATALOGO = [
 MODULOS_PADRAO_VISIVEL = {
     'cursos': True, 'matrizes': True, 'banco_disciplinas': True,
     'ia_assistente': True, 'ferramentas': True, 'historico': True,
+    'mural': True, 'formularios': True, 'calendario': True,
 }
 
 # Mesma lógica pros widgets da dashboard — "Último Backup" e "Reembolsos
@@ -460,6 +464,15 @@ class User(db.Model):
 
     def can_view_ferramentas(self):
         return self._modulo_ok('ferramentas', 'block_ferramentas')
+
+    def can_view_mural(self):
+        return self._modulo_ok('mural', 'block_mural')
+
+    def can_view_formularios(self):
+        return self._modulo_ok('formularios', 'block_formularios')
+
+    def can_view_calendario(self):
+        return self._modulo_ok('calendario', 'block_calendario')
 
     def can_manage_pagamentos_terceiros(self):
         """Fixo só pro admin — mora dentro de ADMIN no menu."""
@@ -830,14 +843,16 @@ class Demanda(db.Model):
         um dos responsáveis designados, sem precisar poder editar o prazo."""
         return u.role == 'admin' or u.id in self.responsaveis_ids()
 
-STATUS_DISC_MODULO = ('em_producao', 'inserida', 'em_curadoria', 'liberada_moodle')
+STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'inserida', 'em_curadoria', 'liberada_moodle')
 STATUS_DISC_MODULO_LABEL = {
+    'nao_iniciado':    'Selecionar…',
     'em_producao':     'Em Produção',
     'inserida':        'Inserida',
     'em_curadoria':    'Em Curadoria',
     'liberada_moodle': 'Liberada no Moodle',
 }
 STATUS_DISC_MODULO_COR = {
+    'nao_iniciado':    '#a1a1aa',
     'em_producao':     '#78716c',
     'inserida':        '#1d4ed8',
     'em_curadoria':    '#b35700',
@@ -845,31 +860,52 @@ STATUS_DISC_MODULO_COR = {
 }
 
 class ModuloCalendario(db.Model):
-    """Lista de módulos/categorias disponíveis pra agrupar as disciplinas de
-    inserção — gerenciada pelo admin, pra não digitar o nome do zero toda
-    vez (e evitar módulos quase-duplicados por erro de digitação). O
-    vínculo com DisciplinaModulo é pelo nome (texto), não por FK — renomear
-    aqui atualiza em cascata as disciplinas que já usam o nome antigo."""
+    """Lista de TIPOS disponíveis pra agrupar as disciplinas de inserção —
+    gerenciada pelo admin, pra não digitar o nome do zero toda vez (ex:
+    'APA CLARA IA', 'GRADUAÇÃO TEÓRICA'). O nome da coluna/tabela ficou
+    'módulo' por histórico, mas na interface e no resto do código isso é
+    chamado de Tipo — é o nível de cima, um degrau acima do Módulo
+    (SubmoduloCalendario). Vínculo com DisciplinaModulo é pelo nome
+    (texto), não por FK — renomear aqui atualiza em cascata as disciplinas
+    que já usam o nome antigo."""
     id         = db.Column(db.Integer, primary_key=True)
     nome       = db.Column(db.String(200), nullable=False, unique=True)
     ordem      = db.Column(db.Integer, default=0)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class SubmoduloCalendario(db.Model):
+    """MÓDULO — segundo nível, dentro de um Tipo (ex: Tipo 'GRADUAÇÃO
+    TEÓRICA' pode ter os módulos 'Módulo 1', 'Módulo 2'...). Vínculo com o
+    Tipo e com DisciplinaModulo também é por nome (texto), mesma lógica de
+    ModuloCalendario — dois módulos podem ter o mesmo nome em tipos
+    diferentes (ex: 'Módulo 1' existe em vários tipos)."""
+    id         = db.Column(db.Integer, primary_key=True)
+    tipo       = db.Column(db.String(200), nullable=False)  # nome do ModuloCalendario (Tipo) dono deste módulo
+    nome       = db.Column(db.String(200), nullable=False)
+    ordem      = db.Column(db.Integer, default=0)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('tipo', 'nome', name='uq_submodulo_tipo_nome'),)
+
 class DisciplinaModulo(db.Model):
-    """Disciplina cadastrada dentro de um módulo específico de inserção —
+    """Disciplina cadastrada dentro de um Tipo e, dentro dele, um Módulo —
     lista própria da equipe (separada do Banco de Disciplinas / ERP Moodle)
     pra acompanhar o andamento de cada uma, do início da produção até
     liberada no Moodle, e aparecer também na página pública do Calendário.
-    Só admin cria/edita/exclui a estrutura (módulo/nome — 'configuração');
-    qualquer um da equipe pode clicar pra registrar em que etapa ela está."""
+    Tipo e Módulo são livres (o admin cadastra o que fizer sentido). Só
+    admin cria/edita/exclui a estrutura ('configuração'); qualquer um da
+    equipe pode clicar pra registrar em que etapa ela está."""
     id           = db.Column(db.Integer, primary_key=True)
-    modulo       = db.Column(db.String(200), nullable=False)
+    modulo       = db.Column(db.String(200), nullable=False)  # Tipo (nome histórico da coluna)
+    submodulo    = db.Column(db.String(200))                  # Módulo, dentro do Tipo — pode ficar vazio
     nome         = db.Column(db.String(300), nullable=False)
-    status       = db.Column(db.String(20), default='em_producao')
+    status       = db.Column(db.String(20), default='nao_iniciado')
     status_em    = db.Column(db.DateTime, default=datetime.utcnow)
     observacao   = db.Column(db.Text)
     ordem        = db.Column(db.Integer, default=0)
+    arquivado    = db.Column(db.Boolean, default=False)  # tira da listagem ativa sem apagar dado
     created_by   = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1182,6 +1218,7 @@ def inject_notificacoes():
             'can_cursos': False, 'can_matrizes': False, 'can_banco_disciplinas': False,
             'can_ia_assistente': False, 'can_ferramentas': False,
             'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
+            'can_mural': False, 'can_formularios': False, 'can_calendario': False,
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -1245,6 +1282,9 @@ def inject_notificacoes():
         'can_ferramentas': u.can_view_ferramentas(),
         'can_pagamentos_terceiros': u.can_manage_pagamentos_terceiros(),
         'can_opcoes_curso': u.can_manage_opcoes_curso(),
+        'can_mural': u.can_view_mural(),
+        'can_formularios': u.can_view_formularios(),
+        'can_calendario': u.can_view_calendario(),
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -1621,11 +1661,13 @@ def dashboard():
 
     # Widget "Calendário — Disciplinas por Módulo" — total pendente (some
     # cai conforme a equipe registra o andamento) e a quantidade em cada
-    # etapa da inserção, até liberada no Moodle.
-    disc_modulo_total = DisciplinaModulo.query.count()
-    disc_modulo_pendentes = DisciplinaModulo.query.filter(DisciplinaModulo.status != 'liberada_moodle').count()
+    # etapa da inserção, até liberada no Moodle. Arquivadas ficam de fora.
+    _disc_modulo_ativas = DisciplinaModulo.query.filter_by(arquivado=False)
+    disc_modulo_total = _disc_modulo_ativas.count()
+    disc_modulo_pendentes = _disc_modulo_ativas.filter(DisciplinaModulo.status != 'liberada_moodle').count()
     disc_modulo_por_status = dict(
         db.session.query(DisciplinaModulo.status, db.func.count(DisciplinaModulo.id))
+        .filter(DisciplinaModulo.arquivado == False)
         .group_by(DisciplinaModulo.status).all()
     )
 
@@ -3986,6 +4028,7 @@ def _perms_from_form(d):
         'block_historico', 'block_trocar_senha',
         'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
         'block_ia_assistente', 'block_ferramentas',
+        'block_mural', 'block_formularios', 'block_calendario',
         'somente_erp_moodle',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
@@ -4082,7 +4125,7 @@ def _mural_minhas_conversas(meu_id):
     )
 
 @app.route('/mural')
-@login_required
+@perm_check('can_view_mural')
 def mural():
     u = User.query.get(session['user_id'])
     aba = request.args.get('aba', 'publico')
@@ -4133,7 +4176,7 @@ def _notificar_mencao_mural(mensagem):
     )
 
 @app.route('/mural/nova', methods=['POST'])
-@login_required
+@perm_check('can_view_mural')
 def mural_nova():
     texto = request.form.get('texto', '').strip()
     resposta_a_id = request.form.get('resposta_a_id', type=int)
@@ -4163,7 +4206,7 @@ def mural_nova():
     return redirect(url_for('mural'))
 
 @app.route('/mural/<int:id>/editar', methods=['POST'])
-@login_required
+@perm_check('can_view_mural')
 def mural_editar(id):
     m = MuralMensagem.query.get_or_404(id)
     if m.user_id != session['user_id']:
@@ -4177,7 +4220,7 @@ def mural_editar(id):
     return jsonify({'ok': True, 'texto': m.texto})
 
 @app.route('/mural/<int:id>/excluir', methods=['POST'])
-@login_required
+@perm_check('can_view_mural')
 def mural_excluir(id):
     m = MuralMensagem.query.get_or_404(id)
     u = User.query.get(session['user_id'])
@@ -4196,7 +4239,7 @@ def mural_excluir(id):
     return redirect(url_for('mural', aba=aba_destino))
 
 @app.route('/mural/<int:id>/reagir', methods=['POST'])
-@login_required
+@perm_check('can_view_mural')
 def mural_reagir(id):
     m = MuralMensagem.query.get_or_404(id)
     meu_id = session['user_id']
@@ -4221,7 +4264,12 @@ def mural_reagir(id):
 @login_required
 def api_mural_novas(ultimo_id):
     """Mensagens PÚBLICAS novas — usado tanto pro aviso 'atualizar' dentro da
-    aba Mural quanto pro toast genérico (💬) em qualquer tela."""
+    aba Mural quanto pro toast genérico (💬) em qualquer tela. Roda em
+    polling de fundo, então quem não tem acesso ao Mural recebe uma
+    resposta vazia (sem flash/redirect — isso é só pra navegação de página)."""
+    u = User.query.get(session['user_id'])
+    if not u or not u.can_view_mural():
+        return jsonify({'novas': 0, 'ultimo_id': ultimo_id, 'mensagens': []})
     meu_id = session['user_id']
     novas = MuralMensagem.query.filter(MuralMensagem.id > ultimo_id, MuralMensagem.privada == False)\
         .order_by(MuralMensagem.id.asc()).limit(20).all()
@@ -4238,7 +4286,11 @@ def api_mural_novas(ultimo_id):
 def api_mural_privadas(ultimo_id):
     """Mensagens PRIVADAS novas endereçadas a mim — aviso separado (🔒),
     visualmente diferente do aviso de recado público, e que abre direto a
-    conversa certa em vez do mural geral."""
+    conversa certa em vez do mural geral. Mesma degradação silenciosa de
+    api_mural_novas pra quem não tem acesso ao Mural."""
+    u = User.query.get(session['user_id'])
+    if not u or not u.can_view_mural():
+        return jsonify({'novas': 0, 'ultimo_id': ultimo_id, 'mensagens': []})
     meu_id = session['user_id']
     novas = MuralMensagem.query.filter(
         MuralMensagem.id > ultimo_id, MuralMensagem.privada == True, MuralMensagem.mencionado_id == meu_id
@@ -4317,7 +4369,7 @@ def _salvar_perguntas_formulario(formulario, d):
         ordem += 1
 
 @app.route('/formularios')
-@login_required
+@perm_check('can_view_formularios')
 def formularios():
     u = User.query.get(session['user_id'])
     if u.role == 'admin':
@@ -4392,7 +4444,7 @@ def formulario_excluir(id):
     return redirect(url_for('formularios'))
 
 @app.route('/formularios/<int:id>/responder', methods=['GET', 'POST'])
-@login_required
+@perm_check('can_view_formularios')
 def formulario_responder(id):
     f = Formulario.query.get_or_404(id)
     u = User.query.get(session['user_id'])
@@ -4577,20 +4629,39 @@ def _grade_calendario(ano, mes):
 
     return semanas, por_dia, demandas_mes
 
-def _disciplinas_agrupadas_por_modulo():
-    """Disciplinas de inserção agrupadas por módulo, com a contagem de
-    quantas já estão liberadas no Moodle — base tanto do painel interno
-    quanto da página pública e do widget da dashboard."""
-    disciplinas = DisciplinaModulo.query.order_by(
-        DisciplinaModulo.modulo, DisciplinaModulo.ordem, DisciplinaModulo.nome).all()
-    grupos = {}
+SEM_MODULO_LABEL = 'Sem módulo'
+
+def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False):
+    """Disciplinas de inserção agrupadas em 2 níveis — Tipo (ex: 'APA CLARA
+    IA') e, dentro dele, Módulo (ex: 'Módulo 1') — com a contagem de quantas
+    já estão liberadas no Moodle em cada nível. Base do painel interno, da
+    página pública, do widget da dashboard e do resumo por Tipo. Por
+    padrão não traz as arquivadas (ficam fora sem apagar o dado)."""
+    q = DisciplinaModulo.query
+    if not incluir_arquivadas:
+        q = q.filter_by(arquivado=False)
+    if tipo_filtro:
+        q = q.filter_by(modulo=tipo_filtro)
+    disciplinas = q.order_by(DisciplinaModulo.modulo, DisciplinaModulo.submodulo,
+                              DisciplinaModulo.ordem, DisciplinaModulo.nome).all()
+
+    tipos = {}
     for d in disciplinas:
-        grupos.setdefault(d.modulo, []).append(d)
+        tipos.setdefault(d.modulo, {}).setdefault(d.submodulo or SEM_MODULO_LABEL, []).append(d)
+
     resultado = []
-    for modulo in sorted(grupos.keys(), key=lambda s: s.lower()):
-        itens = grupos[modulo]
-        liberadas = sum(1 for i in itens if i.status == 'liberada_moodle')
-        resultado.append({'modulo': modulo, 'itens': itens, 'liberadas': liberadas, 'total': len(itens)})
+    for tipo_nome in sorted(tipos.keys(), key=lambda s: s.lower()):
+        submodulos_dict = tipos[tipo_nome]
+        submodulos = []
+        total_tipo = 0
+        liberadas_tipo = 0
+        for sub_nome in sorted(submodulos_dict.keys(), key=lambda s: (s == SEM_MODULO_LABEL, s.lower())):
+            itens = submodulos_dict[sub_nome]
+            liberadas = sum(1 for i in itens if i.status == 'liberada_moodle')
+            submodulos.append({'submodulo': sub_nome, 'itens': itens, 'liberadas': liberadas, 'total': len(itens)})
+            total_tipo += len(itens)
+            liberadas_tipo += liberadas
+        resultado.append({'tipo': tipo_nome, 'submodulos': submodulos, 'total': total_tipo, 'liberadas': liberadas_tipo})
     return resultado
 
 def _calendario_publico_ativo():
@@ -4608,7 +4679,7 @@ def _responsaveis_validos_ids(form):
     return [x for x in postados if x in permitidos]
 
 @app.route('/calendario')
-@login_required
+@perm_check('can_view_calendario')
 def calendario():
     hoje = date.today()
     ano, mes = _mes_ano_ajustado(request.args.get('ano', type=int) or hoje.year,
@@ -4642,8 +4713,33 @@ def calendario():
     ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
 
     aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas') else 'disciplinas'
-    modulos = _disciplinas_agrupadas_por_modulo()
+    tipo_detalhe = request.args.get('tipo') or ''  # nome do Tipo selecionado — mostra o resumo só dele
+    ver_arquivadas = request.args.get('arquivadas') == '1'
+    modulos = _disciplinas_agrupadas(tipo_detalhe or None, incluir_arquivadas=ver_arquivadas)
+
+    total_arquivadas_q = DisciplinaModulo.query.filter_by(arquivado=True)
+    if tipo_detalhe:
+        total_arquivadas_q = total_arquivadas_q.filter_by(modulo=tipo_detalhe)
+    total_arquivadas = total_arquivadas_q.count() if not ver_arquivadas else sum(g['total'] for g in modulos)
+
+    tipo_resumo = None
+    if tipo_detalhe and modulos:
+        grupo = modulos[0]
+        por_status = {}
+        for sub in grupo['submodulos']:
+            for it in sub['itens']:
+                por_status[it.status] = por_status.get(it.status, 0) + 1
+        tipo_resumo = {
+            'nome': grupo['tipo'], 'total': grupo['total'], 'liberadas': grupo['liberadas'],
+            'pendentes': grupo['total'] - grupo['liberadas'], 'por_status': por_status,
+        }
+
     modulos_cadastrados = ModuloCalendario.query.order_by(ModuloCalendario.ordem, ModuloCalendario.nome).all()
+    submodulos_cadastrados = SubmoduloCalendario.query.order_by(
+        SubmoduloCalendario.tipo, SubmoduloCalendario.ordem, SubmoduloCalendario.nome).all()
+    submodulos_por_tipo = {}
+    for s in submodulos_cadastrados:
+        submodulos_por_tipo.setdefault(s.tipo, []).append({'id': s.id, 'nome': s.nome})
 
     return render_template('calendario.html',
         ano=ano, mes=mes, mes_nome=MESES_PT[mes], semanas=semanas, hoje=hoje, por_dia=por_dia,
@@ -4653,6 +4749,9 @@ def calendario():
         STATUS_DEMANDA=STATUS_DEMANDA, STATUS_LABEL=STATUS_DEMANDA_LABEL,
         aba=aba, modulos=modulos, STATUS_DISC=STATUS_DISC_MODULO, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
         modulos_cadastrados=modulos_cadastrados, publico_ativo=_calendario_publico_ativo(),
+        submodulos_cadastrados=submodulos_cadastrados, submodulos_por_tipo=submodulos_por_tipo,
+        tipo_detalhe=tipo_detalhe, tipo_resumo=tipo_resumo,
+        ver_arquivadas=ver_arquivadas, total_arquivadas=total_arquivadas,
         is_admin=(u.role == 'admin'))
 
 @app.route('/calendario/publico')
@@ -4671,7 +4770,7 @@ def calendario_publico():
         'status': d.status,
         'responsavel': ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios()) or None,
     } for d in demandas]
-    modulos = _disciplinas_agrupadas_por_modulo()
+    modulos = _disciplinas_agrupadas()
 
     return render_template('calendario_publico.html',
         demandas=demandas_view, modulos=modulos,
@@ -4751,7 +4850,7 @@ def calendario_excluir(id):
     return redirect(url_for('calendario'))
 
 @app.route('/calendario/<int:id>/status', methods=['POST'])
-@login_required
+@perm_check('can_view_calendario')
 def calendario_status(id):
     demanda = Demanda.query.get_or_404(id)
     u = User.query.get(session['user_id'])
@@ -4772,17 +4871,17 @@ def calendario_status(id):
 @admin_required
 def calendario_disciplina_nova():
     d = request.form
-    modulo = (d.get('modulo') or '').strip()
+    tipo = (d.get('modulo') or '').strip()
     nome = (d.get('nome') or '').strip()
-    if not modulo or not nome:
-        flash('Preencha o módulo e o nome da disciplina.', 'danger')
+    if not tipo or not nome:
+        flash('Preencha o tipo e o nome da disciplina.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
-    item = DisciplinaModulo(modulo=modulo, nome=nome,
+    item = DisciplinaModulo(modulo=tipo, submodulo=(d.get('submodulo') or '').strip() or None, nome=nome,
                              observacao=(d.get('observacao') or '').strip() or None,
                              created_by=session['user_id'])
     db.session.add(item)
     db.session.commit()
-    log_action(session['user_id'], session['username'], 'criar', 'disciplina_modulo', item.id, f'{modulo} — {nome}')
+    log_action(session['user_id'], session['username'], 'criar', 'disciplina_modulo', item.id, f'{tipo} — {nome}')
     flash('Disciplina adicionada!', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
@@ -4791,16 +4890,17 @@ def calendario_disciplina_nova():
 def calendario_disciplina_editar(id):
     item = DisciplinaModulo.query.get_or_404(id)
     d = request.form
-    modulo = (d.get('modulo') or '').strip()
+    tipo = (d.get('modulo') or '').strip()
     nome = (d.get('nome') or '').strip()
-    if not modulo or not nome:
-        flash('Preencha o módulo e o nome da disciplina.', 'danger')
+    if not tipo or not nome:
+        flash('Preencha o tipo e o nome da disciplina.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
-    item.modulo = modulo
+    item.modulo = tipo
+    item.submodulo = (d.get('submodulo') or '').strip() or None
     item.nome = nome
     item.observacao = (d.get('observacao') or '').strip() or None
     db.session.commit()
-    log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', item.id, f'{modulo} — {nome}')
+    log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', item.id, f'{tipo} — {nome}')
     flash('Disciplina atualizada!', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
@@ -4815,8 +4915,20 @@ def calendario_disciplina_excluir(id):
     flash('Disciplina excluída.', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
+@app.route('/calendario/disciplinas/<int:id>/arquivar', methods=['POST'])
+@admin_required
+def calendario_disciplina_arquivar(id):
+    """Tira uma disciplina da listagem ativa sem apagar o dado — pra não
+    ocupar espaço visual depois que o módulo/ano já foi concluído."""
+    item = DisciplinaModulo.query.get_or_404(id)
+    item.arquivado = not item.arquivado
+    db.session.commit()
+    flash('Disciplina arquivada.' if item.arquivado else 'Disciplina restaurada.', 'success')
+    destino = request.form.get('voltar_para') or url_for('calendario', aba='disciplinas')
+    return redirect(destino)
+
 @app.route('/calendario/disciplinas/<int:id>/status', methods=['POST'])
-@login_required
+@perm_check('can_view_calendario')
 def calendario_disciplina_status(id):
     """Registrar em que etapa a disciplina está — aberto pra qualquer um da
     equipe (é o trabalho do dia a dia), diferente de criar/editar/excluir a
@@ -4833,7 +4945,7 @@ def calendario_disciplina_status(id):
     return redirect(destino)
 
 @app.route('/calendario/exportar')
-@login_required
+@perm_check('can_view_calendario')
 def calendario_exportar():
     q = Demanda.query
     status_filtro = request.args.get('status') or ''
@@ -4882,76 +4994,175 @@ def calendario_exportar():
     return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                       as_attachment=True, download_name=f'demandas_{date.today().isoformat()}.xlsx')
 
-# ─── CALENDÁRIO — MÓDULOS (categorias) E IMPORTAÇÃO EM MASSA ────────────────────
+# ─── CALENDÁRIO — TIPOS, MÓDULOS E IMPORTAÇÃO EM MASSA ──────────────────────────
 
-@app.route('/calendario/modulos/nova', methods=['POST'])
+@app.route('/calendario/tipos/novo', methods=['POST'])
 @admin_required
-def calendario_modulo_nova():
+def calendario_tipo_novo():
     nome = (request.form.get('nome') or '').strip()
     if not nome:
-        flash('Dê um nome ao módulo.', 'danger')
+        flash('Dê um nome ao tipo.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
     if ModuloCalendario.query.filter(db.func.lower(ModuloCalendario.nome) == nome.lower()).first():
-        flash('Já existe um módulo com esse nome.', 'danger')
+        flash('Já existe um tipo com esse nome.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
     maior_ordem = db.session.query(db.func.coalesce(db.func.max(ModuloCalendario.ordem), 0)).scalar()
     db.session.add(ModuloCalendario(nome=nome, ordem=maior_ordem + 1, created_by=session['user_id']))
     db.session.commit()
+    flash('Tipo adicionado!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/tipos/<int:id>/editar', methods=['POST'])
+@admin_required
+def calendario_tipo_editar(id):
+    tipo = ModuloCalendario.query.get_or_404(id)
+    novo_nome = (request.form.get('nome') or '').strip()
+    if not novo_nome:
+        flash('Dê um nome ao tipo.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    if ModuloCalendario.query.filter(
+            db.func.lower(ModuloCalendario.nome) == novo_nome.lower(), ModuloCalendario.id != id).first():
+        flash('Já existe um tipo com esse nome.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    nome_antigo = tipo.nome
+    tipo.nome = novo_nome
+    # cascata: disciplinas e módulos que usavam o nome antigo passam a usar o novo
+    DisciplinaModulo.query.filter_by(modulo=nome_antigo).update({'modulo': novo_nome})
+    SubmoduloCalendario.query.filter_by(tipo=nome_antigo).update({'tipo': novo_nome})
+    db.session.commit()
+    flash('Tipo renomeado!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/tipos/<int:id>/excluir', methods=['POST'])
+@admin_required
+def calendario_tipo_excluir(id):
+    tipo = ModuloCalendario.query.get_or_404(id)
+    if DisciplinaModulo.query.filter_by(modulo=tipo.nome).first():
+        flash('Esse tipo tem disciplinas cadastradas — exclua a listagem ou mova as disciplinas antes de remover o tipo.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    SubmoduloCalendario.query.filter_by(tipo=tipo.nome).delete()
+    db.session.delete(tipo)
+    db.session.commit()
+    flash('Tipo excluído.', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/tipos/<int:id>/arquivar', methods=['POST'])
+@admin_required
+def calendario_tipo_arquivar(id):
+    """Arquiva (ou restaura) de uma vez todas as disciplinas de um tipo —
+    útil quando um tipo/ano inteiro já foi concluído e não precisa mais
+    ocupar espaço na listagem ativa."""
+    tipo = ModuloCalendario.query.get_or_404(id)
+    itens = DisciplinaModulo.query.filter_by(modulo=tipo.nome).all()
+    if not itens:
+        flash('Esse tipo não tem disciplinas cadastradas.', 'warning')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    novo_estado = any(not i.arquivado for i in itens)
+    for i in itens:
+        i.arquivado = novo_estado
+    db.session.commit()
+    flash(f'Tipo "{tipo.nome}" {"arquivado" if novo_estado else "restaurado"} — {len(itens)} disciplina(s).', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/tipos/<int:id>/limpar', methods=['POST'])
+@admin_required
+def calendario_tipo_limpar(id):
+    """Apaga TODAS as disciplinas cadastradas dentro de um tipo (a listagem
+    inteira), mas mantém o tipo e os módulos dele — pra poder colar uma
+    lista nova sem precisar recriar o tipo do zero."""
+    tipo = ModuloCalendario.query.get_or_404(id)
+    total = DisciplinaModulo.query.filter_by(modulo=tipo.nome).delete(synchronize_session=False)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'disciplina_modulo',
+               0, f'listagem inteira do tipo "{tipo.nome}" apagada — {total} disciplina(s)')
+    flash(f'Listagem de "{tipo.nome}" apagada — {total} disciplina(s) removida(s). O tipo continua cadastrado.', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/submodulos/novo', methods=['POST'])
+@admin_required
+def calendario_submodulo_novo():
+    tipo = (request.form.get('tipo') or '').strip()
+    nome = (request.form.get('nome') or '').strip()
+    if not tipo or not nome:
+        flash('Escolha o tipo e dê um nome ao módulo.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    if SubmoduloCalendario.query.filter(
+            SubmoduloCalendario.tipo == tipo, db.func.lower(SubmoduloCalendario.nome) == nome.lower()).first():
+        flash('Esse tipo já tem um módulo com esse nome.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    maior_ordem = db.session.query(db.func.coalesce(db.func.max(SubmoduloCalendario.ordem), 0))\
+        .filter(SubmoduloCalendario.tipo == tipo).scalar()
+    db.session.add(SubmoduloCalendario(tipo=tipo, nome=nome, ordem=maior_ordem + 1, created_by=session['user_id']))
+    db.session.commit()
     flash('Módulo adicionado!', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
-@app.route('/calendario/modulos/<int:id>/editar', methods=['POST'])
+@app.route('/calendario/submodulos/<int:id>/editar', methods=['POST'])
 @admin_required
-def calendario_modulo_editar(id):
-    modulo = ModuloCalendario.query.get_or_404(id)
+def calendario_submodulo_editar(id):
+    sub = SubmoduloCalendario.query.get_or_404(id)
     novo_nome = (request.form.get('nome') or '').strip()
     if not novo_nome:
         flash('Dê um nome ao módulo.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
-    if ModuloCalendario.query.filter(
-            db.func.lower(ModuloCalendario.nome) == novo_nome.lower(), ModuloCalendario.id != id).first():
-        flash('Já existe um módulo com esse nome.', 'danger')
+    if SubmoduloCalendario.query.filter(
+            SubmoduloCalendario.tipo == sub.tipo, db.func.lower(SubmoduloCalendario.nome) == novo_nome.lower(),
+            SubmoduloCalendario.id != id).first():
+        flash('Esse tipo já tem um módulo com esse nome.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
-    nome_antigo = modulo.nome
-    modulo.nome = novo_nome
-    # cascata: disciplinas que usavam o nome antigo passam a usar o novo
-    DisciplinaModulo.query.filter_by(modulo=nome_antigo).update({'modulo': novo_nome})
+    nome_antigo = sub.nome
+    sub.nome = novo_nome
+    DisciplinaModulo.query.filter_by(modulo=sub.tipo, submodulo=nome_antigo).update({'submodulo': novo_nome})
     db.session.commit()
     flash('Módulo renomeado!', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
-@app.route('/calendario/modulos/<int:id>/excluir', methods=['POST'])
+@app.route('/calendario/submodulos/<int:id>/excluir', methods=['POST'])
 @admin_required
-def calendario_modulo_excluir(id):
-    modulo = ModuloCalendario.query.get_or_404(id)
-    if DisciplinaModulo.query.filter_by(modulo=modulo.nome).first():
-        flash('Esse módulo tem disciplinas cadastradas — mova ou exclua elas antes de remover o módulo.', 'danger')
+def calendario_submodulo_excluir(id):
+    sub = SubmoduloCalendario.query.get_or_404(id)
+    if DisciplinaModulo.query.filter_by(modulo=sub.tipo, submodulo=sub.nome).first():
+        flash('Esse módulo tem disciplinas cadastradas — mova ou exclua a listagem antes de remover o módulo.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
-    db.session.delete(modulo)
+    db.session.delete(sub)
     db.session.commit()
     flash('Módulo excluído.', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/submodulos/<int:id>/limpar', methods=['POST'])
+@admin_required
+def calendario_submodulo_limpar(id):
+    """Apaga as disciplinas de um módulo específico dentro de um tipo, sem
+    apagar o módulo (nem o resto do tipo)."""
+    sub = SubmoduloCalendario.query.get_or_404(id)
+    total = DisciplinaModulo.query.filter_by(modulo=sub.tipo, submodulo=sub.nome).delete(synchronize_session=False)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'disciplina_modulo',
+               0, f'listagem do módulo "{sub.nome}" ({sub.tipo}) apagada — {total} disciplina(s)')
+    flash(f'Listagem de "{sub.nome}" apagada — {total} disciplina(s) removida(s). O módulo continua cadastrado.', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 @app.route('/calendario/disciplinas/importar', methods=['POST'])
 @admin_required
 def calendario_disciplina_importar():
     """Cola uma lista de disciplinas (uma por linha) e cria todas de uma vez
-    no módulo escolhido — pra não precisar cadastrar uma por uma."""
-    modulo = (request.form.get('modulo') or '').strip()
+    no tipo/módulo escolhidos — pra não precisar cadastrar uma por uma."""
+    tipo = (request.form.get('modulo') or '').strip()
+    submodulo = (request.form.get('submodulo') or '').strip() or None
     linhas = (request.form.get('linhas') or '').splitlines()
     nomes = [l.strip() for l in linhas if l.strip()]
-    if not modulo:
-        flash('Escolha o módulo antes de importar a lista.', 'danger')
+    if not tipo:
+        flash('Escolha o tipo antes de importar a lista.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
     if not nomes:
         flash('Cole ao menos uma disciplina, uma por linha.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
     for nome in nomes:
-        db.session.add(DisciplinaModulo(modulo=modulo, nome=nome[:300], created_by=session['user_id']))
+        db.session.add(DisciplinaModulo(modulo=tipo, submodulo=submodulo, nome=nome[:300], created_by=session['user_id']))
     db.session.commit()
     log_action(session['user_id'], session['username'], 'criar', 'disciplina_modulo',
-               0, f'importação em massa — {len(nomes)} disciplina(s) em {modulo}')
-    flash(f'{len(nomes)} disciplina(s) criada(s) em "{modulo}"!', 'success')
+               0, f'importação em massa — {len(nomes)} disciplina(s) em {tipo}' + (f' / {submodulo}' if submodulo else ''))
+    flash(f'{len(nomes)} disciplina(s) criada(s) em "{tipo}"!', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
@@ -5892,14 +6103,6 @@ def seed_data():
         for i, (label, url) in enumerate(ferramentas_padrao, start=1):
             db.session.add(ExternalTool(label=label, url=url, ordem=i))
         db.session.commit()
-    # Módulos padrão do Calendário — admin pode adicionar/renomear/excluir
-    # outros depois (ex: outras pós, técnicos etc.) em Disciplinas por Módulo.
-    if ModuloCalendario.query.count() == 0:
-        db.session.add_all([
-            ModuloCalendario(nome='GRADUAÇÃO', ordem=1),
-            ModuloCalendario(nome='PÓS', ordem=2),
-        ])
-        db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -6371,6 +6574,8 @@ def _run_migrations():
         ("discipline", "plataforma_em",    "TIMESTAMP"),
         ("backup_record", "conteudo",      "BYTEA"),
         ("demanda", "responsaveis",        "TEXT"),
+        ("disciplina_modulo", "submodulo", "VARCHAR(200)"),
+        ("disciplina_modulo", "arquivado", "BOOLEAN DEFAULT false"),
     ]
     with db.engine.connect() as conn:
         for table, col, dtype in migrations:

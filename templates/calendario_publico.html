@@ -26,7 +26,10 @@
     .pub-painel { display:none; }
     .pub-painel.active { display:block; }
 
-    .pub-modulo-header { display:flex; align-items:center; justify-content:space-between; }
+    .pub-modulo-header { display:flex; align-items:center; justify-content:space-between; cursor:pointer; list-style:none; }
+    .pub-modulo-header::-webkit-details-marker { display:none; }
+    .pub-tipo { margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+    .pub-tipo:last-child { border-bottom:none; }
     .pub-disc-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
     .pub-disc-row:last-child { border-bottom:none; }
     .pub-status-pill { font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
@@ -59,7 +62,7 @@
   </div>
 
   <div class="pub-tabs">
-    <button type="button" class="pub-tab active" data-painel="disciplinas" onclick="pubAbrirAba(this)">🗂 Disciplinas por Módulo</button>
+    <button type="button" class="pub-tab active" data-painel="disciplinas" onclick="pubAbrirAba(this)">🗂 Disciplinas por Tipo</button>
     <button type="button" class="pub-tab" data-painel="demandas" onclick="pubAbrirAba(this)">📋 Demandas</button>
   </div>
 
@@ -67,20 +70,25 @@
     <div class="card">
       <div class="card-body">
         {% for grupo in modulos %}
-        <div style="margin-bottom:18px">
-          <div class="pub-modulo-header">
-            <div style="font-weight:700;font-size:13.5px">{{ grupo.modulo }}</div>
+        <details class="pub-tipo" open>
+          <summary class="pub-modulo-header">
+            <span style="font-weight:700;font-size:13.5px">{{ grupo.tipo }}</span>
             <span class="badge {% if grupo.liberadas == grupo.total %}badge-ativo{% else %}badge-em_edicao{% endif %}">
               {{ grupo.liberadas }} de {{ grupo.total }} liberadas no Moodle
             </span>
-          </div>
-          {% for it in grupo.itens %}
-          <div class="pub-disc-row">
-            <span>{{ it.nome }}</span>
-            <span class="pub-status-pill" style="background:{{ STATUS_DISC_COR[it.status] }}22;color:{{ STATUS_DISC_COR[it.status] }}">{{ STATUS_DISC_LABEL[it.status] }}</span>
+          </summary>
+          {% for sub in grupo.submodulos %}
+          <div style="margin:10px 0 14px 6px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">{{ sub.submodulo }}</div>
+            {% for it in sub.itens %}
+            <div class="pub-disc-row">
+              <span>{{ it.nome }}</span>
+              <span class="pub-status-pill" style="background:{{ STATUS_DISC_COR[it.status] }}22;color:{{ STATUS_DISC_COR[it.status] }}">{{ STATUS_DISC_LABEL[it.status] }}</span>
+            </div>
+            {% endfor %}
           </div>
           {% endfor %}
-        </div>
+        </details>
         {% else %}
         <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">Nenhuma disciplina cadastrada ainda.</div>
         {% endfor %}

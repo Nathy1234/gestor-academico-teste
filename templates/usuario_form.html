@@ -210,6 +210,24 @@
             <div><div class="perm-name" style="color:#dc2626">Bloquear Ferramentas Externas</div><div class="perm-desc">Esconde a seção de Ferramentas Externas (Kronos, Moodles etc)</div></div>
           </label>
           <label class="perm-item">
+            <input type="checkbox" name="perm_block_mural" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_mural') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Mural da Equipe</div><div class="perm-desc">Esconde o Mural da Equipe — pra contas que não fazem parte da equipe interna</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_formularios" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_formularios') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Formulários</div><div class="perm-desc">Esconde a tela de Formulários internos</div></div>
+          </label>
+          <label class="perm-item">
+            <input type="checkbox" name="perm_block_calendario" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('block_calendario') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#dc2626">Bloquear Calendário</div><div class="perm-desc">Esconde o Calendário de demandas e disciplinas de inserção</div></div>
+          </label>
+          <label class="perm-item">
             <input type="checkbox" name="perm_block_historico" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('block_historico') %}checked{% endif %}>
@@ -269,6 +287,7 @@ const EDITOR_DEFAULTS = {
   block_historico: false,
   block_cursos: false, block_matrizes: false, block_banco_disciplinas: false,
   block_ia_assistente: false, block_ferramentas: false,
+  block_mural: false, block_formularios: false, block_calendario: false,
   block_trocar_senha: false, somente_erp_moodle: false,
 };
 
