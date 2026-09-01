@@ -135,7 +135,7 @@
     'andamento': 2, 'por_responsavel': 2, 'por_tipo': 2,
     'atividade': 3, 'atalhos': 1, 'backup': 1,
     'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1,
-    'erp_moodle_resumo': 3
+    'erp_moodle_resumo': 3, 'calendario_disciplinas': 3
   } %}
   {# Altura padrão de cada widget, em unidades de 40px — só usada como
      ponto de partida antes da primeira medição real no navegador, ou pra
@@ -149,7 +149,7 @@
     'andamento': 10, 'por_responsavel': 9, 'por_tipo': 8,
     'atividade': 8, 'atalhos': 7, 'backup': 3,
     'sem_responsavel': 8, 'reembolsos_pend': 2, 'notas': 4,
-    'erp_moodle_resumo': 4
+    'erp_moodle_resumo': 4, 'calendario_disciplinas': 4
   } %}
 
   <!-- WIDGETS DA DASHBOARD — ordem e visibilidade são por usuário ────── -->
@@ -163,6 +163,8 @@
       {# sem permissão de reembolsos — widget nem aparece #}
     {% elif wid == 'erp_moodle_resumo' and not pode_ver_erp_moodle %}
       {# sem acesso ao ERP Moodle — widget nem aparece #}
+    {% elif wid == 'calendario_disciplinas' and not disc_modulo_total %}
+      {# nenhuma disciplina cadastrada ainda no Calendário — nada pra mostrar #}
     {% else %}
     {% set pos = widgets_posicoes.get(wid) %}
     {% set manual = 1 if (wid in widgets_tamanhos or wid in widgets_alturas_salvas) else 0 %}
@@ -770,6 +772,33 @@
             {% else %}
             <div style="font-size:11.5px;color:var(--text-muted)">Nenhum item cadastrado ainda.</div>
             {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% elif wid == 'calendario_disciplinas' %}
+      <div class="card" style="border:1.5px dashed #86efac">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border-bottom:1px solid #bbf7d0">
+          <div class="card-title" style="color:#15803d;display:flex;align-items:center;gap:8px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.06em;background:#dcfce7;padding:2px 8px;border-radius:20px">CALENDÁRIO</span>
+            Disciplinas por Módulo — Inserção
+          </div>
+          <a href="{{ url_for('calendario', aba='disciplinas') }}" class="btn btn-sm btn-secondary">Ver tudo →</a>
+        </div>
+        <div class="card-body" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+          <div>
+            <div style="font-size:24px;font-weight:700;color:#b35700">{{ disc_modulo_pendentes }}</div>
+            <div style="font-size:10px;color:var(--text-muted)">Pendentes de {{ disc_modulo_total }} no total</div>
+          </div>
+          <div style="width:1px;background:#bbf7d0;align-self:stretch"></div>
+          {% set disc_cores = {'em_producao':'#78716c','inserida':'#1d4ed8','em_curadoria':'#b35700','liberada_moodle':'#15803d'} %}
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            {% for st in ['em_producao', 'inserida', 'em_curadoria', 'liberada_moodle'] %}
+            <div>
+              <div style="font-size:19px;font-weight:700;color:{{ disc_cores[st] }}">{{ disc_modulo_por_status.get(st, 0) }}</div>
+              <div style="font-size:10px;color:var(--text-muted)">{{ STATUS_DISC_MODULO_LABEL[st] }}</div>
+            </div>
+            {% endfor %}
           </div>
         </div>
       </div>

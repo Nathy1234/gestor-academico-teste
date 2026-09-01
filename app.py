@@ -8,7 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from markupsafe import Markup, escape
 from datetime import datetime, timedelta, date
 from functools import wraps
-import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd, re as _re
+import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd, re as _re, calendar as _calendar
 import requests as _requests
 
 def _norm_name(s):
@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.16.0'
+VERSAO = '1.17.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -151,6 +151,7 @@ DASHBOARD_WIDGETS = [
     {'id': 'reembolsos_pend', 'label': 'Reembolsos pendentes'},
     {'id': 'notas',           'label': 'Notas rápidas'},
     {'id': 'erp_moodle_resumo', 'label': 'ERP Moodle — Andamento'},
+    {'id': 'calendario_disciplinas', 'label': 'Calendário — Disciplinas por Módulo'},
 ]
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
 
@@ -190,7 +191,7 @@ DASHBOARD_WIDGETS_PADRAO_VISIVEL = {
     'andamento': True, 'por_responsavel': True, 'por_tipo': True,
     'atividade': True, 'atalhos': True, 'backup': False,
     'sem_responsavel': True, 'reembolsos_pend': False, 'notas': True,
-    'erp_moodle_resumo': True,
+    'erp_moodle_resumo': True, 'calendario_disciplinas': True,
 }
 
 def _modulos_visiveis():
@@ -771,6 +772,73 @@ class FormularioRespostaItem(db.Model):
 
     resposta = db.relationship('FormularioResposta', backref='itens', foreign_keys=[resposta_id])
     pergunta = db.relationship('FormularioPergunta', foreign_keys=[pergunta_id])
+
+STATUS_DEMANDA = ('stand_by', 'andamento', 'finalizado')
+STATUS_DEMANDA_LABEL = {'stand_by': 'Em Stand By', 'andamento': 'Em Andamento', 'finalizado': 'Finalizado'}
+MESES_PT = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho',
+            'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
+class Demanda(db.Model):
+    """Item do Calendário da equipe — uma demanda/tarefa com prazo, visível
+    pra todo mundo. Só admin ajusta prazo/título/responsável ('configuração');
+    o responsável designado também pode registrar a mudança de andamento
+    (stand by / em andamento / finalizado) sem poder mexer no prazo."""
+    id             = db.Column(db.Integer, primary_key=True)
+    titulo         = db.Column(db.String(200), nullable=False)
+    descricao      = db.Column(db.Text)
+    data_inicio    = db.Column(db.Date, nullable=False)
+    data_fim       = db.Column(db.Date, nullable=False)
+    status         = db.Column(db.String(20), default='andamento')
+    responsavel_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_by     = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at     = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    responsavel = db.relationship('User', foreign_keys=[responsavel_id])
+    autor       = db.relationship('User', foreign_keys=[created_by])
+
+    def pode_editar(self, u):
+        """Prazo, título, descrição e responsável — só admin."""
+        return u.role == 'admin'
+
+    def pode_registrar_status(self, u):
+        """Marcar stand by / em andamento / finalizado — admin ou o
+        responsável designado, sem precisar poder editar o prazo."""
+        return u.role == 'admin' or (self.responsavel_id and u.id == self.responsavel_id)
+
+STATUS_DISC_MODULO = ('em_producao', 'inserida', 'em_curadoria', 'liberada_moodle')
+STATUS_DISC_MODULO_LABEL = {
+    'em_producao':     'Em Produção',
+    'inserida':        'Inserida',
+    'em_curadoria':    'Em Curadoria',
+    'liberada_moodle': 'Liberada no Moodle',
+}
+STATUS_DISC_MODULO_COR = {
+    'em_producao':     '#78716c',
+    'inserida':        '#1d4ed8',
+    'em_curadoria':    '#b35700',
+    'liberada_moodle': '#15803d',
+}
+
+class DisciplinaModulo(db.Model):
+    """Disciplina cadastrada dentro de um módulo específico de inserção —
+    lista própria da equipe (separada do Banco de Disciplinas / ERP Moodle)
+    pra acompanhar o andamento de cada uma, do início da produção até
+    liberada no Moodle, e aparecer também na página pública do Calendário.
+    Só admin cria/edita/exclui a estrutura (módulo/nome — 'configuração');
+    qualquer um da equipe pode clicar pra registrar em que etapa ela está."""
+    id           = db.Column(db.Integer, primary_key=True)
+    modulo       = db.Column(db.String(200), nullable=False)
+    nome         = db.Column(db.String(300), nullable=False)
+    status       = db.Column(db.String(20), default='em_producao')
+    status_em    = db.Column(db.DateTime, default=datetime.utcnow)
+    observacao   = db.Column(db.Text)
+    ordem        = db.Column(db.Integer, default=0)
+    created_by   = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    autor = db.relationship('User', foreign_keys=[created_by])
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -1491,6 +1559,16 @@ def dashboard():
         erp_cursos_rodando = sum(1 for _, pend in erp_por_curso if pend == 0)
         erp_recentes = ErpMoodleItem.query.order_by(ErpMoodleItem.updated_at.desc()).limit(5).all()
 
+    # Widget "Calendário — Disciplinas por Módulo" — total pendente (some
+    # cai conforme a equipe registra o andamento) e a quantidade em cada
+    # etapa da inserção, até liberada no Moodle.
+    disc_modulo_total = DisciplinaModulo.query.count()
+    disc_modulo_pendentes = DisciplinaModulo.query.filter(DisciplinaModulo.status != 'liberada_moodle').count()
+    disc_modulo_por_status = dict(
+        db.session.query(DisciplinaModulo.status, db.func.count(DisciplinaModulo.id))
+        .group_by(DisciplinaModulo.status).all()
+    )
+
     return render_template('dashboard.html',
         total=total, ativos=ativos, em_edicao=em_edicao, desc=desc,
         ocultos=ocultos, finalizado=finalizado,
@@ -1509,7 +1587,9 @@ def dashboard():
         reembolsos_pend_qtd=reembolsos_pend_qtd, reembolsos_pend_valor=reembolsos_pend_valor,
         pode_ver_erp_moodle=pode_ver_erp_moodle,
         erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
-        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando)
+        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando,
+        disc_modulo_total=disc_modulo_total, disc_modulo_pendentes=disc_modulo_pendentes,
+        disc_modulo_por_status=disc_modulo_por_status, STATUS_DISC_MODULO_LABEL=STATUS_DISC_MODULO_LABEL)
 
 @app.route('/dashboard/prefs', methods=['GET'])
 @login_required
@@ -4403,6 +4483,320 @@ def formulario_exportar(id):
     buf.seek(0)
     return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                       as_attachment=True, download_name=f'formulario_{f.id}_respostas.xlsx')
+
+# ─── CALENDÁRIO ────────────────────────────────────────────────────────────────
+
+def _mes_ano_ajustado(ano, mes):
+    """Normaliza mes/ano pra sempre cair num mês válido (1-12), rolando o ano
+    quando a navegação passa de janeiro pra trás ou de dezembro pra frente."""
+    if mes < 1:
+        return ano - 1, 12
+    if mes > 12:
+        return ano + 1, 1
+    return ano, mes
+
+def _grade_calendario(ano, mes):
+    """Monta a grade de semanas do mês (com dias de meses vizinhos pra
+    completar a semana) e agrupa as demandas que caem em cada dia da grade —
+    usado tanto na tela interna quanto na página pública."""
+    semanas = _calendar.Calendar(firstweekday=6).monthdatescalendar(ano, mes)
+    primeiro_dia_grade = semanas[0][0]
+    ultimo_dia_grade = semanas[-1][-1]
+
+    demandas_mes = Demanda.query.filter(
+        Demanda.data_inicio <= ultimo_dia_grade, Demanda.data_fim >= primeiro_dia_grade
+    ).order_by(Demanda.data_inicio).all()
+
+    por_dia = {}
+    for d in demandas_mes:
+        cursor = max(d.data_inicio, primeiro_dia_grade)
+        fim = min(d.data_fim, ultimo_dia_grade)
+        while cursor <= fim:
+            por_dia.setdefault(cursor, []).append(d)
+            cursor += timedelta(days=1)
+
+    return semanas, por_dia, demandas_mes
+
+def _disciplinas_agrupadas_por_modulo():
+    """Disciplinas de inserção agrupadas por módulo, com a contagem de
+    quantas já estão liberadas no Moodle — base tanto do painel interno
+    quanto da página pública e do widget da dashboard."""
+    disciplinas = DisciplinaModulo.query.order_by(
+        DisciplinaModulo.modulo, DisciplinaModulo.ordem, DisciplinaModulo.nome).all()
+    grupos = {}
+    for d in disciplinas:
+        grupos.setdefault(d.modulo, []).append(d)
+    resultado = []
+    for modulo in sorted(grupos.keys(), key=lambda s: s.lower()):
+        itens = grupos[modulo]
+        liberadas = sum(1 for i in itens if i.status == 'liberada_moodle')
+        resultado.append({'modulo': modulo, 'itens': itens, 'liberadas': liberadas, 'total': len(itens)})
+    return resultado
+
+@app.route('/calendario')
+@login_required
+def calendario():
+    hoje = date.today()
+    ano, mes = _mes_ano_ajustado(request.args.get('ano', type=int) or hoje.year,
+                                  request.args.get('mes', type=int) or hoje.month)
+    semanas, por_dia, demandas_mes = _grade_calendario(ano, mes)
+
+    status_filtro = request.args.get('status') or ''
+    responsavel_filtro = request.args.get('responsavel', type=int)
+    lista_q = Demanda.query
+    if status_filtro in STATUS_DEMANDA:
+        lista_q = lista_q.filter_by(status=status_filtro)
+    if responsavel_filtro:
+        lista_q = lista_q.filter_by(responsavel_id=responsavel_filtro)
+    lista_demandas = lista_q.order_by(Demanda.data_fim).all()
+
+    usuarios = User.query.filter_by(equipe=True).order_by(User.username).all()
+    u = User.query.get(session['user_id'])
+
+    demandas_json = {
+        d.id: {
+            'id': d.id, 'titulo': d.titulo, 'descricao': d.descricao or '',
+            'data_inicio': d.data_inicio.isoformat(), 'data_fim': d.data_fim.isoformat(),
+            'status': d.status, 'responsavel_id': d.responsavel_id or '',
+            'pode_editar': d.pode_editar(u),
+            'pode_registrar_status': d.pode_registrar_status(u),
+        }
+        for d in set(demandas_mes) | set(lista_demandas)
+    }
+
+    ano_ant, mes_ant = _mes_ano_ajustado(ano, mes - 1)
+    ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
+
+    aba = request.args.get('aba') if request.args.get('aba') in ('demandas', 'disciplinas') else 'demandas'
+    modulos = _disciplinas_agrupadas_por_modulo()
+
+    return render_template('calendario.html',
+        ano=ano, mes=mes, mes_nome=MESES_PT[mes], semanas=semanas, hoje=hoje, por_dia=por_dia,
+        ano_ant=ano_ant, mes_ant=mes_ant, ano_prox=ano_prox, mes_prox=mes_prox,
+        lista_demandas=lista_demandas, usuarios=usuarios, status_filtro=status_filtro,
+        responsavel_filtro=responsavel_filtro, demandas_json=demandas_json,
+        STATUS_DEMANDA=STATUS_DEMANDA, STATUS_LABEL=STATUS_DEMANDA_LABEL,
+        aba=aba, modulos=modulos, STATUS_DISC=STATUS_DISC_MODULO, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
+        is_admin=(u.role == 'admin'))
+
+@app.route('/calendario/publico')
+def calendario_publico():
+    """Página pública, sem login — pra compartilhar com quem precisa
+    acompanhar de fora (só visualização: calendário de demandas e o
+    progresso das disciplinas por módulo)."""
+    hoje = date.today()
+    ano, mes = _mes_ano_ajustado(request.args.get('ano', type=int) or hoje.year,
+                                  request.args.get('mes', type=int) or hoje.month)
+    semanas, por_dia, demandas_mes = _grade_calendario(ano, mes)
+    ano_ant, mes_ant = _mes_ano_ajustado(ano, mes - 1)
+    ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
+
+    demandas_json = {
+        d.id: {
+            'titulo': d.titulo, 'descricao': d.descricao or '',
+            'data_inicio': d.data_inicio.strftime('%d/%m/%Y'), 'data_fim': d.data_fim.strftime('%d/%m/%Y'),
+            'status': d.status,
+            'responsavel': nome_exibicao(d.responsavel) if d.responsavel else None,
+        }
+        for d in demandas_mes
+    }
+    modulos = _disciplinas_agrupadas_por_modulo()
+
+    return render_template('calendario_publico.html',
+        ano=ano, mes=mes, mes_nome=MESES_PT[mes], semanas=semanas, hoje=hoje, por_dia=por_dia,
+        ano_ant=ano_ant, mes_ant=mes_ant, ano_prox=ano_prox, mes_prox=mes_prox,
+        demandas_json=demandas_json, modulos=modulos,
+        STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
+        STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
+
+@app.route('/calendario/nova', methods=['POST'])
+@admin_required
+def calendario_nova():
+    d = request.form
+    titulo = (d.get('titulo') or '').strip()
+    data_inicio = _parse_data_form(d.get('data_inicio'))
+    data_fim = _parse_data_form(d.get('data_fim'))
+    if not titulo or not data_inicio or not data_fim:
+        flash('Preencha título, início e prazo da demanda.', 'danger')
+        return redirect(url_for('calendario'))
+    if data_fim < data_inicio:
+        flash('O prazo não pode ser antes do início.', 'danger')
+        return redirect(url_for('calendario'))
+    status = d.get('status') if d.get('status') in STATUS_DEMANDA else 'andamento'
+    demanda = Demanda(titulo=titulo, descricao=(d.get('descricao') or '').strip() or None,
+                       data_inicio=data_inicio, data_fim=data_fim, status=status,
+                       responsavel_id=request.form.get('responsavel_id', type=int),
+                       created_by=session['user_id'])
+    db.session.add(demanda)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'criar', 'demanda', demanda.id, demanda.titulo)
+    flash('Demanda adicionada ao calendário!', 'success')
+    return redirect(url_for('calendario', ano=data_inicio.year, mes=data_inicio.month))
+
+@app.route('/calendario/<int:id>/editar', methods=['POST'])
+@admin_required
+def calendario_editar(id):
+    demanda = Demanda.query.get_or_404(id)
+    d = request.form
+    titulo = (d.get('titulo') or '').strip()
+    data_inicio = _parse_data_form(d.get('data_inicio'))
+    data_fim = _parse_data_form(d.get('data_fim'))
+    if not titulo or not data_inicio or not data_fim or data_fim < data_inicio:
+        flash('Dados inválidos — confira título, início e prazo.', 'danger')
+        return redirect(url_for('calendario'))
+    demanda.titulo = titulo
+    demanda.descricao = (d.get('descricao') or '').strip() or None
+    demanda.data_inicio = data_inicio
+    demanda.data_fim = data_fim
+    if d.get('status') in STATUS_DEMANDA:
+        demanda.status = d.get('status')
+    demanda.responsavel_id = request.form.get('responsavel_id', type=int)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'editar', 'demanda', demanda.id, demanda.titulo)
+    flash('Demanda atualizada!', 'success')
+    return redirect(url_for('calendario', ano=data_inicio.year, mes=data_inicio.month))
+
+@app.route('/calendario/<int:id>/excluir', methods=['POST'])
+@admin_required
+def calendario_excluir(id):
+    demanda = Demanda.query.get_or_404(id)
+    titulo = demanda.titulo
+    db.session.delete(demanda)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'demanda', id, titulo)
+    flash('Demanda excluída.', 'success')
+    return redirect(url_for('calendario'))
+
+@app.route('/calendario/<int:id>/status', methods=['POST'])
+@login_required
+def calendario_status(id):
+    demanda = Demanda.query.get_or_404(id)
+    u = User.query.get(session['user_id'])
+    if not demanda.pode_registrar_status(u):
+        flash('Só o admin ou o responsável designado pode registrar o andamento desta demanda.', 'danger')
+        return redirect(url_for('calendario'))
+    novo = request.form.get('status')
+    if novo in STATUS_DEMANDA:
+        demanda.status = novo
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'demanda', demanda.id, f'status -> {novo}')
+    destino = request.form.get('voltar_para') or url_for('calendario')
+    return redirect(destino)
+
+# ─── CALENDÁRIO — DISCIPLINAS POR MÓDULO (inserção) ─────────────────────────────
+
+@app.route('/calendario/disciplinas/nova', methods=['POST'])
+@admin_required
+def calendario_disciplina_nova():
+    d = request.form
+    modulo = (d.get('modulo') or '').strip()
+    nome = (d.get('nome') or '').strip()
+    if not modulo or not nome:
+        flash('Preencha o módulo e o nome da disciplina.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    item = DisciplinaModulo(modulo=modulo, nome=nome,
+                             observacao=(d.get('observacao') or '').strip() or None,
+                             created_by=session['user_id'])
+    db.session.add(item)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'criar', 'disciplina_modulo', item.id, f'{modulo} — {nome}')
+    flash('Disciplina adicionada!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/disciplinas/<int:id>/editar', methods=['POST'])
+@admin_required
+def calendario_disciplina_editar(id):
+    item = DisciplinaModulo.query.get_or_404(id)
+    d = request.form
+    modulo = (d.get('modulo') or '').strip()
+    nome = (d.get('nome') or '').strip()
+    if not modulo or not nome:
+        flash('Preencha o módulo e o nome da disciplina.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    item.modulo = modulo
+    item.nome = nome
+    item.observacao = (d.get('observacao') or '').strip() or None
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', item.id, f'{modulo} — {nome}')
+    flash('Disciplina atualizada!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/disciplinas/<int:id>/excluir', methods=['POST'])
+@admin_required
+def calendario_disciplina_excluir(id):
+    item = DisciplinaModulo.query.get_or_404(id)
+    detalhe = f'{item.modulo} — {item.nome}'
+    db.session.delete(item)
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'excluir', 'disciplina_modulo', id, detalhe)
+    flash('Disciplina excluída.', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/disciplinas/<int:id>/status', methods=['POST'])
+@login_required
+def calendario_disciplina_status(id):
+    """Registrar em que etapa a disciplina está — aberto pra qualquer um da
+    equipe (é o trabalho do dia a dia), diferente de criar/editar/excluir a
+    disciplina em si, que é 'configuração' e fica só com o admin."""
+    item = DisciplinaModulo.query.get_or_404(id)
+    novo = request.form.get('status')
+    if novo in STATUS_DISC_MODULO:
+        item.status = novo
+        item.status_em = datetime.utcnow()
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', item.id,
+                   f'{item.modulo} — {item.nome}: status -> {novo}')
+    destino = request.form.get('voltar_para') or url_for('calendario', aba='disciplinas')
+    return redirect(destino)
+
+@app.route('/calendario/exportar')
+@login_required
+def calendario_exportar():
+    q = Demanda.query
+    status_filtro = request.args.get('status') or ''
+    responsavel_filtro = request.args.get('responsavel', type=int)
+    if status_filtro in STATUS_DEMANDA:
+        q = q.filter_by(status=status_filtro)
+    if responsavel_filtro:
+        q = q.filter_by(responsavel_id=responsavel_filtro)
+    demandas = q.order_by(Demanda.data_fim).all()
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Demandas'
+
+    cabecalho = ['Demanda', 'Descrição', 'Responsável', 'Início', 'Prazo', 'Andamento', 'Criado por', 'Criado em']
+    ws.append(cabecalho)
+    for col in range(1, len(cabecalho) + 1):
+        c = ws.cell(row=1, column=col)
+        c.font = Font(bold=True, color='FFFFFF')
+        c.fill = PatternFill('solid', fgColor='F2780D')
+        c.alignment = Alignment(wrap_text=True, vertical='center')
+
+    for d in demandas:
+        ws.append([
+            d.titulo,
+            d.descricao or '',
+            nome_exibicao(d.responsavel) if d.responsavel else '—',
+            d.data_inicio.strftime('%d/%m/%Y'),
+            d.data_fim.strftime('%d/%m/%Y'),
+            STATUS_DEMANDA_LABEL.get(d.status, d.status),
+            nome_exibicao(d.autor),
+            d.created_at.strftime('%d/%m/%Y %H:%M') if d.created_at else '',
+        ])
+
+    for col, w in enumerate([30, 40, 22, 14, 14, 16, 22, 18], start=1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      as_attachment=True, download_name=f'demandas_{date.today().isoformat()}.xlsx')
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
