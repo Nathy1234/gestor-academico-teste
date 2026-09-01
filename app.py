@@ -5070,9 +5070,9 @@ def calendario_tipo_editar(id):
         return redirect(url_for('calendario', aba='disciplinas'))
     nome_antigo = tipo.nome
     tipo.nome = novo_nome
-    # cascata: disciplinas e módulos que usavam o nome antigo passam a usar o novo
+    # cascata: disciplinas que usavam o nome antigo passam a usar o novo
+    # (Módulo é uma lista global, não pertence a um Tipo — nada a atualizar nele)
     DisciplinaModulo.query.filter_by(modulo=nome_antigo).update({'modulo': novo_nome})
-    SubmoduloCalendario.query.filter_by(tipo=nome_antigo).update({'tipo': novo_nome})
     db.session.commit()
     flash('Tipo renomeado!', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
@@ -5084,7 +5084,6 @@ def calendario_tipo_excluir(id):
     if DisciplinaModulo.query.filter_by(modulo=tipo.nome).first():
         flash('Esse tipo tem disciplinas cadastradas — exclua a listagem ou mova as disciplinas antes de remover o tipo.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
-    SubmoduloCalendario.query.filter_by(tipo=tipo.nome).delete()
     db.session.delete(tipo)
     db.session.commit()
     flash('Tipo excluído.', 'success')
