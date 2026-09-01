@@ -300,15 +300,35 @@
   {% endif %}
 
   <div class="filters">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="calRecolherTudo(true)">Recolher tudo</button>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="calRecolherTudo(false)">Expandir tudo</button>
+    {% if trimestres_disponiveis %}
+    <form method="GET" action="{{ url_for('calendario') }}" style="display:inline-flex;gap:8px">
+      <input type="hidden" name="aba" value="disciplinas">
+      {% if ver_arquivadas %}<input type="hidden" name="arquivadas" value="1">{% endif %}
+      <select name="trimestre" class="filter-select" onchange="this.form.submit()">
+        <option value="">Todos os trimestres</option>
+        {% for t in trimestres_disponiveis %}
+        <option value="{{ t.valor }}" {% if trimestre_param == t.valor %}selected{% endif %}>Liberadas em {{ t.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
     {% if ver_arquivadas %}
-    <a href="{{ url_for('calendario', aba='disciplinas') }}" class="btn btn-secondary btn-sm">← Ver ativas</a>
+    <a href="{{ url_for('calendario', aba='disciplinas', trimestre=trimestre_param) }}" class="btn btn-secondary btn-sm">← Ver ativas</a>
     {% elif total_arquivadas %}
-    <a href="{{ url_for('calendario', aba='disciplinas', arquivadas=1) }}" class="btn btn-secondary btn-sm">Ver arquivadas ({{ total_arquivadas }})</a>
+    <a href="{{ url_for('calendario', aba='disciplinas', arquivadas=1, trimestre=trimestre_param) }}" class="btn btn-secondary btn-sm">Ver arquivadas ({{ total_arquivadas }})</a>
     {% endif %}
     {% if is_admin %}
     <button type="button" class="btn btn-secondary" onclick="calMarcarLiberadasAbrir()">✅ Colar lista de liberadas no Moodle</button>
     {% endif %}
   </div>
+
+  {% if trimestre_param %}
+  <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">
+    📅 Mostrando só as disciplinas liberadas no Moodle nesse trimestre — as demais ficam escondidas até você tirar o filtro.
+  </div>
+  {% endif %}
 
   {% if ver_arquivadas %}
   <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">📦 Mostrando disciplinas arquivadas — nada aqui foi apagado.</div>
@@ -843,6 +863,55 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
     form.submit();
   }
 
+  // Recolher/expandir e seleção em lote são abertos pra qualquer um da
+  // equipe (não só admin) — registrar status em lote usa a mesma
+  // permissão do status individual.
+  function calMarcarTodos(headerCheckbox) {
+    const tabela = headerCheckbox.closest('table');
+    tabela.querySelectorAll('.cal-disc-check').forEach(function(cb) { cb.checked = headerCheckbox.checked; });
+  }
+
+  function calAplicarLote(btn) {
+    const card = btn.closest('.cal-submodulo-card');
+    const marcadas = Array.from(card.querySelectorAll('.cal-disc-check:checked')).map(function(cb) { return cb.value; });
+    if (!marcadas.length) { alert('Selecione ao menos uma disciplina.'); return; }
+    const status = card.querySelector('.cal-lote-status').value;
+    const form = document.getElementById('calLoteForm');
+    form.querySelectorAll('input[name="ids"]').forEach(function(el) { el.remove(); });
+    marcadas.forEach(function(id) {
+      const input = document.createElement('input');
+      input.type = 'hidden'; input.name = 'ids'; input.value = id;
+      form.appendChild(input);
+    });
+    let statusInput = form.querySelector('input[name="status"]');
+    if (!statusInput) {
+      statusInput = document.createElement('input');
+      statusInput.type = 'hidden'; statusInput.name = 'status';
+      form.appendChild(statusInput);
+    }
+    statusInput.value = status;
+    form.submit();
+  }
+
+  function calRecolherTudo(fechar) {
+    document.querySelectorAll('.cal-tipo-card, .cal-submodulo-card').forEach(function(det) {
+      det.open = !fechar;
+    });
+  }
+
+  document.querySelectorAll('.cal-tipo-card').forEach(function(det) {
+    const key = 'calTipoAberto_' + det.dataset.tipo;
+    const salvo = localStorage.getItem(key);
+    det.open = salvo !== null ? salvo === '1' : true;
+    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+  });
+  document.querySelectorAll('.cal-submodulo-card').forEach(function(det) {
+    const key = 'calModuloAberto_' + det.dataset.tipo + '||' + det.dataset.submodulo;
+    const salvo = localStorage.getItem(key);
+    det.open = salvo !== null ? salvo === '1' : true;
+    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+  });
+
   {% if is_admin %}
   function calDiscAbrirNova() {
     document.getElementById('calDiscModalTitulo').textContent = 'Nova Disciplina';
@@ -927,46 +996,6 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
   function calMarcarLiberadasFechar() {
     document.getElementById('calMarcarLiberadasOverlay').style.display = 'none';
   }
-
-  function calMarcarTodos(headerCheckbox) {
-    const tabela = headerCheckbox.closest('table');
-    tabela.querySelectorAll('.cal-disc-check').forEach(function(cb) { cb.checked = headerCheckbox.checked; });
-  }
-
-  function calAplicarLote(btn) {
-    const card = btn.closest('.cal-submodulo-card');
-    const marcadas = Array.from(card.querySelectorAll('.cal-disc-check:checked')).map(function(cb) { return cb.value; });
-    if (!marcadas.length) { alert('Selecione ao menos uma disciplina.'); return; }
-    const status = card.querySelector('.cal-lote-status').value;
-    const form = document.getElementById('calLoteForm');
-    form.querySelectorAll('input[name="ids"]').forEach(function(el) { el.remove(); });
-    marcadas.forEach(function(id) {
-      const input = document.createElement('input');
-      input.type = 'hidden'; input.name = 'ids'; input.value = id;
-      form.appendChild(input);
-    });
-    let statusInput = form.querySelector('input[name="status"]');
-    if (!statusInput) {
-      statusInput = document.createElement('input');
-      statusInput.type = 'hidden'; statusInput.name = 'status';
-      form.appendChild(statusInput);
-    }
-    statusInput.value = status;
-    form.submit();
-  }
-
-  document.querySelectorAll('.cal-tipo-card').forEach(function(det) {
-    const key = 'calTipoAberto_' + det.dataset.tipo;
-    const salvo = localStorage.getItem(key);
-    det.open = salvo !== null ? salvo === '1' : true;
-    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
-  });
-  document.querySelectorAll('.cal-submodulo-card').forEach(function(det) {
-    const key = 'calModuloAberto_' + det.dataset.tipo + '||' + det.dataset.submodulo;
-    const salvo = localStorage.getItem(key);
-    det.open = salvo !== null ? salvo === '1' : true;
-    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
-  });
   {% endif %}
 </script>
 {% endblock %}

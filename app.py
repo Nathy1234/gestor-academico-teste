@@ -4624,17 +4624,41 @@ def _grade_calendario(ano, mes):
 
 SEM_MODULO_LABEL = 'Sem módulo'
 
-def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False):
+TRIMESTRE_LABEL = {1: 'Jan-Mar', 2: 'Abr-Jun', 3: 'Jul-Set', 4: 'Out-Dez'}
+
+def _intervalo_trimestre(ano, tri):
+    """Intervalo [início, fim) em datas de um trimestre — 1=Jan-Mar, 2=Abr-Jun,
+    3=Jul-Set, 4=Out-Dez, de três em três meses a partir de janeiro."""
+    mes_ini = (tri - 1) * 3 + 1
+    ano_fim, mes_fim = (ano, mes_ini + 3) if mes_ini + 3 <= 12 else (ano + 1, mes_ini + 3 - 12)
+    return datetime(ano, mes_ini, 1), datetime(ano_fim, mes_fim, 1)
+
+def _trimestres_disponiveis():
+    """Trimestres (ano, nº) em que existe ao menos uma disciplina marcada
+    liberada no Moodle — usado pra só oferecer no filtro períodos que têm
+    dado de verdade, mais recente primeiro."""
+    datas = db.session.query(DisciplinaModulo.status_em).filter(
+        DisciplinaModulo.status == 'liberada_moodle', DisciplinaModulo.status_em != None).all()
+    pares = {(d.year, (d.month - 1) // 3 + 1) for (d,) in datas if d}
+    return sorted(pares, reverse=True)
+
+def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False, trimestre_filtro=None):
     """Disciplinas de inserção agrupadas em 2 níveis — Tipo (ex: 'APA CLARA
     IA') e, dentro dele, Módulo (ex: 'Módulo 1') — com a contagem de quantas
     já estão liberadas no Moodle em cada nível. Base do painel interno, da
     página pública, do widget da dashboard e do resumo por Tipo. Por
-    padrão não traz as arquivadas (ficam fora sem apagar o dado)."""
+    padrão não traz as arquivadas (ficam fora sem apagar o dado).
+    `trimestre_filtro` (ano, trimestre) restringe a só as liberadas no
+    Moodle dentro daquele período — as demais ficam fora da listagem."""
     q = DisciplinaModulo.query
     if not incluir_arquivadas:
         q = q.filter_by(arquivado=False)
     if tipo_filtro:
         q = q.filter_by(modulo=tipo_filtro)
+    if trimestre_filtro:
+        inicio, fim = _intervalo_trimestre(*trimestre_filtro)
+        q = q.filter(DisciplinaModulo.status == 'liberada_moodle',
+                     DisciplinaModulo.status_em >= inicio, DisciplinaModulo.status_em < fim)
     disciplinas = q.order_by(DisciplinaModulo.modulo, DisciplinaModulo.submodulo,
                               DisciplinaModulo.ordem, DisciplinaModulo.nome).all()
 
@@ -4713,7 +4737,20 @@ def calendario():
     aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas', 'dashboard') else 'disciplinas'
     tipo_detalhe = request.args.get('tipo') or ''  # nome do Tipo selecionado — mostra o resumo só dele
     ver_arquivadas = request.args.get('arquivadas') == '1'
-    modulos = _disciplinas_agrupadas(tipo_detalhe or None, incluir_arquivadas=ver_arquivadas)
+    trimestre_param = request.args.get('trimestre') or ''
+    trimestre_filtro = None
+    if '-' in trimestre_param:
+        try:
+            ano_t, tri_t = trimestre_param.split('-')
+            trimestre_filtro = (int(ano_t), int(tri_t))
+        except ValueError:
+            trimestre_param = ''
+    modulos = _disciplinas_agrupadas(tipo_detalhe or None, incluir_arquivadas=ver_arquivadas,
+                                      trimestre_filtro=trimestre_filtro)
+    trimestres_disponiveis = [
+        {'valor': f'{ano}-{tri}', 'label': f'{TRIMESTRE_LABEL[tri]}/{ano}'}
+        for ano, tri in _trimestres_disponiveis()
+    ]
 
     total_arquivadas_q = DisciplinaModulo.query.filter_by(arquivado=True)
     if tipo_detalhe:
@@ -4749,6 +4786,7 @@ def calendario():
         aba=aba, modulos=modulos, STATUS_DISC=STATUS_DISC_MODULO, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
         modulos_cadastrados=modulos_cadastrados, publico_ativo=_calendario_publico_ativo(),
         submodulos_cadastrados=submodulos_cadastrados,
+        trimestre_param=trimestre_param, trimestres_disponiveis=trimestres_disponiveis,
         tipo_detalhe=tipo_detalhe, tipo_resumo=tipo_resumo, todos_tipos_resumo=todos_tipos_resumo,
         SEM_MODULO_LABEL=SEM_MODULO_LABEL,
         ver_arquivadas=ver_arquivadas, total_arquivadas=total_arquivadas,
