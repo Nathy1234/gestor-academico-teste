@@ -135,7 +135,7 @@
     'andamento': 2, 'por_responsavel': 2, 'por_tipo': 2,
     'atividade': 3, 'atalhos': 1, 'backup': 1,
     'sem_responsavel': 2, 'reembolsos_pend': 1, 'notas': 1,
-    'erp_moodle_resumo': 3, 'calendario_disciplinas': 3
+    'calendario_disciplinas': 3
   } %}
   {# Altura padrão de cada widget, em unidades de 40px — só usada como
      ponto de partida antes da primeira medição real no navegador, ou pra
@@ -149,7 +149,7 @@
     'andamento': 10, 'por_responsavel': 9, 'por_tipo': 8,
     'atividade': 8, 'atalhos': 7, 'backup': 3,
     'sem_responsavel': 8, 'reembolsos_pend': 2, 'notas': 4,
-    'erp_moodle_resumo': 4, 'calendario_disciplinas': 4
+    'calendario_disciplinas': 4
   } %}
 
   <!-- WIDGETS DA DASHBOARD — ordem e visibilidade são por usuário ────── -->
@@ -161,8 +161,6 @@
       {# sem backup registrado ainda — nada pra mostrar/personalizar #}
     {% elif wid == 'reembolsos_pend' and not pode_ver_reembolsos %}
       {# sem permissão de reembolsos — widget nem aparece #}
-    {% elif wid == 'erp_moodle_resumo' and not pode_ver_erp_moodle %}
-      {# sem acesso ao ERP Moodle — widget nem aparece #}
     {% elif wid == 'calendario_disciplinas' and not disc_modulo_total %}
       {# nenhuma disciplina cadastrada ainda no Calendário — nada pra mostrar #}
     {% else %}
@@ -727,52 +725,6 @@
                            border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;
                            background:var(--surface-2);color:var(--text)"
                     oninput="dashNotasAgendar()">{{ usuario_atual.notas_pessoais or '' }}</textarea>
-        </div>
-      </div>
-
-      {% elif wid == 'erp_moodle_resumo' %}
-      <div class="card" style="border:1.5px dashed #93c5fd">
-        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border-bottom:1px solid #bfdbfe">
-          <div class="card-title" style="color:#1d4ed8;display:flex;align-items:center;gap:8px">
-            <span style="font-size:9px;font-weight:700;letter-spacing:.06em;background:#dbeafe;padding:2px 8px;border-radius:20px">ERP MOODLE</span>
-            Andamento — Inserção Moodle
-          </div>
-          <a href="{{ url_for('erp_moodle') }}" class="btn btn-sm btn-secondary">Ver tudo →</a>
-        </div>
-        <div class="card-body" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
-          <div style="display:flex;gap:16px">
-            <div>
-              <div style="font-size:19px;font-weight:700;color:#7e22ce">{{ erp_cursos_novos }}</div>
-              <div style="font-size:10px;color:var(--text-muted)">Cursos Novos</div>
-            </div>
-            <div>
-              <div style="font-size:19px;font-weight:700;color:#1d4ed8">{{ erp_cursos_rodando }}</div>
-              <div style="font-size:10px;color:var(--text-muted)">Cursos Rodando</div>
-            </div>
-            <div style="width:1px;background:#bfdbfe;align-self:stretch"></div>
-            <div>
-              <div style="font-size:19px;font-weight:700;color:#b35700">{{ erp_em_insercao }}</div>
-              <div style="font-size:10px;color:var(--text-muted)">Disc. Em Inserção</div>
-            </div>
-            <div>
-              <div style="font-size:19px;font-weight:700;color:#15803d">{{ erp_concluida }}</div>
-              <div style="font-size:10px;color:var(--text-muted)">Disc. Concluídas</div>
-            </div>
-          </div>
-          <div style="flex:1;min-width:220px">
-            {% if erp_recentes %}
-            {% for it in erp_recentes %}
-            <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:2px 0">
-              <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;
-                           background:{{ '#15803d' if it.status=='concluida' else '#b35700' }}"></span>
-              <span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.nome_disciplina }}</span>
-              <span style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">— {{ it.nome_curso or 'sem curso' }}</span>
-            </div>
-            {% endfor %}
-            {% else %}
-            <div style="font-size:11.5px;color:var(--text-muted)">Nenhum item cadastrado ainda.</div>
-            {% endif %}
-          </div>
         </div>
       </div>
 

@@ -150,7 +150,6 @@ DASHBOARD_WIDGETS = [
     {'id': 'sem_responsavel', 'label': 'Cursos sem responsável'},
     {'id': 'reembolsos_pend', 'label': 'Reembolsos pendentes'},
     {'id': 'notas',           'label': 'Notas rápidas'},
-    {'id': 'erp_moodle_resumo', 'label': 'ERP Moodle — Andamento'},
     {'id': 'calendario_disciplinas', 'label': 'Calendário — Disciplinas por Módulo'},
 ]
 _DASHBOARD_WIDGET_IDS = {w['id'] for w in DASHBOARD_WIDGETS}
@@ -195,7 +194,7 @@ DASHBOARD_WIDGETS_PADRAO_VISIVEL = {
     'andamento': True, 'por_responsavel': True, 'por_tipo': True,
     'atividade': True, 'atalhos': True, 'backup': False,
     'sem_responsavel': True, 'reembolsos_pend': False, 'notas': True,
-    'erp_moodle_resumo': True, 'calendario_disciplinas': True,
+    'calendario_disciplinas': True,
 }
 
 def _modulos_visiveis():
@@ -1640,25 +1639,6 @@ def dashboard():
             db.func.coalesce(db.func.sum(Refund.valor), 0)
         ).filter_by(concluido_manual=False).scalar()
 
-    # Widget "ERP Moodle" — resumo do módulo de inserção de conteúdo
-    # (categoria separada do INOVA), só pra quem tem acesso àquela seção.
-    pode_ver_erp_moodle = u.can_view_erp_moodle()
-    erp_em_insercao = erp_concluida = erp_cursos_novos = erp_cursos_rodando = 0
-    erp_recentes = []
-    if pode_ver_erp_moodle:
-        erp_em_insercao = ErpMoodleItem.query.filter_by(status='em_insercao').count()
-        erp_concluida = ErpMoodleItem.query.filter_by(status='concluida').count()
-        # Curso "novo" = ainda tem alguma disciplina pendente; assim que todas as
-        # disciplinas dele forem concluídas, o curso passa a contar como "rodando".
-        erp_por_curso = db.session.query(
-                ErpMoodleItem.nome_curso,
-                db.func.sum(db.case((ErpMoodleItem.status == 'em_insercao', 1), else_=0))
-            ).filter(ErpMoodleItem.nome_curso != None, ErpMoodleItem.nome_curso != '')\
-            .group_by(ErpMoodleItem.nome_curso).all()
-        erp_cursos_novos = sum(1 for _, pend in erp_por_curso if pend > 0)
-        erp_cursos_rodando = sum(1 for _, pend in erp_por_curso if pend == 0)
-        erp_recentes = ErpMoodleItem.query.order_by(ErpMoodleItem.updated_at.desc()).limit(5).all()
-
     # Widget "Calendário — Disciplinas por Módulo" — total pendente (some
     # cai conforme a equipe registra o andamento) e a quantidade em cada
     # etapa da inserção, até liberada no Moodle. Arquivadas ficam de fora.
@@ -1687,9 +1667,6 @@ def dashboard():
         total_sem_resp=total_sem_resp, cursos_sem_resp=cursos_sem_resp,
         pode_ver_reembolsos=pode_ver_reembolsos,
         reembolsos_pend_qtd=reembolsos_pend_qtd, reembolsos_pend_valor=reembolsos_pend_valor,
-        pode_ver_erp_moodle=pode_ver_erp_moodle,
-        erp_em_insercao=erp_em_insercao, erp_concluida=erp_concluida, erp_recentes=erp_recentes,
-        erp_cursos_novos=erp_cursos_novos, erp_cursos_rodando=erp_cursos_rodando,
         disc_modulo_total=disc_modulo_total, disc_modulo_pendentes=disc_modulo_pendentes,
         disc_modulo_por_status=disc_modulo_por_status, STATUS_DISC_MODULO_LABEL=STATUS_DISC_MODULO_LABEL)
 
