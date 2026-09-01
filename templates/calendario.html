@@ -57,9 +57,9 @@
 
   <!-- ── ABAS ── -->
   <div class="cal-tabs">
-    <a href="{{ url_for('calendario', aba='calendario') }}" class="cal-tab {% if aba == 'calendario' %}active{% endif %}">📅 Calendário</a>
-    <a href="{{ url_for('calendario', aba='lista') }}" class="cal-tab {% if aba == 'lista' %}active{% endif %}">📋 Lista de Demandas</a>
     <a href="{{ url_for('calendario', aba='disciplinas') }}" class="cal-tab {% if aba == 'disciplinas' %}active{% endif %}">🗂 Disciplinas por Módulo</a>
+    <a href="{{ url_for('calendario', aba='lista') }}" class="cal-tab {% if aba == 'lista' %}active{% endif %}">📋 Lista de Demandas</a>
+    <a href="{{ url_for('calendario', aba='calendario') }}" class="cal-tab {% if aba == 'calendario' %}active{% endif %}">📅 Calendário</a>
   </div>
 
   {% if aba == 'calendario' %}

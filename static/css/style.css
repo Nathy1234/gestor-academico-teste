@@ -146,6 +146,16 @@ body {
 }
 .nav-sub { padding-left: 20px; font-size: 12px; font-weight: 400; }
 .nav-sub.active { padding-left: 20px; }
+.nav-subgroup-header {
+  display: flex; align-items: center; gap: 9px; padding: 7px 10px 7px 20px;
+  border-radius: 7px; color: var(--sidebar-text); font-size: 11.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .03em; cursor: pointer; user-select: none;
+  transition: background .14s, color .14s;
+}
+.nav-subgroup-header:hover { background: var(--sidebar-hover); color: #e3e7f5; }
+.nav-subgroup-header .section-chevron { margin-left: auto; }
+.nav-subgroup-items.is-collapsed { display: none; }
+.nav-subgroup-items .nav-sub { padding-left: 32px; }
 .sidebar-section-block[draggable="true"] { cursor: default; }
 .sidebar-section-block[draggable="true"] .nav-section { cursor: grab; }
 .section-handle { cursor: grab; margin-right: 3px; user-select: none; }

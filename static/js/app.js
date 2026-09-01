@@ -52,6 +52,35 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ── SUBGRUPOS DENTRO DE FERRAMENTAS (ex: MOODLE, DRIVE) ─────────────
+// Mesma lógica das seções do menu, um nível mais fundo — agrupamento é
+// automático (por padrão do nome/URL), só o abrir/fechar é lembrado aqui.
+function toggleFerramentasGrupo(header) {
+  const bloco = header.closest('.nav-subgroup');
+  if (!bloco) return;
+  const items = bloco.querySelector('.nav-subgroup-items');
+  const chevron = header.querySelector('.section-chevron');
+  const abrir = items.classList.contains('is-collapsed');
+  items.classList.toggle('is-collapsed', !abrir);
+  if (chevron) chevron.classList.toggle('is-open', abrir);
+  const id = bloco.dataset.subgroupId;
+  if (id) localStorage.setItem('navSubgrupoAberto_' + id, abrir ? '1' : '0');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-subgroup').forEach(bloco => {
+    const id = bloco.dataset.subgroupId;
+    const items = bloco.querySelector('.nav-subgroup-items');
+    const chevron = bloco.querySelector('.section-chevron');
+    if (!items || !id) return;
+    const temPaginaAtual = !!items.querySelector('.nav-item.active');
+    const salvo = localStorage.getItem('navSubgrupoAberto_' + id);
+    const abrir = salvo !== null ? salvo === '1' : temPaginaAtual;
+    items.classList.toggle('is-collapsed', !abrir);
+    if (chevron) chevron.classList.toggle('is-open', abrir);
+  });
+});
+
 // ── ORDEM DAS SEÇÕES DO MENU LATERAL ────────────────────────────────
 // A ordem é global (escolhida pelo admin, salva no servidor) — todo mundo
 // vê nessa ordem; só o admin pode arrastar pra mudar.

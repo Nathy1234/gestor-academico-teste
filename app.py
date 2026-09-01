@@ -908,6 +908,27 @@ def nome_exibicao(u):
         return nome
     return u.username
 
+@app.template_global('agrupar_ferramentas')
+def _agrupar_ferramentas(tools):
+    """Agrupa ferramentas externas automaticamente por padrão do nome/URL,
+    pra não empilhar tudo solto na barra lateral: rótulo começando com
+    'Moodle' vira o grupo MOODLE, link de pasta/Drive vira o grupo DRIVE —
+    o resto continua solto, como sempre foi. Zero configuração manual."""
+    grupos_ordem = ['MOODLE', 'DRIVE']
+    grupos = {nome: [] for nome in grupos_ordem}
+    soltas = []
+    for t in tools:
+        label_low = (t.label or '').lower()
+        url_low = (t.url or '').lower()
+        if label_low.startswith('moodle'):
+            grupos['MOODLE'].append(t)
+        elif 'drive.google.com' in url_low or 'drive' in label_low:
+            grupos['DRIVE'].append(t)
+        else:
+            soltas.append(t)
+    grupos_finais = [(nome, grupos[nome]) for nome in grupos_ordem if grupos[nome]]
+    return soltas, grupos_finais
+
 def hash_pw(pw): return generate_password_hash(pw)
 
 def check_pw(stored_hash, plain_pw):
@@ -4617,7 +4638,7 @@ def calendario():
     ano_ant, mes_ant = _mes_ano_ajustado(ano, mes - 1)
     ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
 
-    aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas') else 'calendario'
+    aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas') else 'disciplinas'
     modulos = _disciplinas_agrupadas_por_modulo()
     modulos_cadastrados = ModuloCalendario.query.order_by(ModuloCalendario.ordem, ModuloCalendario.nome).all()
 
@@ -4634,34 +4655,23 @@ def calendario():
 @app.route('/calendario/publico')
 def calendario_publico():
     """Página pública, sem login — pra compartilhar com quem precisa
-    acompanhar de fora (só visualização: calendário de demandas e o
-    progresso das disciplinas por módulo). Admin pode desligar em
-    /calendario, sem precisar mexer em código."""
+    acompanhar de fora: só a listagem (disciplinas por módulo e as
+    demandas), sem grade de calendário, tudo na mesma tela em abas. Admin
+    pode desligar em /calendario, sem precisar mexer em código."""
     if not _calendario_publico_ativo():
         return render_template('calendario_publico_desativado.html'), 200
 
-    hoje = date.today()
-    ano, mes = _mes_ano_ajustado(request.args.get('ano', type=int) or hoje.year,
-                                  request.args.get('mes', type=int) or hoje.month)
-    semanas, por_dia, demandas_mes = _grade_calendario(ano, mes)
-    ano_ant, mes_ant = _mes_ano_ajustado(ano, mes - 1)
-    ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
-
-    demandas_json = {
-        d.id: {
-            'titulo': d.titulo, 'descricao': d.descricao or '',
-            'data_inicio': d.data_inicio.strftime('%d/%m/%Y'), 'data_fim': d.data_fim.strftime('%d/%m/%Y'),
-            'status': d.status,
-            'responsavel': ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios()) or None,
-        }
-        for d in demandas_mes
-    }
+    demandas = Demanda.query.order_by(Demanda.data_fim).all()
+    demandas_view = [{
+        'titulo': d.titulo, 'descricao': d.descricao or '',
+        'data_inicio': d.data_inicio.strftime('%d/%m/%Y'), 'data_fim': d.data_fim.strftime('%d/%m/%Y'),
+        'status': d.status,
+        'responsavel': ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios()) or None,
+    } for d in demandas]
     modulos = _disciplinas_agrupadas_por_modulo()
 
     return render_template('calendario_publico.html',
-        ano=ano, mes=mes, mes_nome=MESES_PT[mes], semanas=semanas, hoje=hoje, por_dia=por_dia,
-        ano_ant=ano_ant, mes_ant=mes_ant, ano_prox=ano_prox, mes_prox=mes_prox,
-        demandas_json=demandas_json, modulos=modulos,
+        demandas=demandas_view, modulos=modulos,
         STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
         STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
 

@@ -112,7 +112,7 @@
         {{ chevron() }}
       </div>
       <div class="sidebar-section-items">
-      {% for t in ferramentas_tools %}
+      {% macro ferramenta_item(t) %}
       {% if t.embeddable == False %}
       <a href="{{ t.url }}" target="_blank" rel="noopener" data-tool-id="{{ t.id }}" class="nav-item nav-sub">
         <span class="dot dot-gray"></span> {{ t.label }}
@@ -123,6 +123,21 @@
         <span class="dot dot-blue"></span> {{ t.label }}
       </a>
       {% endif %}
+      {% endmacro %}
+      {% set soltas, grupos_ferramentas = agrupar_ferramentas(ferramentas_tools) %}
+      {% for t in soltas %}{{ ferramenta_item(t) }}{% endfor %}
+      {% for nome_grupo, itens in grupos_ferramentas %}
+      {% set ns = namespace(ativo=false) %}
+      {% for t in itens %}{% if request.endpoint=='ferramenta_abrir' and request.view_args.id==t.id %}{% set ns.ativo = true %}{% endif %}{% endfor %}
+      <div class="nav-subgroup" data-subgroup-id="{{ nome_grupo|lower }}">
+        <div class="nav-subgroup-header" onclick="toggleFerramentasGrupo(this)">
+          <span class="dot dot-purple"></span> {{ nome_grupo }} ({{ itens|length }})
+          {{ chevron() }}
+        </div>
+        <div class="nav-subgroup-items{% if not ns.ativo %} is-collapsed{% endif %}">
+          {% for t in itens %}{{ ferramenta_item(t) }}{% endfor %}
+        </div>
+      </div>
       {% endfor %}
       </div>
       {% elif session.role == 'admin' %}
