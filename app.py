@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.17.0'
+VERSAO = '1.18.0'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -778,33 +778,57 @@ STATUS_DEMANDA_LABEL = {'stand_by': 'Em Stand By', 'andamento': 'Em Andamento', 
 MESES_PT = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho',
             'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
+# Equipe de inserção — únicos nomes que podem aparecer como responsável de
+# uma demanda do Calendário (multi-seleção: uma demanda pode ter mais de
+# um insersor). Comparado sem acento/maiúsculas via _norm_name.
+EQUIPE_INSERCAO_NOMES = ('STEFANYE', 'JUNIOR', 'FELIPE', 'LUCAS', 'PEDRO')
+
+def _usuarios_equipe_insercao():
+    alvo = set(EQUIPE_INSERCAO_NOMES)
+    usuarios = User.query.filter_by(equipe=True).all()
+    resultado = [u for u in usuarios if _norm_name(nome_exibicao(u)) in alvo or _norm_name(u.username) in alvo]
+    return sorted(resultado, key=lambda u: nome_exibicao(u))
+
 class Demanda(db.Model):
     """Item do Calendário da equipe — uma demanda/tarefa com prazo, visível
     pra todo mundo. Só admin ajusta prazo/título/responsável ('configuração');
-    o responsável designado também pode registrar a mudança de andamento
-    (stand by / em andamento / finalizado) sem poder mexer no prazo."""
+    qualquer um dos responsáveis designados também pode registrar a mudança
+    de andamento (stand by / em andamento / finalizado) sem poder mexer no
+    prazo. Pode ter mais de um responsável (vários insersores na mesma
+    demanda) — guardado como ids separados por vírgula, tipo o campo
+    `insersor` de Course."""
     id             = db.Column(db.Integer, primary_key=True)
     titulo         = db.Column(db.String(200), nullable=False)
     descricao      = db.Column(db.Text)
     data_inicio    = db.Column(db.Date, nullable=False)
     data_fim       = db.Column(db.Date, nullable=False)
     status         = db.Column(db.String(20), default='andamento')
-    responsavel_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    responsaveis   = db.Column(db.Text)  # ids de User separados por vírgula, ex: "3,7"
     created_by     = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at     = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at     = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    responsavel = db.relationship('User', foreign_keys=[responsavel_id])
-    autor       = db.relationship('User', foreign_keys=[created_by])
+    autor = db.relationship('User', foreign_keys=[created_by])
+
+    def responsaveis_ids(self):
+        return [int(x) for x in (self.responsaveis or '').split(',') if x.strip().isdigit()]
+
+    def responsaveis_usuarios(self):
+        ids = self.responsaveis_ids()
+        if not ids:
+            return []
+        usuarios = User.query.filter(User.id.in_(ids)).all()
+        ordem = {uid: i for i, uid in enumerate(ids)}
+        return sorted(usuarios, key=lambda u: ordem.get(u.id, 999))
 
     def pode_editar(self, u):
         """Prazo, título, descrição e responsável — só admin."""
         return u.role == 'admin'
 
     def pode_registrar_status(self, u):
-        """Marcar stand by / em andamento / finalizado — admin ou o
-        responsável designado, sem precisar poder editar o prazo."""
-        return u.role == 'admin' or (self.responsavel_id and u.id == self.responsavel_id)
+        """Marcar stand by / em andamento / finalizado — admin ou qualquer
+        um dos responsáveis designados, sem precisar poder editar o prazo."""
+        return u.role == 'admin' or u.id in self.responsaveis_ids()
 
 STATUS_DISC_MODULO = ('em_producao', 'inserida', 'em_curadoria', 'liberada_moodle')
 STATUS_DISC_MODULO_LABEL = {
@@ -819,6 +843,18 @@ STATUS_DISC_MODULO_COR = {
     'em_curadoria':    '#b35700',
     'liberada_moodle': '#15803d',
 }
+
+class ModuloCalendario(db.Model):
+    """Lista de módulos/categorias disponíveis pra agrupar as disciplinas de
+    inserção — gerenciada pelo admin, pra não digitar o nome do zero toda
+    vez (e evitar módulos quase-duplicados por erro de digitação). O
+    vínculo com DisciplinaModulo é pelo nome (texto), não por FK — renomear
+    aqui atualiza em cascata as disciplinas que já usam o nome antigo."""
+    id         = db.Column(db.Integer, primary_key=True)
+    nome       = db.Column(db.String(200), nullable=False, unique=True)
+    ordem      = db.Column(db.Integer, default=0)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class DisciplinaModulo(db.Model):
     """Disciplina cadastrada dentro de um módulo específico de inserção —
@@ -4533,6 +4569,20 @@ def _disciplinas_agrupadas_por_modulo():
         resultado.append({'modulo': modulo, 'itens': itens, 'liberadas': liberadas, 'total': len(itens)})
     return resultado
 
+def _calendario_publico_ativo():
+    setting = AppSetting.query.get('calendario_publico_ativo')
+    if setting is None or setting.value is None:
+        return True  # ligado por padrão até o admin desligar
+    return setting.value == '1'
+
+def _responsaveis_validos_ids(form):
+    """ids de responsável postados que realmente pertencem à equipe de
+    inserção — qualquer id fora dessa lista é ignorado (defesa extra além
+    do <select> só mostrar essas opções)."""
+    permitidos = {u.id for u in _usuarios_equipe_insercao()}
+    postados = [int(x) for x in form.getlist('responsavel_ids') if x.isdigit()]
+    return [x for x in postados if x in permitidos]
+
 @app.route('/calendario')
 @login_required
 def calendario():
@@ -4546,18 +4596,18 @@ def calendario():
     lista_q = Demanda.query
     if status_filtro in STATUS_DEMANDA:
         lista_q = lista_q.filter_by(status=status_filtro)
-    if responsavel_filtro:
-        lista_q = lista_q.filter_by(responsavel_id=responsavel_filtro)
     lista_demandas = lista_q.order_by(Demanda.data_fim).all()
+    if responsavel_filtro:
+        lista_demandas = [d for d in lista_demandas if responsavel_filtro in d.responsaveis_ids()]
 
-    usuarios = User.query.filter_by(equipe=True).order_by(User.username).all()
+    usuarios = _usuarios_equipe_insercao()
     u = User.query.get(session['user_id'])
 
     demandas_json = {
         d.id: {
             'id': d.id, 'titulo': d.titulo, 'descricao': d.descricao or '',
             'data_inicio': d.data_inicio.isoformat(), 'data_fim': d.data_fim.isoformat(),
-            'status': d.status, 'responsavel_id': d.responsavel_id or '',
+            'status': d.status, 'responsavel_ids': d.responsaveis_ids(),
             'pode_editar': d.pode_editar(u),
             'pode_registrar_status': d.pode_registrar_status(u),
         }
@@ -4567,8 +4617,9 @@ def calendario():
     ano_ant, mes_ant = _mes_ano_ajustado(ano, mes - 1)
     ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
 
-    aba = request.args.get('aba') if request.args.get('aba') in ('demandas', 'disciplinas') else 'demandas'
+    aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas') else 'calendario'
     modulos = _disciplinas_agrupadas_por_modulo()
+    modulos_cadastrados = ModuloCalendario.query.order_by(ModuloCalendario.ordem, ModuloCalendario.nome).all()
 
     return render_template('calendario.html',
         ano=ano, mes=mes, mes_nome=MESES_PT[mes], semanas=semanas, hoje=hoje, por_dia=por_dia,
@@ -4577,13 +4628,18 @@ def calendario():
         responsavel_filtro=responsavel_filtro, demandas_json=demandas_json,
         STATUS_DEMANDA=STATUS_DEMANDA, STATUS_LABEL=STATUS_DEMANDA_LABEL,
         aba=aba, modulos=modulos, STATUS_DISC=STATUS_DISC_MODULO, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
+        modulos_cadastrados=modulos_cadastrados, publico_ativo=_calendario_publico_ativo(),
         is_admin=(u.role == 'admin'))
 
 @app.route('/calendario/publico')
 def calendario_publico():
     """Página pública, sem login — pra compartilhar com quem precisa
     acompanhar de fora (só visualização: calendário de demandas e o
-    progresso das disciplinas por módulo)."""
+    progresso das disciplinas por módulo). Admin pode desligar em
+    /calendario, sem precisar mexer em código."""
+    if not _calendario_publico_ativo():
+        return render_template('calendario_publico_desativado.html'), 200
+
     hoje = date.today()
     ano, mes = _mes_ano_ajustado(request.args.get('ano', type=int) or hoje.year,
                                   request.args.get('mes', type=int) or hoje.month)
@@ -4596,7 +4652,7 @@ def calendario_publico():
             'titulo': d.titulo, 'descricao': d.descricao or '',
             'data_inicio': d.data_inicio.strftime('%d/%m/%Y'), 'data_fim': d.data_fim.strftime('%d/%m/%Y'),
             'status': d.status,
-            'responsavel': nome_exibicao(d.responsavel) if d.responsavel else None,
+            'responsavel': ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios()) or None,
         }
         for d in demandas_mes
     }
@@ -4608,6 +4664,19 @@ def calendario_publico():
         demandas_json=demandas_json, modulos=modulos,
         STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
         STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
+
+@app.route('/calendario/publico/toggle', methods=['POST'])
+@admin_required
+def calendario_publico_toggle():
+    novo = not _calendario_publico_ativo()
+    setting = AppSetting.query.get('calendario_publico_ativo')
+    if not setting:
+        setting = AppSetting(key='calendario_publico_ativo')
+        db.session.add(setting)
+    setting.value = '1' if novo else '0'
+    db.session.commit()
+    flash('Link público ativado!' if novo else 'Link público desativado — quem tiver o link vê um aviso.', 'success')
+    return redirect(url_for('calendario'))
 
 @app.route('/calendario/nova', methods=['POST'])
 @admin_required
@@ -4623,9 +4692,10 @@ def calendario_nova():
         flash('O prazo não pode ser antes do início.', 'danger')
         return redirect(url_for('calendario'))
     status = d.get('status') if d.get('status') in STATUS_DEMANDA else 'andamento'
+    responsaveis_ids = _responsaveis_validos_ids(d)
     demanda = Demanda(titulo=titulo, descricao=(d.get('descricao') or '').strip() or None,
                        data_inicio=data_inicio, data_fim=data_fim, status=status,
-                       responsavel_id=request.form.get('responsavel_id', type=int),
+                       responsaveis=','.join(str(x) for x in responsaveis_ids) or None,
                        created_by=session['user_id'])
     db.session.add(demanda)
     db.session.commit()
@@ -4648,9 +4718,9 @@ def calendario_editar(id):
     demanda.descricao = (d.get('descricao') or '').strip() or None
     demanda.data_inicio = data_inicio
     demanda.data_fim = data_fim
+    demanda.responsaveis = ','.join(str(x) for x in _responsaveis_validos_ids(d)) or None
     if d.get('status') in STATUS_DEMANDA:
         demanda.status = d.get('status')
-    demanda.responsavel_id = request.form.get('responsavel_id', type=int)
     db.session.commit()
     log_action(session['user_id'], session['username'], 'editar', 'demanda', demanda.id, demanda.titulo)
     flash('Demanda atualizada!', 'success')
@@ -4757,9 +4827,9 @@ def calendario_exportar():
     responsavel_filtro = request.args.get('responsavel', type=int)
     if status_filtro in STATUS_DEMANDA:
         q = q.filter_by(status=status_filtro)
-    if responsavel_filtro:
-        q = q.filter_by(responsavel_id=responsavel_filtro)
     demandas = q.order_by(Demanda.data_fim).all()
+    if responsavel_filtro:
+        demandas = [d for d in demandas if responsavel_filtro in d.responsaveis_ids()]
 
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -4778,10 +4848,11 @@ def calendario_exportar():
         c.alignment = Alignment(wrap_text=True, vertical='center')
 
     for d in demandas:
+        nomes_resp = ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios())
         ws.append([
             d.titulo,
             d.descricao or '',
-            nome_exibicao(d.responsavel) if d.responsavel else '—',
+            nomes_resp or '—',
             d.data_inicio.strftime('%d/%m/%Y'),
             d.data_fim.strftime('%d/%m/%Y'),
             STATUS_DEMANDA_LABEL.get(d.status, d.status),
@@ -4797,6 +4868,78 @@ def calendario_exportar():
     buf.seek(0)
     return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                       as_attachment=True, download_name=f'demandas_{date.today().isoformat()}.xlsx')
+
+# ─── CALENDÁRIO — MÓDULOS (categorias) E IMPORTAÇÃO EM MASSA ────────────────────
+
+@app.route('/calendario/modulos/nova', methods=['POST'])
+@admin_required
+def calendario_modulo_nova():
+    nome = (request.form.get('nome') or '').strip()
+    if not nome:
+        flash('Dê um nome ao módulo.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    if ModuloCalendario.query.filter(db.func.lower(ModuloCalendario.nome) == nome.lower()).first():
+        flash('Já existe um módulo com esse nome.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    maior_ordem = db.session.query(db.func.coalesce(db.func.max(ModuloCalendario.ordem), 0)).scalar()
+    db.session.add(ModuloCalendario(nome=nome, ordem=maior_ordem + 1, created_by=session['user_id']))
+    db.session.commit()
+    flash('Módulo adicionado!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/modulos/<int:id>/editar', methods=['POST'])
+@admin_required
+def calendario_modulo_editar(id):
+    modulo = ModuloCalendario.query.get_or_404(id)
+    novo_nome = (request.form.get('nome') or '').strip()
+    if not novo_nome:
+        flash('Dê um nome ao módulo.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    if ModuloCalendario.query.filter(
+            db.func.lower(ModuloCalendario.nome) == novo_nome.lower(), ModuloCalendario.id != id).first():
+        flash('Já existe um módulo com esse nome.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    nome_antigo = modulo.nome
+    modulo.nome = novo_nome
+    # cascata: disciplinas que usavam o nome antigo passam a usar o novo
+    DisciplinaModulo.query.filter_by(modulo=nome_antigo).update({'modulo': novo_nome})
+    db.session.commit()
+    flash('Módulo renomeado!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/modulos/<int:id>/excluir', methods=['POST'])
+@admin_required
+def calendario_modulo_excluir(id):
+    modulo = ModuloCalendario.query.get_or_404(id)
+    if DisciplinaModulo.query.filter_by(modulo=modulo.nome).first():
+        flash('Esse módulo tem disciplinas cadastradas — mova ou exclua elas antes de remover o módulo.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    db.session.delete(modulo)
+    db.session.commit()
+    flash('Módulo excluído.', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
+
+@app.route('/calendario/disciplinas/importar', methods=['POST'])
+@admin_required
+def calendario_disciplina_importar():
+    """Cola uma lista de disciplinas (uma por linha) e cria todas de uma vez
+    no módulo escolhido — pra não precisar cadastrar uma por uma."""
+    modulo = (request.form.get('modulo') or '').strip()
+    linhas = (request.form.get('linhas') or '').splitlines()
+    nomes = [l.strip() for l in linhas if l.strip()]
+    if not modulo:
+        flash('Escolha o módulo antes de importar a lista.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    if not nomes:
+        flash('Cole ao menos uma disciplina, uma por linha.', 'danger')
+        return redirect(url_for('calendario', aba='disciplinas'))
+    for nome in nomes:
+        db.session.add(DisciplinaModulo(modulo=modulo, nome=nome[:300], created_by=session['user_id']))
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'criar', 'disciplina_modulo',
+               0, f'importação em massa — {len(nomes)} disciplina(s) em {modulo}')
+    flash(f'{len(nomes)} disciplina(s) criada(s) em "{modulo}"!', 'success')
+    return redirect(url_for('calendario', aba='disciplinas'))
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────
 
@@ -5736,6 +5879,14 @@ def seed_data():
         for i, (label, url) in enumerate(ferramentas_padrao, start=1):
             db.session.add(ExternalTool(label=label, url=url, ordem=i))
         db.session.commit()
+    # Módulos padrão do Calendário — admin pode adicionar/renomear/excluir
+    # outros depois (ex: outras pós, técnicos etc.) em Disciplinas por Módulo.
+    if ModuloCalendario.query.count() == 0:
+        db.session.add_all([
+            ModuloCalendario(nome='GRADUAÇÃO', ordem=1),
+            ModuloCalendario(nome='PÓS', ordem=2),
+        ])
+        db.session.commit()
 
 @app.route('/admin/importar-disciplinas', methods=['POST'])
 @admin_required
@@ -6206,6 +6357,7 @@ def _run_migrations():
         ("discipline", "plataforma_ok",    "BOOLEAN DEFAULT false"),
         ("discipline", "plataforma_em",    "TIMESTAMP"),
         ("backup_record", "conteudo",      "BYTEA"),
+        ("demanda", "responsaveis",        "TEXT"),
     ]
     with db.engine.connect() as conn:
         for table, col, dtype in migrations:

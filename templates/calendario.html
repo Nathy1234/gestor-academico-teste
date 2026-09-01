@@ -7,7 +7,7 @@
       <div class="page-title">Calendário</div>
       <div class="page-subtitle">Tudo que a equipe realiza na inserção — demandas com prazo e disciplinas por módulo</div>
     </div>
-    {% if is_admin and aba == 'demandas' %}
+    {% if is_admin and aba in ('calendario', 'lista') %}
     <button type="button" class="btn btn-primary" onclick="calAbrirNova('{{ hoje.isoformat() }}')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -15,45 +15,63 @@
       Nova Demanda
     </button>
     {% elif is_admin %}
-    <button type="button" class="btn btn-primary" onclick="calDiscAbrirNova()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
-        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-      Nova Disciplina
-    </button>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn btn-secondary" onclick="calImportAbrir()">Colar lista</button>
+      <button type="button" class="btn btn-primary" onclick="calDiscAbrirNova()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Nova Disciplina
+      </button>
+    </div>
     {% endif %}
   </div>
 
   <!-- ── LINK PÚBLICO PRA COMPARTILHAR ── -->
+  {% if is_admin or publico_ativo %}
   <div class="card cal-link-card">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;color:var(--primary)">
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
     </svg>
     <div style="flex:1;min-width:200px">
-      <div style="font-size:12.5px;font-weight:600">Link público pra compartilhar (sem precisar de login)</div>
+      <div style="font-size:12.5px;font-weight:600">
+        Link público pra compartilhar (sem precisar de login)
+        {% if not publico_ativo %}<span class="badge badge-oculto" style="font-size:10px;margin-left:6px">Desativado</span>{% endif %}
+      </div>
       <div style="font-size:11.5px;color:var(--text-muted)" id="calLinkPublico">{{ url_for('calendario_publico', _external=True) }}</div>
     </div>
+    {% if publico_ativo %}
     <button type="button" class="btn btn-secondary btn-sm" onclick="calCopiarLinkPublico(this)">Copiar link</button>
+    {% endif %}
+    {% if is_admin %}
+    <form method="POST" action="{{ url_for('calendario_publico_toggle') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-sm {{ 'btn-danger' if publico_ativo else 'btn-secondary' }}">
+        {{ 'Desativar' if publico_ativo else 'Ativar' }}
+      </button>
+    </form>
+    {% endif %}
   </div>
+  {% endif %}
 
   <!-- ── ABAS ── -->
   <div class="cal-tabs">
-    <a href="{{ url_for('calendario', aba='demandas') }}" class="cal-tab {% if aba == 'demandas' %}active{% endif %}">📅 Calendário de Demandas</a>
-    <a href="{{ url_for('calendario', aba='disciplinas') }}" class="cal-tab {% if aba == 'disciplinas' %}active{% endif %}">📋 Disciplinas por Módulo</a>
+    <a href="{{ url_for('calendario', aba='calendario') }}" class="cal-tab {% if aba == 'calendario' %}active{% endif %}">📅 Calendário</a>
+    <a href="{{ url_for('calendario', aba='lista') }}" class="cal-tab {% if aba == 'lista' %}active{% endif %}">📋 Lista de Demandas</a>
+    <a href="{{ url_for('calendario', aba='disciplinas') }}" class="cal-tab {% if aba == 'disciplinas' %}active{% endif %}">🗂 Disciplinas por Módulo</a>
   </div>
 
-  {% if aba == 'demandas' %}
-  <!-- ── NAVEGAÇÃO DO MÊS ── -->
+  {% if aba == 'calendario' %}
+  <!-- ═══════════════════════ ABA: CALENDÁRIO (grade do mês) ═══════════════════════ -->
   <div class="cal-nav">
-    <a href="{{ url_for('calendario', aba='demandas', ano=ano_ant, mes=mes_ant) }}" class="btn btn-secondary btn-sm" title="Mês anterior">‹</a>
+    <a href="{{ url_for('calendario', aba='calendario', ano=ano_ant, mes=mes_ant) }}" class="btn btn-secondary btn-sm" title="Mês anterior">‹</a>
     <div class="cal-nav-titulo">{{ mes_nome }} de {{ ano }}</div>
-    <a href="{{ url_for('calendario', aba='demandas', ano=ano_prox, mes=mes_prox) }}" class="btn btn-secondary btn-sm" title="Próximo mês">›</a>
-    <a href="{{ url_for('calendario', aba='demandas') }}" class="btn btn-secondary btn-sm" style="margin-left:6px">Hoje</a>
+    <a href="{{ url_for('calendario', aba='calendario', ano=ano_prox, mes=mes_prox) }}" class="btn btn-secondary btn-sm" title="Próximo mês">›</a>
+    <a href="{{ url_for('calendario', aba='calendario') }}" class="btn btn-secondary btn-sm" style="margin-left:6px">Hoje</a>
   </div>
 
-  <!-- ── GRADE DO CALENDÁRIO ── -->
-  <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
+  <div class="card" style="padding:0;overflow:hidden">
     <div class="cal-grid cal-grid-header">
       {% for nome_dia in ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'] %}
       <div class="cal-dow">{{ nome_dia }}</div>
@@ -82,7 +100,8 @@
     {% endfor %}
   </div>
 
-  <!-- ── LISTA DE DEMANDAS + RELATÓRIO ── -->
+  {% elif aba == 'lista' %}
+  <!-- ═══════════════════════ ABA: LISTA DE DEMANDAS ═══════════════════════ -->
   <div class="page-header" style="margin-bottom:14px">
     <div class="card-title" style="font-size:15px">Lista de Demandas</div>
     <a href="{{ url_for('calendario_exportar', status=status_filtro, responsavel=responsavel_filtro) }}" class="btn btn-secondary">
@@ -94,7 +113,7 @@
   </div>
 
   <form method="GET" action="{{ url_for('calendario') }}" class="filters">
-    <input type="hidden" name="aba" value="demandas">
+    <input type="hidden" name="aba" value="lista">
     <select name="status" class="filter-select" onchange="this.form.submit()">
       <option value="">Todos os status</option>
       {% for s in STATUS_DEMANDA %}
@@ -114,7 +133,7 @@
       <thead>
         <tr>
           <th>Demanda</th>
-          <th>Responsável</th>
+          <th>Responsável(is)</th>
           <th>Início</th>
           <th>Prazo</th>
           <th>Andamento</th>
@@ -125,7 +144,7 @@
         {% for d in lista_demandas %}
         <tr>
           <td>{{ d.titulo }}</td>
-          <td>{{ d.responsavel|nome_exibicao if d.responsavel else '—' }}</td>
+          <td>{{ d.responsaveis_usuarios()|map('nome_exibicao')|join(', ') or '—' }}</td>
           <td>{{ d.data_inicio.strftime('%d/%m/%Y') }}</td>
           <td>{{ d.data_fim.strftime('%d/%m/%Y') }}</td>
           <td>
@@ -160,7 +179,7 @@
 
   {% if not is_admin %}
   <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px">
-    Só o admin ajusta título, prazo e responsável de uma demanda. Se você é o responsável por alguma, pode registrar o andamento dela aqui na lista ou clicando nela no calendário.
+    Só o admin ajusta título, prazo e responsáveis de uma demanda. Se você é um dos responsáveis por alguma, pode registrar o andamento dela aqui na lista ou clicando nela no calendário.
   </div>
   {% endif %}
 
@@ -168,8 +187,39 @@
   <!-- ═══════════════════════ ABA: DISCIPLINAS POR MÓDULO ═══════════════════════ -->
   {% if not is_admin %}
   <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">
-    Só o admin cadastra/edita/exclui disciplinas. Qualquer um da equipe pode clicar no status de cada uma pra registrar em que etapa ela está.
+    Só o admin cadastra/edita/exclui disciplinas e módulos. Qualquer um da equipe pode clicar no status de cada disciplina pra registrar em que etapa ela está.
   </div>
+  {% endif %}
+
+  {% if is_admin %}
+  <details class="cal-modulos-manager">
+    <summary>⚙️ Gerenciar módulos ({{ modulos_cadastrados|length }})</summary>
+    <div style="padding:14px 4px 4px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        {% for m in modulos_cadastrados %}
+        <span class="cal-modulo-chip">
+          <span class="cal-modulo-chip-nome" onclick="calModuloRenomear({{ m.id }}, '{{ m.nome|e }}')" title="Clique pra renomear">{{ m.nome }}</span>
+          <form method="POST" action="{{ url_for('calendario_modulo_excluir', id=m.id) }}" style="display:inline"
+                onsubmit="return confirm('Excluir o módulo &quot;{{ m.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" title="Excluir módulo">✕</button>
+          </form>
+        </span>
+        {% else %}
+        <span style="font-size:12px;color:var(--text-muted)">Nenhum módulo cadastrado ainda.</span>
+        {% endfor %}
+      </div>
+      <form method="POST" action="{{ url_for('calendario_modulo_nova') }}" style="display:flex;gap:8px;max-width:360px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="nome" placeholder="Nome do novo módulo (ex: PÓS)" maxlength="200" required style="flex:1">
+        <button type="submit" class="btn btn-secondary btn-sm">+ Adicionar</button>
+      </form>
+      <form id="calModuloRenomearForm" method="POST" style="display:none">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="nome" id="calModuloRenomearNome">
+      </form>
+    </div>
+  </details>
   {% endif %}
 
   {% for grupo in modulos %}
@@ -209,7 +259,7 @@
   </div>
   {% else %}
   <div class="card" style="padding:32px;text-align:center;color:var(--text-muted)">
-    Nenhuma disciplina cadastrada ainda{% if is_admin %} — clique em "Nova Disciplina" pra começar{% endif %}.
+    Nenhuma disciplina cadastrada ainda{% if is_admin %} — clique em "Nova Disciplina" ou "Colar lista" pra começar{% endif %}.
   </div>
   {% endfor %}
   {% endif %}
@@ -246,13 +296,13 @@
         </div>
         <div class="form-grid">
           <div class="form-group">
-            <label>Responsável</label>
-            <select name="responsavel_id_visivel" id="calResponsavelVisivel" disabled>
-              <option value="">Ninguém específico</option>
+            <label>Responsável(is) — insersor(es)</label>
+            <select name="responsavel_ids_visivel" id="calResponsavelVisivel" multiple size="5" disabled>
               {% for usr in usuarios %}
               <option value="{{ usr.id }}">{{ usr|nome_exibicao }}</option>
               {% endfor %}
             </select>
+            <div style="font-size:10.5px;color:var(--text-muted)">Segure Ctrl (ou Cmd) pra selecionar mais de um.</div>
           </div>
           <div class="form-group">
             <label>Andamento</label>
@@ -277,8 +327,8 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 
-<!-- ── MODAL: NOVA/EDITAR DISCIPLINA (admin) ── -->
 {% if is_admin %}
+<!-- ── MODAL: NOVA/EDITAR DISCIPLINA ── -->
 <div id="calDiscModalOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calDiscFecharModal()">
   <div class="dash-modal" style="max-width:440px">
     <div class="dash-modal-header">
@@ -290,12 +340,12 @@
       <div class="dash-modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div class="form-group">
           <label>Módulo</label>
-          <input type="text" name="modulo" id="calDiscModulo" list="calModulosExistentes" maxlength="200" required>
-          <datalist id="calModulosExistentes">
-            {% for grupo in modulos %}
-            <option value="{{ grupo.modulo }}">
+          <select name="modulo" id="calDiscModulo" required>
+            <option value="">Selecione…</option>
+            {% for m in modulos_cadastrados %}
+            <option value="{{ m.nome }}">{{ m.nome }}</option>
             {% endfor %}
-          </datalist>
+          </select>
         </div>
         <div class="form-group">
           <label>Disciplina</label>
@@ -318,6 +368,38 @@
 <form id="calDiscFormExcluir" method="POST" style="display:none">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
+
+<!-- ── MODAL: COLAR LISTA (importação em massa) ── -->
+<div id="calImportOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calImportFechar()">
+  <div class="dash-modal" style="max-width:460px">
+    <div class="dash-modal-header">
+      <div class="card-title">Colar lista de disciplinas</div>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="calImportFechar()">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('calendario_disciplina_importar') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="dash-modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div class="form-group">
+          <label>Módulo</label>
+          <select name="modulo" required>
+            <option value="">Selecione…</option>
+            {% for m in modulos_cadastrados %}
+            <option value="{{ m.nome }}">{{ m.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Disciplinas (uma por linha)</label>
+          <textarea name="linhas" rows="8" placeholder="Cole aqui, uma disciplina por linha" style="width:100%;resize:vertical" required></textarea>
+        </div>
+      </div>
+      <div class="dash-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="calImportFechar()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar todas</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endif %}
 
 <style>
@@ -336,7 +418,7 @@
 .cal-dow { padding:8px 6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); text-align:center; }
 
 .cal-day {
-  min-height:96px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);
+  min-height:110px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);
   padding:6px; transition:background var(--transition); overflow:hidden;
 }
 .cal-day[onclick] { cursor:pointer; }
@@ -369,6 +451,19 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
 [data-theme="dark"] select.cal-disc-badge-em_curadoria  { background:#431407; color:#fdba74; }
 [data-theme="dark"] select.cal-disc-badge-liberada_moodle { background:#052e16; color:#86efac; }
 
+.cal-modulos-manager { border:1px solid var(--border); border-radius:10px; padding:10px 14px; margin-bottom:16px; background:var(--surface); }
+.cal-modulos-manager summary { cursor:pointer; font-size:13px; font-weight:600; }
+.cal-modulo-chip {
+  display:inline-flex; align-items:center; gap:6px; background:var(--surface-2); border:1px solid var(--border);
+  border-radius:20px; padding:4px 6px 4px 12px; font-size:12px;
+}
+.cal-modulo-chip-nome { cursor:pointer; }
+.cal-modulo-chip form button {
+  background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px;
+  width:20px; height:20px; border-radius:50%; line-height:1;
+}
+.cal-modulo-chip form button:hover { background:#fee2e2; color:#dc2626; }
+
 .table { width:100%; border-collapse:collapse; font-size:13px; }
 .table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:10px 12px; border-bottom:1px solid var(--border); }
 .table td { padding:10px 12px; border-bottom:1px solid var(--border); }
@@ -389,6 +484,13 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
     }).catch(function() {});
   }
 
+  function calSetMultiplos(select, valores) {
+    const alvo = (valores || []).map(String);
+    for (const opt of select.options) {
+      opt.selected = alvo.includes(opt.value);
+    }
+  }
+
   function calAbrirNova(dataStr) {
     if (!CAL_IS_ADMIN) return;
     document.getElementById('calModalTitulo').textContent = 'Nova Demanda';
@@ -403,9 +505,9 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
     document.getElementById('calDataInicio').disabled = false;
     document.getElementById('calDataFim').value = dataStr;
     document.getElementById('calDataFim').disabled = false;
-    document.getElementById('calResponsavelVisivel').value = '';
+    calSetMultiplos(document.getElementById('calResponsavelVisivel'), []);
     document.getElementById('calResponsavelVisivel').disabled = false;
-    document.getElementById('calResponsavelVisivel').name = 'responsavel_id';
+    document.getElementById('calResponsavelVisivel').name = 'responsavel_ids';
     document.getElementById('calStatus').value = 'andamento';
     document.getElementById('calStatus').disabled = false;
     document.getElementById('calBtnExcluir').style.display = 'none';
@@ -426,7 +528,7 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
     document.getElementById('calDescricao').value = dem.descricao;
     document.getElementById('calDataInicio').value = dem.data_inicio;
     document.getElementById('calDataFim').value = dem.data_fim;
-    document.getElementById('calResponsavelVisivel').value = dem.responsavel_id;
+    calSetMultiplos(document.getElementById('calResponsavelVisivel'), dem.responsavel_ids);
     document.getElementById('calStatus').value = dem.status;
 
     ['calTitulo','calDescricao','calDataInicio','calDataFim','calResponsavelVisivel'].forEach(function(elId) {
@@ -441,7 +543,7 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
         document.getElementById(elId).disabled = false;
       });
       document.getElementById('calTitulo').name = 'titulo';
-      document.getElementById('calResponsavelVisivel').name = 'responsavel_id';
+      document.getElementById('calResponsavelVisivel').name = 'responsavel_ids';
     }
 
     document.getElementById('calBtnExcluir').style.display = modoCompleto ? '' : 'none';
@@ -496,6 +598,22 @@ select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
     const form = document.getElementById('calDiscFormExcluir');
     form.action = '/calendario/disciplinas/' + id + '/excluir';
     form.submit();
+  }
+
+  function calModuloRenomear(id, nomeAtual) {
+    const novo = prompt('Novo nome do módulo:', nomeAtual);
+    if (!novo || !novo.trim() || novo.trim() === nomeAtual) return;
+    const form = document.getElementById('calModuloRenomearForm');
+    form.action = '/calendario/modulos/' + id + '/editar';
+    document.getElementById('calModuloRenomearNome').value = novo.trim();
+    form.submit();
+  }
+
+  function calImportAbrir() {
+    document.getElementById('calImportOverlay').style.display = 'flex';
+  }
+  function calImportFechar() {
+    document.getElementById('calImportOverlay').style.display = 'none';
   }
   {% endif %}
 </script>
