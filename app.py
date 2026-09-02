@@ -842,13 +842,17 @@ class Demanda(db.Model):
         um dos responsáveis designados, sem precisar poder editar o prazo."""
         return u.role == 'admin' or u.id in self.responsaveis_ids()
 
-STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'inserida', 'em_curadoria', 'liberada_moodle')
+STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'inserida', 'liberada_moodle', 'liberada_inova')
+# 'em_curadoria' saiu das opções (não é mais escolhível), mas o label/cor
+# continuam mapeados abaixo pra disciplina antiga que ainda tiver esse
+# status salvo no banco não quebrar a tela.
 STATUS_DISC_MODULO_LABEL = {
     'nao_iniciado':    'Selecionar…',
-    'em_producao':     'Em Produção',
+    'em_producao':     'Stand-by',
     'inserida':        'Inserida',
     'em_curadoria':    'Em Curadoria',
     'liberada_moodle': 'Liberada no Moodle',
+    'liberada_inova':  'Liberada no Inova',
 }
 STATUS_DISC_MODULO_COR = {
     'nao_iniciado':    '#a1a1aa',
@@ -856,6 +860,7 @@ STATUS_DISC_MODULO_COR = {
     'inserida':        '#1d4ed8',
     'em_curadoria':    '#b35700',
     'liberada_moodle': '#15803d',
+    'liberada_inova':  '#7c3aed',
 }
 
 class ModuloCalendario(db.Model):
@@ -1645,7 +1650,8 @@ def dashboard():
     # etapa da inserção, até liberada no Moodle. Arquivadas ficam de fora.
     _disc_modulo_ativas = DisciplinaModulo.query.filter_by(arquivado=False)
     disc_modulo_total = _disc_modulo_ativas.count()
-    disc_modulo_pendentes = _disc_modulo_ativas.filter(DisciplinaModulo.status != 'liberada_moodle').count()
+    disc_modulo_pendentes = _disc_modulo_ativas.filter(
+        ~DisciplinaModulo.status.in_(['liberada_moodle', 'liberada_inova'])).count()
     disc_modulo_por_status = dict(
         db.session.query(DisciplinaModulo.status, db.func.count(DisciplinaModulo.id))
         .filter(DisciplinaModulo.arquivado == False)
@@ -4674,7 +4680,7 @@ def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False, trimestre
         liberadas_tipo = 0
         for sub_nome in sorted(submodulos_dict.keys(), key=lambda s: (s == SEM_MODULO_LABEL, s.lower())):
             itens = submodulos_dict[sub_nome]
-            liberadas = sum(1 for i in itens if i.status == 'liberada_moodle')
+            liberadas = sum(1 for i in itens if i.status in ('liberada_moodle', 'liberada_inova'))
             linhas_texto = '\n'.join(
                 '\t'.join([i.nome, i.carga or '', i.professor or '']).rstrip('\t')
                 for i in itens

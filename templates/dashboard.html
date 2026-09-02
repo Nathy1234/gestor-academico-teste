@@ -743,9 +743,9 @@
             <div style="font-size:10px;color:var(--text-muted)">Pendentes de {{ disc_modulo_total }} no total</div>
           </div>
           <div style="width:1px;background:#bbf7d0;align-self:stretch"></div>
-          {% set disc_cores = {'nao_iniciado':'#a1a1aa','em_producao':'#78716c','inserida':'#1d4ed8','em_curadoria':'#b35700','liberada_moodle':'#15803d'} %}
+          {% set disc_cores = {'nao_iniciado':'#a1a1aa','em_producao':'#78716c','inserida':'#1d4ed8','liberada_moodle':'#15803d','liberada_inova':'#7c3aed'} %}
           <div style="display:flex;gap:16px;flex-wrap:wrap">
-            {% for st in ['nao_iniciado', 'em_producao', 'inserida', 'em_curadoria', 'liberada_moodle'] %}
+            {% for st in ['nao_iniciado', 'em_producao', 'inserida', 'liberada_moodle', 'liberada_inova'] %}
             <div>
               <div style="font-size:19px;font-weight:700;color:{{ disc_cores[st] }}">{{ disc_modulo_por_status.get(st, 0) }}</div>
               <div style="font-size:10px;color:var(--text-muted)">{{ STATUS_DISC_MODULO_LABEL[st] }}</div>

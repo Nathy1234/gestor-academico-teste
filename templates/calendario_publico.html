@@ -29,6 +29,9 @@
     .pub-modulo-header { display:flex; align-items:center; justify-content:space-between; cursor:pointer; list-style:none; }
     .pub-modulo-header::-webkit-details-marker { display:none; }
     .pub-tipo { margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+    .pub-submodulo { margin:8px 0 8px 6px; }
+    .pub-submodulo-header { display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-muted); padding:4px 0; }
+    .pub-submodulo-header::-webkit-details-marker { display:none; }
     .pub-tipo:last-child { border-bottom:none; }
     .pub-disc-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
     .pub-disc-row:last-child { border-bottom:none; }
@@ -68,10 +71,14 @@
   </div>
 
   <div id="pubPainelDisciplinas" class="pub-painel active">
+    <div style="margin-bottom:10px;display:flex;gap:8px">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="pubRecolherTudo(true)">Recolher tudo</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="pubRecolherTudo(false)">Expandir tudo</button>
+    </div>
     <div class="card">
       <div class="card-body">
         {% for grupo in modulos %}
-        <details class="pub-tipo" open>
+        <details class="pub-tipo" data-tipo="{{ grupo.tipo }}">
           <summary class="pub-modulo-header">
             <span style="font-weight:700;font-size:13.5px">{{ grupo.tipo }}</span>
             <span class="badge {% if grupo.liberadas == grupo.total %}badge-ativo{% else %}badge-em_edicao{% endif %}">
@@ -79,15 +86,18 @@
             </span>
           </summary>
           {% for sub in grupo.submodulos %}
-          <div style="margin:10px 0 14px 6px">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">{{ sub.submodulo }}</div>
+          <details class="pub-submodulo" data-tipo="{{ grupo.tipo }}" data-submodulo="{{ sub.submodulo }}">
+            <summary class="pub-submodulo-header">
+              <span>{{ sub.submodulo }}</span>
+              <span class="badge {% if sub.liberadas == sub.total %}badge-ativo{% else %}badge-em_edicao{% endif %}" style="font-size:10px">{{ sub.liberadas }}/{{ sub.total }}</span>
+            </summary>
             {% for it in sub.itens %}
             <div class="pub-disc-row">
               <span>{{ it.nome }}</span>
               <span class="pub-status-pill" style="background:{{ STATUS_DISC_COR[it.status] }}22;color:{{ STATUS_DISC_COR[it.status] }}">{{ STATUS_DISC_LABEL[it.status] }}</span>
             </div>
             {% endfor %}
-          </div>
+          </details>
           {% endfor %}
         </details>
         {% else %}
@@ -187,6 +197,25 @@
   function pubFecharModal() {
     document.getElementById('pubModalOverlay').style.display = 'none';
   }
+
+  function pubRecolherTudo(fechar) {
+    document.querySelectorAll('.pub-tipo, .pub-submodulo').forEach(function(det) {
+      det.open = !fechar;
+    });
+  }
+
+  document.querySelectorAll('.pub-tipo').forEach(function(det) {
+    const key = 'pubTipoAberto_' + det.dataset.tipo;
+    const salvo = localStorage.getItem(key);
+    det.open = salvo !== null ? salvo === '1' : true;
+    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+  });
+  document.querySelectorAll('.pub-submodulo').forEach(function(det) {
+    const key = 'pubModuloAberto_' + det.dataset.tipo + '||' + det.dataset.submodulo;
+    const salvo = localStorage.getItem(key);
+    det.open = salvo !== null ? salvo === '1' : true;
+    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+  });
 </script>
 </body>
 </html>

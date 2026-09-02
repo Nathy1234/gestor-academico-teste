@@ -391,6 +391,15 @@
         </form>
         {% endif %}
       </summary>
+      <div class="cal-lote-bar">
+        <span style="font-size:11.5px;color:var(--text-muted)">Com as selecionadas:</span>
+        <select class="cal-lote-status">
+          {% for s in STATUS_DISC %}
+          <option value="{{ s }}">{{ STATUS_DISC_LABEL[s] }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="calAplicarLote(this)">Aplicar</button>
+      </div>
       <table class="table">
         <thead>
           <tr>
@@ -438,15 +447,6 @@
           {% endfor %}
         </tbody>
       </table>
-      <div class="cal-lote-bar">
-        <span style="font-size:11.5px;color:var(--text-muted)">Com as selecionadas:</span>
-        <select class="cal-lote-status">
-          {% for s in STATUS_DISC %}
-          <option value="{{ s }}">{{ STATUS_DISC_LABEL[s] }}</option>
-          {% endfor %}
-        </select>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="calAplicarLote(this)">Aplicar</button>
-      </div>
     </details>
     {% endfor %}
   </details>
@@ -732,10 +732,12 @@ select.cal-disc-badge-em_producao   { background:#f5f5f4; color:#57534e; }
 select.cal-disc-badge-inserida      { background:#dbeafe; color:#1e40af; }
 select.cal-disc-badge-em_curadoria  { background:#ffedd5; color:#9a3412; }
 select.cal-disc-badge-liberada_moodle { background:#dcfce7; color:#15803d; }
+select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
 [data-theme="dark"] select.cal-disc-badge-em_producao   { background:#1c1917; color:#a8a29e; }
 [data-theme="dark"] select.cal-disc-badge-inserida      { background:#172554; color:#93c5fd; }
 [data-theme="dark"] select.cal-disc-badge-em_curadoria  { background:#431407; color:#fdba74; }
 [data-theme="dark"] select.cal-disc-badge-liberada_moodle { background:#052e16; color:#86efac; }
+[data-theme="dark"] select.cal-disc-badge-liberada_inova  { background:#2e1065; color:#c4b5fd; }
 
 .cal-modulos-manager { border:1px solid var(--border); border-radius:10px; padding:10px 14px; margin-bottom:16px; background:var(--surface); }
 .cal-modulos-manager summary { cursor:pointer; font-size:13px; font-weight:600; }
