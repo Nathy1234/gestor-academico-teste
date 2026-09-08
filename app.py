@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.7'
+VERSAO = '1.19.8'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -1862,14 +1862,15 @@ def _build_cursos_query(tipo, area, status, busca, insersor, horas_min='', horas
 @app.route('/cursos/status-em-lote', methods=['POST'])
 @perm_check('can_view_cursos')
 def cursos_status_em_lote():
-    """Oculta, ativa ou inativa vários cursos de uma vez — só admin (só
-    altera o campo status, nenhum curso, disciplina ou outro dado é apagado)."""
+    """Muda o status (ativo/em edição/finalizado/arquivado/oculto/inativo) de
+    vários cursos de uma vez — só admin (só altera o campo status, nenhum
+    curso, disciplina ou outro dado é apagado)."""
     if session.get('role') != 'admin':
         return jsonify({'ok': False, 'erro': 'Somente administradores podem realizar ações em lote.'}), 403
     data = request.json or {}
     ids = data.get('ids', [])
     novo_status = data.get('status', '')
-    if novo_status not in ('ativo', 'oculto', 'inativo'):
+    if novo_status not in ('ativo', 'em_edicao', 'finalizado', 'descontinuado', 'oculto', 'inativo'):
         return jsonify({'ok': False, 'erro': 'Status inválido.'}), 400
     if not ids:
         return jsonify({'ok': False, 'erro': 'Nenhum curso selecionado.'}), 400

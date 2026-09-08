@@ -80,6 +80,12 @@
     <input type="number" name="horas_max" value="{{ filtro_horas_max }}" placeholder="Horas máx." class="filter-select" style="width:100px">
     <button type="submit" class="btn btn-secondary">Filtrar</button>
     <a href="{{ url_for('cursos') }}" class="btn btn-secondary">Limpar</a>
+    {% if session.role == 'admin' %}
+    <button type="button" class="btn btn-secondary" onclick="abrirColarLista()" style="margin-left:auto">
+      <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+      Colar Lista de Nomes
+    </button>
+    {% endif %}
   </form>
 
   {% if session.role == 'admin' %}
@@ -87,16 +93,43 @@
   <div id="acoes-lote" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;
               background:var(--surface);border:1px solid var(--border);border-radius:8px">
     <span id="acoes-lote-contagem" style="font-size:13px;font-weight:600"></span>
-    <button type="button" class="btn btn-sm btn-secondary" style="color:#6366f1" onclick="acaoEmLote('oculto')">
-      Ocultar selecionados
-    </button>
-    <button type="button" class="btn btn-sm btn-secondary" style="color:#22c55e" onclick="acaoEmLote('ativo')">
-      Ativar selecionados
-    </button>
-    <button type="button" class="btn btn-sm btn-secondary" style="color:#71717a" onclick="acaoEmLote('inativo')">
-      Inativar selecionados
+    <select id="loteStatusSelect" class="filter-select" style="width:160px">
+      <option value="ativo">Ativo</option>
+      <option value="em_edicao">Em Edição</option>
+      <option value="finalizado">Finalizado</option>
+      <option value="descontinuado">Arquivado</option>
+      <option value="oculto" selected>Oculto</option>
+      <option value="inativo">Inativo</option>
+    </select>
+    <button type="button" class="btn btn-sm btn-primary" onclick="acaoEmLote(document.getElementById('loteStatusSelect').value)">
+      Aplicar status
     </button>
     <button type="button" class="btn btn-sm btn-secondary" onclick="limparSelecao()">Cancelar</button>
+  </div>
+  {% endif %}
+
+  {% if session.role == 'admin' %}
+  <!-- MODAL: COLAR LISTA DE NOMES -->
+  <div id="colarListaOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) fecharColarLista()">
+    <div class="dash-modal" style="max-width:520px">
+      <div class="dash-modal-header">
+        <div class="card-title">Selecionar cursos por nome colado</div>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="fecharColarLista()">✕</button>
+      </div>
+      <div class="dash-modal-body">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+          Cole um nome de curso por linha (ou uma coluna copiada do Excel/Sheets). Só marca cursos que já estão
+          listados nesta tela — se algum não estiver visível, ajuste os filtros acima antes de colar. Isso só
+          marca as caixinhas de seleção; nenhum status muda até você escolher a opção e clicar em "Aplicar status".
+        </div>
+        <textarea id="colarListaTexto" rows="10" style="width:100%;resize:vertical;font-size:13px"
+                  placeholder="Nome do curso 1&#10;Nome do curso 2&#10;Nome do curso 3"></textarea>
+      </div>
+      <div class="dash-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="fecharColarLista()">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="aplicarColarLista()">Selecionar cursos</button>
+      </div>
+    </div>
   </div>
   {% endif %}
 
@@ -124,7 +157,7 @@
           {% for c in cursos %}
           <tr>
             {% if session.role == 'admin' %}
-            <td><input type="checkbox" class="chk-curso" value="{{ c.id }}" onchange="atualizaSelecao()"></td>
+            <td><input type="checkbox" class="chk-curso" value="{{ c.id }}" data-nome="{{ c.nome }}" onchange="atualizaSelecao()"></td>
             {% endif %}
             <td class="td-name">
               <a href="{{ url_for('curso_detalhe', id=c.id) }}" style="color:var(--text);text-decoration:none;font-weight:500">
@@ -220,11 +253,16 @@ function atualizaVendaModalidade(select) {
     .catch(() => alert('Erro ao salvar. Tente novamente.'));
 }
 
+const LOTE_STATUS_LABEL = {
+  ativo: 'Ativo', em_edicao: 'Em Edição', finalizado: 'Finalizado',
+  descontinuado: 'Arquivado', oculto: 'Oculto', inativo: 'Inativo'
+};
+
 function acaoEmLote(novoStatus) {
   const ids = Array.from(document.querySelectorAll('.chk-curso:checked')).map(chk => parseInt(chk.value));
   if (ids.length === 0) return;
-  const acaoLabel = novoStatus === 'oculto' ? 'ocultar' : (novoStatus === 'inativo' ? 'inativar' : 'ativar');
-  if (!confirm('Confirma ' + acaoLabel + ' ' + ids.length + ' curso(s) selecionado(s)?')) return;
+  const acaoLabel = LOTE_STATUS_LABEL[novoStatus] || novoStatus;
+  if (!confirm(`Confirma mudar o status de ${ids.length} curso(s) selecionado(s) para "${acaoLabel}"? Nenhum outro dado é alterado.`)) return;
   fetch('/cursos/status-em-lote', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -239,6 +277,67 @@ function acaoEmLote(novoStatus) {
       alert(data.erro || 'Erro ao atualizar cursos.');
     }
   });
+}
+
+// ── COLAR LISTA DE NOMES: marca as caixinhas dos cursos colados, pra
+// depois usar a barra de ações em lote normal — não muda status sozinho.
+// Range de marcas de acento combinantes (pós NFD) — montado por code point pra
+// não deixar o caractere combinante solto no meio do arquivo-fonte.
+const MARCAS_DIACRITICAS = new RegExp(String.fromCharCode(91, 92, 117, 48, 51, 48, 48, 45, 92, 117, 48, 51, 54, 102, 93), 'g');
+function normalizaNomeCurso(s) {
+  return (s || '').normalize('NFD').replace(MARCAS_DIACRITICAS, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function abrirColarLista() {
+  const overlay = document.getElementById('colarListaOverlay');
+  if (!overlay) return;
+  document.getElementById('colarListaTexto').value = '';
+  overlay.style.display = 'flex';
+  document.getElementById('colarListaTexto').focus();
+}
+
+function fecharColarLista() {
+  const overlay = document.getElementById('colarListaOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function aplicarColarLista() {
+  const texto = document.getElementById('colarListaTexto').value;
+  const linhas = texto.split('\n').map(l => l.split('\t')[0].trim()).filter(l => l.length);
+  if (!linhas.length) { fecharColarLista(); return; }
+
+  const checkboxes = Array.from(document.querySelectorAll('.chk-curso'));
+  const porNomeExato = new Map();
+  checkboxes.forEach(chk => porNomeExato.set(normalizaNomeCurso(chk.dataset.nome), chk));
+
+  const naoEncontrados = [];
+  let marcados = 0;
+  linhas.forEach(linha => {
+    const alvo = normalizaNomeCurso(linha);
+    let chk = porNomeExato.get(alvo);
+    if (!chk) {
+      const candidatos = checkboxes.filter(c => {
+        const nome = normalizaNomeCurso(c.dataset.nome);
+        return nome.includes(alvo) || alvo.includes(nome);
+      });
+      if (candidatos.length === 1) chk = candidatos[0];
+    }
+    if (chk) {
+      if (!chk.checked) { chk.checked = true; marcados++; }
+    } else {
+      naoEncontrados.push(linha);
+    }
+  });
+
+  atualizaSelecao();
+  fecharColarLista();
+
+  let msg = `${marcados} curso(s) selecionado(s) a partir da lista colada.`;
+  if (naoEncontrados.length) {
+    msg += `\n\n${naoEncontrados.length} não encontrado(s) entre os cursos listados nesta tela (confira os filtros ou o nome):\n— ` + naoEncontrados.join('\n— ');
+  }
+  alert(msg);
 }
 </script>
 {% endblock %}
