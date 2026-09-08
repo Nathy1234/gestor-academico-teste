@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.9'
+VERSAO = '1.19.10'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -5039,15 +5039,24 @@ def calendario_disciplina_status_lote():
 @admin_required
 def calendario_disciplinas_marcar_liberadas():
     """Cola uma lista de nomes de disciplinas já liberadas no Moodle — busca
-    o nome (sem acento/maiúsculas) em TODAS as disciplinas cadastradas, em
-    qualquer Tipo/Módulo, e marca como liberada — sem precisar informar
-    onde ela está."""
+    o nome (sem acento/maiúsculas) nas disciplinas cadastradas e marca como
+    liberada. Por padrão procura em qualquer Tipo/Módulo, mas Tipo e Módulo
+    são opcionais no formulário — se informados, restringe a busca a eles,
+    pra evitar marcar por engano uma disciplina de nome igual que exista
+    em outro Tipo/Módulo."""
     nomes = [l.strip() for l in (request.form.get('linhas') or '').splitlines() if l.strip()]
     if not nomes:
         flash('Cole ao menos um nome de disciplina.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
+    modulo = (request.form.get('modulo') or '').strip()
+    submodulo = (request.form.get('submodulo') or '').strip()
     nomes_norm = {_norm_name(n) for n in nomes}
-    candidatas = DisciplinaModulo.query.filter_by(arquivado=False).all()
+    query = DisciplinaModulo.query.filter_by(arquivado=False)
+    if modulo:
+        query = query.filter_by(modulo=modulo)
+    if submodulo:
+        query = query.filter_by(submodulo=submodulo)
+    candidatas = query.all()
     encontradas = 0
     for d in candidatas:
         if _norm_name(d.nome) in nomes_norm:
@@ -5055,9 +5064,10 @@ def calendario_disciplinas_marcar_liberadas():
             d.status_em = datetime.utcnow()
             encontradas += 1
     db.session.commit()
+    escopo = f' em "{modulo}"' + (f' / "{submodulo}"' if submodulo else '') if modulo else ''
     log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', 0,
-               f'marcação em massa liberada no Moodle — {encontradas} de {len(nomes)} nome(s) colado(s)')
-    flash(f'{encontradas} disciplina(s) marcada(s) como liberada no Moodle (de {len(nomes)} nome(s) colado(s)).', 'success')
+               f'marcação em massa liberada no Moodle{escopo} — {encontradas} de {len(nomes)} nome(s) colado(s)')
+    flash(f'{encontradas} disciplina(s) marcada(s) como liberada no Moodle{escopo} (de {len(nomes)} nome(s) colado(s)).', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 @app.route('/calendario/exportar')

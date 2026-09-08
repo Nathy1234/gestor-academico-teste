@@ -677,8 +677,29 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="dash-modal-body" style="display:flex;flex-direction:column;gap:10px">
         <div style="font-size:11.5px;color:var(--text-muted)">
-          Cole os nomes das disciplinas já liberadas no Moodle, um por linha — não precisa dizer o Tipo nem o Módulo,
-          o sistema procura o nome em tudo que já está cadastrado (em qualquer Tipo) e marca como "Liberada no Moodle" sozinho.
+          Cole os nomes das disciplinas já liberadas no Moodle, um por linha. Por padrão ele procura em tudo que já
+          está cadastrado (em qualquer Tipo) — se você sabe o Tipo/Módulo, escolha abaixo pra evitar marcar sem
+          querer uma disciplina de nome igual que esteja em outro lugar.
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Tipo</label>
+            <select name="modulo" id="calMarcarLiberadasModulo">
+              <option value="">Todos os tipos</option>
+              {% for m in modulos_cadastrados %}
+              <option value="{{ m.nome }}">{{ m.nome }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Módulo</label>
+            <select name="submodulo" id="calMarcarLiberadasSubmodulo">
+              <option value="">Todos os módulos</option>
+              {% for s in submodulos_cadastrados %}
+              <option value="{{ s.nome }}">{{ s.nome }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
         <textarea name="linhas" rows="10" placeholder="Cole aqui, um nome de disciplina por linha" style="width:100%;resize:vertical" required></textarea>
       </div>
