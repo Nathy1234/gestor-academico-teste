@@ -320,6 +320,14 @@ function addDisc() {
   document.getElementById('matrixBody')?.firstElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
+function limparMatriz() {
+  const qtd = disciplines.filter(discPreenchida).length;
+  if (!qtd) return;
+  if (!confirm(`Excluir ${qtd === 1 ? 'a disciplina' : `as ${qtd} disciplinas`} da matriz? Isso só é gravado de fato quando você salvar o curso.`)) return;
+  disciplines = [blankDisc()];
+  renderMatrix();
+}
+
 // A linha em branco que sempre existe (pra sempre ter onde colar) não pode
 // virar disciplina fantasma no banco se o curso for salvo sem preenchê-la.
 function discPreenchida(d) {

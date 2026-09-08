@@ -248,10 +248,16 @@
     <div class="card" style="margin-bottom:20px">
       <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
         <div class="card-title">Matriz Curricular / Disciplinas</div>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="addDisc()">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Adicionar Disciplina
-        </button>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="limparMatriz()">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            Excluir Tudo
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addDisc()">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Adicionar Disciplina
+          </button>
+        </div>
       </div>
       <div class="card-body" style="padding:0">
         <div class="matrix-wrap" style="border:none;border-radius:0">
