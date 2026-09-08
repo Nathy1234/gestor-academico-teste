@@ -47,6 +47,7 @@
     {% if is_admin %}
     <form method="POST" action="{{ url_for('calendario_publico_toggle') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
       <button type="submit" class="btn btn-sm {{ 'btn-danger' if publico_ativo else 'btn-secondary' }}">
         {{ 'Desativar' if publico_ativo else 'Ativar' }}
       </button>
@@ -246,6 +247,7 @@
         {% for m in modulos_cadastrados %}
         <span class="cal-modulo-chip">
           <span class="cal-modulo-chip-nome" onclick="calTipoRenomear({{ m.id }}, '{{ m.nome|e }}')" title="Clique pra renomear">{{ m.nome }}</span>
+          <button type="button" class="cal-modulo-chip-editar" onclick="calTipoRenomear({{ m.id }}, '{{ m.nome|e }}')" title="Renomear tipo">✎</button>
           <form method="POST" action="{{ url_for('calendario_tipo_excluir', id=m.id) }}" style="display:inline"
                 onsubmit="return confirm('Excluir o tipo &quot;{{ m.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -278,6 +280,7 @@
         {% for s in submodulos_cadastrados %}
         <span class="cal-modulo-chip">
           <span class="cal-modulo-chip-nome" onclick="calSubmoduloRenomear({{ s.id }}, '{{ s.nome|e }}')" title="Clique pra renomear">{{ s.nome }}</span>
+          <button type="button" class="cal-modulo-chip-editar" onclick="calSubmoduloRenomear({{ s.id }}, '{{ s.nome|e }}')" title="Renomear módulo">✎</button>
           <form method="POST" action="{{ url_for('calendario_submodulo_excluir', id=s.id) }}" style="display:inline"
                 onsubmit="return confirm('Excluir o módulo &quot;{{ s.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele (em nenhum tipo).');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -527,6 +530,7 @@
 
 <form id="calFormExcluir" method="POST" style="display:none">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="voltar_para" id="calFormExcluirVoltar" value="">
 </form>
 
 {% if is_admin %}
@@ -746,10 +750,12 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
   border-radius:20px; padding:4px 6px 4px 12px; font-size:12px;
 }
 .cal-modulo-chip-nome { cursor:pointer; }
+.cal-modulo-chip-editar,
 .cal-modulo-chip form button {
   background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px;
   width:20px; height:20px; border-radius:50%; line-height:1;
 }
+.cal-modulo-chip-editar:hover { background:var(--primary-light); color:var(--primary); }
 .cal-modulo-chip form button:hover { background:#fee2e2; color:#dc2626; }
 
 .cal-tipo-card { margin-bottom:14px; overflow:hidden; }
@@ -870,6 +876,7 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
     if (!confirm('Excluir esta demanda? Essa ação não pode ser desfeita.')) return;
     const form = document.getElementById('calFormExcluir');
     form.action = '/calendario/' + id + '/excluir';
+    document.getElementById('calFormExcluirVoltar').value = window.location.pathname + window.location.search;
     form.submit();
   }
 

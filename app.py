@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, date
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd, re as _re, calendar as _calendar
 import requests as _requests
+from urllib.parse import urlsplit, urlunsplit, parse_qs, urlencode
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -49,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.8'
+VERSAO = '1.19.9'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4707,6 +4708,30 @@ def _calendario_publico_ativo():
         return True  # ligado por padrão até o admin desligar
     return setting.value == '1'
 
+def _voltar_seguro(default):
+    """Le o campo voltar_para do POST (a pagina do Calendario de onde a
+    acao partiu - aba, mes, filtros) e volta pra la em vez de sempre cair
+    na aba padrao. So aceita caminho relativo interno (nunca um dominio
+    externo colado nesse campo) - se nao vier nada valido, usa o default."""
+    destino = (request.form.get('voltar_para') or '').strip()
+    if destino.startswith('/') and not destino.startswith('//') and '\\' not in destino:
+        return destino
+    return default
+
+def _voltar_calendario(default, **overrides):
+    """Igual _voltar_seguro, mas permite sobrescrever/acrescentar parametros
+    na query de volta — usado quando criar/editar uma demanda precisa pular
+    pro mes dela, sem perder a aba (calendario/lista) de onde a acao partiu."""
+    destino = _voltar_seguro(default)
+    if not overrides:
+        return destino
+    partes = urlsplit(destino)
+    query = parse_qs(partes.query)
+    for chave, valor in overrides.items():
+        query[chave] = [str(valor)]
+    nova_query = urlencode(query, doseq=True)
+    return urlunsplit((partes.scheme, partes.netloc, partes.path, nova_query, partes.fragment))
+
 def _responsaveis_validos_ids(form):
     """ids de responsável postados que realmente pertencem à equipe de
     inserção — qualquer id fora dessa lista é ignorado (defesa extra além
@@ -4834,7 +4859,7 @@ def calendario_publico_toggle():
     setting.value = '1' if novo else '0'
     db.session.commit()
     flash('Link público ativado!' if novo else 'Link público desativado — quem tiver o link vê um aviso.', 'success')
-    return redirect(url_for('calendario'))
+    return redirect(_voltar_seguro(url_for('calendario')))
 
 @app.route('/calendario/nova', methods=['POST'])
 @admin_required
@@ -4845,10 +4870,10 @@ def calendario_nova():
     data_fim = _parse_data_form(d.get('data_fim'))
     if not titulo or not data_inicio or not data_fim:
         flash('Preencha título, início e prazo da demanda.', 'danger')
-        return redirect(url_for('calendario'))
+        return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
     if data_fim < data_inicio:
         flash('O prazo não pode ser antes do início.', 'danger')
-        return redirect(url_for('calendario'))
+        return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
     status = d.get('status') if d.get('status') in STATUS_DEMANDA else 'andamento'
     responsaveis_ids = _responsaveis_validos_ids(d)
     demanda = Demanda(titulo=titulo, descricao=(d.get('descricao') or '').strip() or None,
@@ -4859,7 +4884,8 @@ def calendario_nova():
     db.session.commit()
     log_action(session['user_id'], session['username'], 'criar', 'demanda', demanda.id, demanda.titulo)
     flash('Demanda adicionada ao calendário!', 'success')
-    return redirect(url_for('calendario', ano=data_inicio.year, mes=data_inicio.month))
+    return redirect(_voltar_calendario(url_for('calendario', aba='calendario', ano=data_inicio.year, mes=data_inicio.month),
+                                        ano=data_inicio.year, mes=data_inicio.month))
 
 @app.route('/calendario/<int:id>/editar', methods=['POST'])
 @admin_required
@@ -4871,7 +4897,7 @@ def calendario_editar(id):
     data_fim = _parse_data_form(d.get('data_fim'))
     if not titulo or not data_inicio or not data_fim or data_fim < data_inicio:
         flash('Dados inválidos — confira título, início e prazo.', 'danger')
-        return redirect(url_for('calendario'))
+        return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
     demanda.titulo = titulo
     demanda.descricao = (d.get('descricao') or '').strip() or None
     demanda.data_inicio = data_inicio
@@ -4882,7 +4908,8 @@ def calendario_editar(id):
     db.session.commit()
     log_action(session['user_id'], session['username'], 'editar', 'demanda', demanda.id, demanda.titulo)
     flash('Demanda atualizada!', 'success')
-    return redirect(url_for('calendario', ano=data_inicio.year, mes=data_inicio.month))
+    return redirect(_voltar_calendario(url_for('calendario', aba='calendario', ano=data_inicio.year, mes=data_inicio.month),
+                                        ano=data_inicio.year, mes=data_inicio.month))
 
 @app.route('/calendario/<int:id>/excluir', methods=['POST'])
 @admin_required
@@ -4893,7 +4920,7 @@ def calendario_excluir(id):
     db.session.commit()
     log_action(session['user_id'], session['username'], 'excluir', 'demanda', id, titulo)
     flash('Demanda excluída.', 'success')
-    return redirect(url_for('calendario'))
+    return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
 
 @app.route('/calendario/<int:id>/status', methods=['POST'])
 @perm_check('can_view_calendario')
@@ -4902,14 +4929,13 @@ def calendario_status(id):
     u = User.query.get(session['user_id'])
     if not demanda.pode_registrar_status(u):
         flash('Só o admin ou o responsável designado pode registrar o andamento desta demanda.', 'danger')
-        return redirect(url_for('calendario'))
+        return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
     novo = request.form.get('status')
     if novo in STATUS_DEMANDA:
         demanda.status = novo
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'demanda', demanda.id, f'status -> {novo}')
-    destino = request.form.get('voltar_para') or url_for('calendario')
-    return redirect(destino)
+    return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
 
 # ─── CALENDÁRIO — DISCIPLINAS POR MÓDULO (inserção) ─────────────────────────────
 
@@ -4970,7 +4996,7 @@ def calendario_disciplina_arquivar(id):
     item.arquivado = not item.arquivado
     db.session.commit()
     flash('Disciplina arquivada.' if item.arquivado else 'Disciplina restaurada.', 'success')
-    destino = request.form.get('voltar_para') or url_for('calendario', aba='disciplinas')
+    destino = _voltar_seguro(url_for('calendario', aba='disciplinas'))
     return redirect(destino)
 
 @app.route('/calendario/disciplinas/<int:id>/status', methods=['POST'])
@@ -4987,7 +5013,7 @@ def calendario_disciplina_status(id):
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', item.id,
                    f'{item.modulo} — {item.nome}: status -> {novo}')
-    destino = request.form.get('voltar_para') or url_for('calendario', aba='disciplinas')
+    destino = _voltar_seguro(url_for('calendario', aba='disciplinas'))
     return redirect(destino)
 
 @app.route('/calendario/disciplinas/status-lote', methods=['POST'])
@@ -5006,7 +5032,7 @@ def calendario_disciplina_status_lote():
     log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', 0,
                f'status em lote -> {novo} ({total} disciplina(s))')
     flash(f'{total} disciplina(s) atualizada(s) para "{STATUS_DISC_MODULO_LABEL.get(novo, novo)}".', 'success')
-    destino = request.form.get('voltar_para') or url_for('calendario', aba='disciplinas')
+    destino = _voltar_seguro(url_for('calendario', aba='disciplinas'))
     return redirect(destino)
 
 @app.route('/calendario/disciplinas/marcar-liberadas', methods=['POST'])
