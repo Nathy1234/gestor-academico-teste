@@ -114,13 +114,13 @@ body {
 
 .sidebar-nav { flex: 1; padding: 10px 8px; }
 .nav-section {
-  color: #7c88b8; font-size: 13px; font-weight: 700; letter-spacing: .03em;
+  color: #a78bfa; font-size: 13px; font-weight: 700; letter-spacing: .03em;
   padding: 10px; text-transform: uppercase;
   display: flex; align-items: center; gap: 6px;
   cursor: pointer; user-select: none; border-radius: 7px;
   margin-top: 6px; transition: background .14s, color .14s;
 }
-.nav-section:hover { background: var(--sidebar-hover); color: #e3e7f5; }
+.nav-section:hover { background: var(--sidebar-hover); color: #c4b5fd; }
 .section-title { flex: 1; min-width: 0; }
 .section-chevron { width: 12px; height: 12px; flex-shrink: 0; transition: transform .15s; }
 .section-chevron.is-open { transform: rotate(180deg); }
@@ -537,6 +537,18 @@ textarea { resize: vertical; min-height: 80px; }
   font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em;
 }
 .matrix-row input { padding: 5px 8px; font-size: 12px; }
+/* Variante do editor de disciplinas (curso_form.html) — arraste (⠿) pra
+   reordenar, por isso tem uma coluna a mais que a exibição só-leitura
+   (matrizes/pacotes/curso_detalhe), que continua com o grid padrão acima. */
+.matrix-row.matrix-editable {
+  grid-template-columns: 20px 100px 32px 1fr 60px 110px 60px 36px;
+  transition: opacity .12s, outline .12s;
+}
+.row-drag-handle { cursor: grab; color: var(--text-muted); font-size: 14px; line-height: 1; text-align: center; user-select: none; }
+.row-drag-handle:active { cursor: grabbing; }
+.row-ordem { color: var(--text-muted); font-size: 12px; text-align: center; }
+.matrix-row.row-dragging { opacity: .4; }
+.matrix-row.row-drop-target { outline: 2px dashed var(--primary); outline-offset: -2px; border-radius: 6px; }
 .btn-del-row { background: none; border: none; cursor: pointer; color: #dc2626; padding: 4px; display: flex; border-radius: 5px; transition: background .12s; }
 .btn-del-row:hover { background: #fee2e2; }
 .btn-del-row svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
@@ -845,6 +857,7 @@ textarea { resize: vertical; min-height: 80px; }
   .form-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
   .matrix-row { grid-template-columns: 80px 50px 1fr 60px; }
+  .matrix-row.matrix-editable { grid-template-columns: 18px 80px 1fr 60px; }
   .grid-3col-fluid { grid-template-columns: 1fr; }
   .sidebar { width: 200px; min-width: 200px; }
 }

@@ -49,7 +49,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.0'
+VERSAO = '1.19.3'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -790,16 +790,14 @@ STATUS_DEMANDA_LABEL = {'stand_by': 'Em Stand By', 'andamento': 'Em Andamento', 
 MESES_PT = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho',
             'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
-# Equipe de inserção — únicos nomes que podem aparecer como responsável de
-# uma demanda do Calendário (multi-seleção: uma demanda pode ter mais de
-# um insersor). Comparado sem acento/maiúsculas via _norm_name.
-EQUIPE_INSERCAO_NOMES = ('STEFANYE', 'JUNIOR', 'FELIPE', 'LUCAS', 'PEDRO')
-
 def _usuarios_equipe_insercao():
-    alvo = set(EQUIPE_INSERCAO_NOMES)
+    """Usuários que podem aparecer como responsável de uma demanda do
+    Calendário (multi-seleção: uma demanda pode ter mais de um insersor).
+    É todo mundo marcado como "Faz parte da equipe" (User.equipe) na tela
+    de usuários — pra adicionar/remover alguém dessa lista, marque ou
+    desmarque o checkbox lá, não precisa mexer em código."""
     usuarios = User.query.filter_by(equipe=True).all()
-    resultado = [u for u in usuarios if _norm_name(nome_exibicao(u)) in alvo or _norm_name(u.username) in alvo]
-    return sorted(resultado, key=lambda u: nome_exibicao(u))
+    return sorted(usuarios, key=lambda u: nome_exibicao(u))
 
 class Demanda(db.Model):
     """Item do Calendário da equipe — uma demanda/tarefa com prazo, visível

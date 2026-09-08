@@ -272,23 +272,32 @@ function initMatrix(existing) {
   renderMatrix();
 }
 
+function escAttr(v) {
+  return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Ordem real de gravação é sempre a posição no array (o back-end ignora
+// o campo "ordem" antigo e recalcula por índice), então a coluna "#" aqui
+// é só leitura — quem reordena de verdade é o arraste pelo ⠿.
 function renderMatrix() {
   const tbody = document.getElementById('matrixBody');
   if (!tbody) return;
   tbody.innerHTML = disciplines.map((d, i) => `
-    <div class="matrix-row">
-      <input type="text" value="${d.modulo||''}" placeholder="Mód. 01" oninput="updateDisc(${i},'modulo',this.value)">
-      <input type="number" value="${d.ordem||i+1}" placeholder="#" oninput="updateDisc(${i},'ordem',this.value)">
-      <input type="text" value="${d.nome||''}" placeholder="Nome da disciplina" oninput="updateDisc(${i},'nome',this.value)">
-      <input type="text" value="${d.carga||''}" placeholder="30h" oninput="updateDisc(${i},'carga',this.value)">
-      <input type="text" value="${d.professor||''}" placeholder="Professor" oninput="updateDisc(${i},'professor',this.value)">
-      <input type="text" value="${d.titulacao||''}" placeholder="MSc" oninput="updateDisc(${i},'titulacao',this.value)">
+    <div class="matrix-row matrix-editable" draggable="true" data-idx="${i}">
+      <span class="row-drag-handle" title="Arraste para reordenar">⠿</span>
+      <input type="text" value="${escAttr(d.modulo)}" placeholder="Mód. 01" oninput="updateDisc(${i},'modulo',this.value)" onpaste="handleMatrixPaste(event,${i},'modulo')">
+      <span class="row-ordem">${i+1}</span>
+      <input type="text" value="${escAttr(d.nome)}" placeholder="Nome da disciplina" oninput="updateDisc(${i},'nome',this.value)" onpaste="handleMatrixPaste(event,${i},'nome')">
+      <input type="text" value="${escAttr(d.carga)}" placeholder="30h" oninput="updateDisc(${i},'carga',this.value)" onpaste="handleMatrixPaste(event,${i},'carga')">
+      <input type="text" value="${escAttr(d.professor)}" placeholder="Professor" oninput="updateDisc(${i},'professor',this.value)" onpaste="handleMatrixPaste(event,${i},'professor')">
+      <input type="text" value="${escAttr(d.titulacao)}" placeholder="MSc" oninput="updateDisc(${i},'titulacao',this.value)" onpaste="handleMatrixPaste(event,${i},'titulacao')">
       <button type="button" class="btn-del-row" onclick="removeDisc(${i})" title="Remover linha">
         <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
       </button>
     </div>
   `).join('');
   updateHidden();
+  initMatrixDrag();
 }
 
 function updateDisc(i, key, val) { disciplines[i][key] = val; updateHidden(); }
@@ -300,8 +309,7 @@ function removeDisc(i) {
 }
 
 function addDisc() {
-  disciplines.unshift({ modulo:'', ordem: 1, nome:'', carga:'', professor:'', titulacao:'' });
-  disciplines.forEach((d, i) => { if (i > 0) d.ordem = i + 1; });
+  disciplines.unshift({ modulo:'', nome:'', carga:'', professor:'', titulacao:'' });
   renderMatrix();
   document.getElementById('matrixBody')?.firstElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
@@ -309,6 +317,81 @@ function addDisc() {
 function updateHidden() {
   const h = document.getElementById('disciplinas_json');
   if (h) h.value = JSON.stringify(disciplines);
+}
+
+// Arraste das linhas (pelo ⠿) para reordenar — reordena o array de
+// verdade, não só o DOM, já que renderMatrix() redesenha tudo a partir dele.
+function initMatrixDrag() {
+  const tbody = document.getElementById('matrixBody');
+  if (!tbody) return;
+  let arrastando = null;
+  tbody.querySelectorAll('.matrix-row').forEach(row => {
+    row.addEventListener('dragstart', () => {
+      arrastando = row;
+      row.classList.add('row-dragging');
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('row-dragging');
+      tbody.querySelectorAll('.row-drop-target').forEach(r => r.classList.remove('row-drop-target'));
+      arrastando = null;
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!arrastando || arrastando === row) return;
+      tbody.querySelectorAll('.row-drop-target').forEach(r => r.classList.remove('row-drop-target'));
+      row.classList.add('row-drop-target');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('row-drop-target'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      row.classList.remove('row-drop-target');
+      if (!arrastando || arrastando === row) return;
+      const from = Number(arrastando.dataset.idx);
+      const to = Number(row.dataset.idx);
+      const [movida] = disciplines.splice(from, 1);
+      disciplines.splice(to, 0, movida);
+      renderMatrix();
+    });
+  });
+}
+
+// Colar tipo planilha: cola numa célula (ex: Módulo) uma tabela copiada do
+// Excel/Sheets ou só uma lista de linhas, e preenche/expande a matriz a
+// partir dali — mesma lógica de "colar" de uma planilha de verdade. Se for
+// só um valor simples (sem tab/quebra de linha), deixa o paste normal do
+// campo acontecer.
+const MATRIX_PASTE_COLS = ['modulo', 'nome', 'carga', 'professor', 'titulacao'];
+
+function handleMatrixPaste(e, rowIndex, colKey) {
+  const html = e.clipboardData && e.clipboardData.getData('text/html');
+  const texto = e.clipboardData && e.clipboardData.getData('text/plain');
+  let linhas = null;
+
+  if (html && /<table/i.test(html)) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const tabela = doc.querySelector('table');
+    if (tabela) {
+      linhas = Array.from(tabela.querySelectorAll('tr'))
+        .map(tr => Array.from(tr.querySelectorAll('td,th')).map(cel => cel.textContent.replace(/\r?\n+/g, ' ').trim()))
+        .filter(linha => linha.some(c => c.length));
+    }
+  }
+  if (!linhas && texto) {
+    linhas = texto.replace(/\r/g, '').split('\n').filter(l => l.length).map(l => l.split('\t'));
+  }
+  if (!linhas || linhas.length === 0 || (linhas.length === 1 && linhas[0].length <= 1)) return;
+
+  e.preventDefault();
+  const colStart = MATRIX_PASTE_COLS.indexOf(colKey);
+  linhas.forEach((celulas, ri) => {
+    const idx = rowIndex + ri;
+    while (disciplines.length <= idx) disciplines.push({ modulo:'', nome:'', carga:'', professor:'', titulacao:'' });
+    celulas.forEach((val, ci) => {
+      const key = MATRIX_PASTE_COLS[colStart + ci];
+      if (key) disciplines[idx][key] = val.trim();
+    });
+  });
+  renderMatrix();
 }
 
 // ── IMAGENS / LINKS DE CAPA ────────────────────────────────────────

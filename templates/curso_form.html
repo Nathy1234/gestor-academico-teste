@@ -255,13 +255,18 @@
       </div>
       <div class="card-body" style="padding:0">
         <div class="matrix-wrap" style="border:none;border-radius:0">
-          <div class="matrix-row header">
-            <div>Módulo</div><div>#</div><div>Nome da Disciplina</div><div>CH</div><div>Professor</div><div>Titulação</div><div></div>
+          <div class="matrix-row header matrix-editable">
+            <div></div><div>Módulo</div><div>#</div><div>Nome da Disciplina</div><div>CH</div><div>Professor</div><div>Titulação</div><div></div>
           </div>
           <div id="matrixBody"></div>
         </div>
         <div style="padding:12px 16px;color:var(--text-muted);font-size:12px" id="matrixEmpty">
           Nenhuma disciplina cadastrada. Clique em "Adicionar Disciplina" para incluir.
+        </div>
+        <div style="padding:0 16px 12px 16px;color:var(--text-muted);font-size:12px">
+          Arraste pelo <strong>⠿</strong> pra reordenar as linhas. Também dá pra colar direto do Excel/Sheets — selecione
+          Módulo, Disciplina e CH (ou só uma coluna) lá, copie e cole numa célula aqui que ele preenche as linhas
+          automaticamente, criando novas linhas se precisar.
         </div>
       </div>
     </div>
