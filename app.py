@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.11'
+VERSAO = '1.19.12'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4818,6 +4818,7 @@ def calendario():
         responsavel_filtro=responsavel_filtro, demandas_json=demandas_json,
         STATUS_DEMANDA=STATUS_DEMANDA, STATUS_LABEL=STATUS_DEMANDA_LABEL,
         aba=aba, modulos=modulos, STATUS_DISC=STATUS_DISC_MODULO, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
+        STATUS_DISC_COR=STATUS_DISC_MODULO_COR,
         modulos_cadastrados=modulos_cadastrados, publico_ativo=_calendario_publico_ativo(),
         submodulos_cadastrados=submodulos_cadastrados,
         trimestre_param=trimestre_param, trimestres_disponiveis=trimestres_disponiveis,

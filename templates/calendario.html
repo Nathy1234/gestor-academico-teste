@@ -224,6 +224,17 @@
         <div><div style="font-size:16px;font-weight:700;color:#b35700">{{ r.pendentes }}</div><div style="font-size:9.5px;color:var(--text-muted)">Pendentes</div></div>
         <div><div style="font-size:16px;font-weight:700;color:#15803d">{{ r.liberadas }}</div><div style="font-size:9.5px;color:var(--text-muted)">Liberadas</div></div>
       </div>
+      {% set ns = namespace(tem=false) %}
+      {% for s in STATUS_DISC %}{% if s != 'nao_iniciado' and r.por_status.get(s) %}{% set ns.tem = true %}{% endif %}{% endfor %}
+      {% if ns.tem %}
+      <div style="display:flex;flex-wrap:wrap;gap:6px 12px;border-top:1px solid var(--border);padding-top:7px">
+        {% for s in STATUS_DISC %}
+        {% if s != 'nao_iniciado' and r.por_status.get(s) %}
+        <span style="font-size:10px;color:var(--text-muted)">{{ STATUS_DISC_LABEL[s] }} <strong style="color:{{ STATUS_DISC_COR[s] }}">{{ r.por_status.get(s, 0) }}</strong></span>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
     </a>
     {% else %}
     <div class="card" style="padding:32px;text-align:center;color:var(--text-muted);grid-column:1/-1">Nenhum tipo cadastrado ainda.</div>
