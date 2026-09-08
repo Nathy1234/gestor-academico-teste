@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.10'
+VERSAO = '1.19.11'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -841,13 +841,14 @@ class Demanda(db.Model):
         um dos responsáveis designados, sem precisar poder editar o prazo."""
         return u.role == 'admin' or u.id in self.responsaveis_ids()
 
-STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'inserida', 'liberada_moodle', 'liberada_inova')
+STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'em_andamento', 'inserida', 'liberada_moodle', 'liberada_inova')
 # 'em_curadoria' saiu das opções (não é mais escolhível), mas o label/cor
 # continuam mapeados abaixo pra disciplina antiga que ainda tiver esse
 # status salvo no banco não quebrar a tela.
 STATUS_DISC_MODULO_LABEL = {
     'nao_iniciado':    'Selecionar…',
     'em_producao':     'Stand-by',
+    'em_andamento':    'Em Andamento',
     'inserida':        'Inserida',
     'em_curadoria':    'Em Curadoria',
     'liberada_moodle': 'Liberada no Moodle',
@@ -856,6 +857,7 @@ STATUS_DISC_MODULO_LABEL = {
 STATUS_DISC_MODULO_COR = {
     'nao_iniciado':    '#a1a1aa',
     'em_producao':     '#78716c',
+    'em_andamento':    '#ca8a04',
     'inserida':        '#1d4ed8',
     'em_curadoria':    '#b35700',
     'liberada_moodle': '#15803d',
@@ -5038,16 +5040,20 @@ def calendario_disciplina_status_lote():
 @app.route('/calendario/disciplinas/marcar-liberadas', methods=['POST'])
 @admin_required
 def calendario_disciplinas_marcar_liberadas():
-    """Cola uma lista de nomes de disciplinas já liberadas no Moodle — busca
-    o nome (sem acento/maiúsculas) nas disciplinas cadastradas e marca como
-    liberada. Por padrão procura em qualquer Tipo/Módulo, mas Tipo e Módulo
-    são opcionais no formulário — se informados, restringe a busca a eles,
-    pra evitar marcar por engano uma disciplina de nome igual que exista
-    em outro Tipo/Módulo."""
+    """Cola uma lista de nomes de disciplinas — busca o nome (sem acento/
+    maiúsculas) nas disciplinas cadastradas e aplica o status escolhido em
+    todas de uma vez (Stand-by, Em Andamento, Inserida, Liberada no Moodle
+    ou Liberada no Inova). Por padrão procura em qualquer Tipo/Módulo, mas
+    Tipo e Módulo são opcionais no formulário — se informados, restringe a
+    busca a eles, pra evitar acertar por engano uma disciplina de nome
+    igual que exista em outro Tipo/Módulo."""
     nomes = [l.strip() for l in (request.form.get('linhas') or '').splitlines() if l.strip()]
     if not nomes:
         flash('Cole ao menos um nome de disciplina.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
+    status_alvo = request.form.get('status') or ''
+    if status_alvo not in STATUS_DISC_MODULO or status_alvo in ('nao_iniciado', 'em_curadoria'):
+        status_alvo = 'liberada_moodle'
     modulo = (request.form.get('modulo') or '').strip()
     submodulo = (request.form.get('submodulo') or '').strip()
     nomes_norm = {_norm_name(n) for n in nomes}
@@ -5060,14 +5066,15 @@ def calendario_disciplinas_marcar_liberadas():
     encontradas = 0
     for d in candidatas:
         if _norm_name(d.nome) in nomes_norm:
-            d.status = 'liberada_moodle'
+            d.status = status_alvo
             d.status_em = datetime.utcnow()
             encontradas += 1
     db.session.commit()
     escopo = f' em "{modulo}"' + (f' / "{submodulo}"' if submodulo else '') if modulo else ''
+    status_label = STATUS_DISC_MODULO_LABEL.get(status_alvo, status_alvo)
     log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', 0,
-               f'marcação em massa liberada no Moodle{escopo} — {encontradas} de {len(nomes)} nome(s) colado(s)')
-    flash(f'{encontradas} disciplina(s) marcada(s) como liberada no Moodle{escopo} (de {len(nomes)} nome(s) colado(s)).', 'success')
+               f'status em massa via colar lista -> {status_alvo}{escopo} — {encontradas} de {len(nomes)} nome(s) colado(s)')
+    flash(f'{encontradas} disciplina(s) marcada(s) como "{status_label}"{escopo} (de {len(nomes)} nome(s) colado(s)).', 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 @app.route('/calendario/exportar')

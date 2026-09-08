@@ -478,7 +478,7 @@ td { padding: 10px 14px; font-size: 13px; vertical-align: middle; }
 
 /* ── FORM ── */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .form-group.full { grid-column: 1 / -1; }
 label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 input[type=text], input[type=password], input[type=number], input[type=date], input[type=url],
