@@ -267,8 +267,13 @@ function tipoLabel(t) {
 // ── MATRIX EDITOR ────────────────────────────────────────────────
 let disciplines = [];
 
+function blankDisc() { return { modulo:'', nome:'', carga:'', professor:'', titulacao:'' }; }
+
+// Sempre mantém pelo menos 1 linha em branco — é nela que o onpaste do
+// campo escuta o Ctrl+V; sem nenhuma linha não tem input nenhum pra colar,
+// e a matriz colada não tinha onde cair.
 function initMatrix(existing) {
-  disciplines = existing && existing.length ? existing : [];
+  disciplines = existing && existing.length ? existing : [blankDisc()];
   renderMatrix();
 }
 
@@ -305,18 +310,25 @@ function removeDisc(i) {
   const d = disciplines[i];
   if (d && d.nome && d.nome.trim() && !confirm(`Remover a disciplina "${d.nome}"?`)) return;
   disciplines.splice(i, 1);
+  if (disciplines.length === 0) disciplines.push(blankDisc());
   renderMatrix();
 }
 
 function addDisc() {
-  disciplines.unshift({ modulo:'', nome:'', carga:'', professor:'', titulacao:'' });
+  disciplines.unshift(blankDisc());
   renderMatrix();
   document.getElementById('matrixBody')?.firstElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
+// A linha em branco que sempre existe (pra sempre ter onde colar) não pode
+// virar disciplina fantasma no banco se o curso for salvo sem preenchê-la.
+function discPreenchida(d) {
+  return Object.values(d).some(v => (v || '').toString().trim());
+}
+
 function updateHidden() {
   const h = document.getElementById('disciplinas_json');
-  if (h) h.value = JSON.stringify(disciplines);
+  if (h) h.value = JSON.stringify(disciplines.filter(discPreenchida));
 }
 
 // Arraste das linhas (pelo ⠿) para reordenar — reordena o array de
@@ -385,7 +397,7 @@ function handleMatrixPaste(e, rowIndex, colKey) {
   const colStart = MATRIX_PASTE_COLS.indexOf(colKey);
   linhas.forEach((celulas, ri) => {
     const idx = rowIndex + ri;
-    while (disciplines.length <= idx) disciplines.push({ modulo:'', nome:'', carga:'', professor:'', titulacao:'' });
+    while (disciplines.length <= idx) disciplines.push(blankDisc());
     celulas.forEach((val, ci) => {
       const key = MATRIX_PASTE_COLS[colStart + ci];
       if (key) disciplines[idx][key] = val.trim();
