@@ -315,9 +315,20 @@
   </details>
   {% endif %}
 
+  <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">
+    📊 <strong style="font-size:15px;color:var(--text)">{{ pronto_percentual }}%</strong> pronto —
+    {{ liberadas_disc_geral }} de {{ total_disc_geral }} disciplina(s) liberada(s) (Moodle + Inova), considerando o que está sendo mostrado aqui.
+  </div>
+
   <div class="filters">
     <button type="button" class="btn btn-secondary btn-sm" onclick="calRecolherTudo(true)">Recolher tudo</button>
     <button type="button" class="btn btn-secondary btn-sm" onclick="calRecolherTudo(false)">Expandir tudo</button>
+    <select id="calFiltroStatusGlobal" class="filter-select" onchange="calAplicarFiltroGlobal(this)">
+      <option value="">Filtrar por status: todos</option>
+      {% for s in STATUS_DISC %}
+      <option value="{{ s }}">{{ 'Não iniciada' if s == 'nao_iniciado' else STATUS_DISC_LABEL[s] }}</option>
+      {% endfor %}
+    </select>
     {% if trimestres_disponiveis %}
     <form method="GET" action="{{ url_for('calendario') }}" style="display:inline-flex;gap:8px">
       <input type="hidden" name="aba" value="disciplinas">
@@ -365,6 +376,13 @@
       <span class="badge {% if grupo.liberadas == grupo.total %}badge-ativo{% else %}badge-em_edicao{% endif %}">
         {{ grupo.liberadas }} de {{ grupo.total }} liberadas no Moodle
       </span>
+      <select class="filter-select cal-filtro-status-tipo" style="font-size:11px"
+              onclick="event.stopPropagation()" onchange="event.stopPropagation();calAplicarFiltroTipo(this)">
+        <option value="">Status: todos</option>
+        {% for s in STATUS_DISC %}
+        <option value="{{ s }}">{{ 'Não iniciada' if s == 'nao_iniciado' else STATUS_DISC_LABEL[s] }}</option>
+        {% endfor %}
+      </select>
       {% if is_admin and tipo_cadastrado %}
       <span class="cal-tipo-acoes">
         <form method="POST" action="{{ url_for('calendario_tipo_arquivar', id=tipo_cadastrado.id) }}"
@@ -425,7 +443,7 @@
         </thead>
         <tbody>
           {% for it in sub.itens %}
-          <tr>
+          <tr data-status="{{ it.status }}">
             <td><input type="checkbox" class="cal-disc-check" value="{{ it.id }}"></td>
             <td>
               {{ it.nome }}
@@ -958,6 +976,37 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
     document.querySelectorAll('.cal-tipo-card, .cal-submodulo-card').forEach(function(det) {
       det._calToggleUsuario = true;
       det.open = !fechar;
+    });
+  }
+
+  // Filtro por status: o de cima filtra tudo de uma vez (e sincroniza o
+  // seletor de cada Tipo); o de dentro de cada Tipo filtra só aquele Tipo,
+  // sem mexer nos demais.
+  function calFiltrarLinhasDoTipo(tipoCard, status) {
+    let tipoTemVisivel = false;
+    tipoCard.querySelectorAll('.cal-submodulo-card').forEach(function(sub) {
+      let subTemVisivel = false;
+      sub.querySelectorAll('tbody tr').forEach(function(tr) {
+        const bate = !status || tr.dataset.status === status;
+        tr.hidden = !bate;
+        if (bate) subTemVisivel = true;
+      });
+      sub.hidden = !subTemVisivel;
+      if (subTemVisivel) tipoTemVisivel = true;
+    });
+    tipoCard.hidden = !tipoTemVisivel;
+  }
+
+  function calAplicarFiltroTipo(sel) {
+    calFiltrarLinhasDoTipo(sel.closest('.cal-tipo-card'), sel.value);
+  }
+
+  function calAplicarFiltroGlobal(sel) {
+    const status = sel.value;
+    document.querySelectorAll('.cal-tipo-card').forEach(function(tipoCard) {
+      const seletorTipo = tipoCard.querySelector('.cal-filtro-status-tipo');
+      if (seletorTipo) seletorTipo.value = status;
+      calFiltrarLinhasDoTipo(tipoCard, status);
     });
   }
 

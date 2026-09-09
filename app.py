@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.14'
+VERSAO = '1.19.15'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -862,6 +862,17 @@ STATUS_DISC_MODULO_COR = {
     'em_curadoria':    '#b35700',
     'liberada_moodle': '#15803d',
     'liberada_inova':  '#7c3aed',
+}
+# Ordem em que cada status aparece agrupado na listagem de disciplinas por
+# Tipo/Módulo — liberadas primeiro (0), depois do mais avançado no processo
+# pro menos avançado. Quem não está mapeado aqui cai no fim (ver .get(..., 99)).
+_PRIORIDADE_STATUS_LISTAGEM = {
+    'liberada_moodle': 0, 'liberada_inova': 0,
+    'inserida': 1,
+    'em_andamento': 2,
+    'em_producao': 3,
+    'em_curadoria': 4,
+    'nao_iniciado': 5,
 }
 
 class ModuloCalendario(db.Model):
@@ -4682,15 +4693,21 @@ def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False, trimestre
         liberadas_tipo = 0
         for sub_nome in sorted(submodulos_dict.keys(), key=lambda s: (s == SEM_MODULO_LABEL, s.lower())):
             itens_originais = submodulos_dict[sub_nome]
-            # liberadas sobem pro topo, a mais recente liberada primeiro — assim que
-            # uma disciplina vira liberada ela já pula pra cima das demais; as que
-            # ainda não foram liberadas mantêm a ordem de sempre (ordem/nome) depois.
-            itens_liberados = sorted(
-                (i for i in itens_originais if i.status in ('liberada_moodle', 'liberada_inova')),
-                key=lambda i: i.status_em or datetime.min, reverse=True)
-            itens_pendentes = [i for i in itens_originais if i.status not in ('liberada_moodle', 'liberada_inova')]
-            itens = itens_liberados + itens_pendentes
-            liberadas = len(itens_liberados)
+            # agrupa por status pra facilitar a visualização — liberadas (Moodle
+            # ou Inova) sempre no topo, a mais recente liberada na frente das
+            # outras; depois vêm os outros status juntos, do mais avançado no
+            # processo pro menos avançado, cada um mantendo entre si a ordem de
+            # sempre (ordem/nome).
+            baldes = {}
+            for i in itens_originais:
+                baldes.setdefault(_PRIORIDADE_STATUS_LISTAGEM.get(i.status, 99), []).append(i)
+            itens = []
+            for prioridade in sorted(baldes.keys()):
+                grupo = baldes[prioridade]
+                if prioridade == 0:
+                    grupo = sorted(grupo, key=lambda i: i.status_em or datetime.min, reverse=True)
+                itens.extend(grupo)
+            liberadas = sum(1 for i in itens if i.status in ('liberada_moodle', 'liberada_inova'))
             linhas_texto = '\n'.join(
                 '\t'.join([i.nome, i.carga or '', i.professor or '']).rstrip('\t')
                 for i in itens
@@ -4807,6 +4824,10 @@ def calendario():
         total_arquivadas_q = total_arquivadas_q.filter_by(modulo=tipo_detalhe)
     total_arquivadas = total_arquivadas_q.count() if not ver_arquivadas else sum(g['total'] for g in modulos)
 
+    total_disc_geral = sum(g['total'] for g in modulos)
+    liberadas_disc_geral = sum(g['liberadas'] for g in modulos)
+    pronto_percentual = round(liberadas_disc_geral / total_disc_geral * 100, 1) if total_disc_geral else 0
+
     tipo_resumo = None
     todos_tipos_resumo = []
     if aba == 'dashboard':
@@ -4827,6 +4848,7 @@ def calendario():
         STATUS_DEMANDA=STATUS_DEMANDA, STATUS_LABEL=STATUS_DEMANDA_LABEL,
         aba=aba, modulos=modulos, STATUS_DISC=STATUS_DISC_MODULO, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
         STATUS_DISC_COR=STATUS_DISC_MODULO_COR,
+        pronto_percentual=pronto_percentual, total_disc_geral=total_disc_geral, liberadas_disc_geral=liberadas_disc_geral,
         modulos_cadastrados=modulos_cadastrados, publico_ativo=_calendario_publico_ativo(),
         submodulos_cadastrados=submodulos_cadastrados,
         trimestre_param=trimestre_param, trimestres_disponiveis=trimestres_disponiveis,
@@ -4853,9 +4875,13 @@ def calendario_publico():
     } for d in demandas]
     modulos = _disciplinas_agrupadas()
     todos_tipos_resumo = [_resumo_de_tipo(g) for g in modulos]
+    total_disc_geral = sum(g['total'] for g in modulos)
+    liberadas_disc_geral = sum(g['liberadas'] for g in modulos)
+    pronto_percentual = round(liberadas_disc_geral / total_disc_geral * 100, 1) if total_disc_geral else 0
 
     return render_template('calendario_publico.html',
         demandas=demandas_view, modulos=modulos, todos_tipos_resumo=todos_tipos_resumo,
+        pronto_percentual=pronto_percentual, total_disc_geral=total_disc_geral, liberadas_disc_geral=liberadas_disc_geral,
         STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC=STATUS_DISC_MODULO,
         STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL, STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
 

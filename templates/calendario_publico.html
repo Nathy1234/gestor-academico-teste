@@ -58,6 +58,11 @@
     <div style="color:var(--text-muted);font-size:13px">Calendário de Inserção — acompanhamento público</div>
   </div>
 
+  <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;text-align:center">
+    📊 <strong style="font-size:15px;color:var(--text)">{{ pronto_percentual }}%</strong> pronto —
+    {{ liberadas_disc_geral }} de {{ total_disc_geral }} disciplina(s) liberada(s) (Moodle + Inova)
+  </div>
+
   <div class="pub-tabs">
     <button type="button" class="pub-tab active" data-painel="disciplinas" onclick="pubAbrirAba(this)">🗂 Disciplinas por Tipo</button>
     <button type="button" class="pub-tab" data-painel="dashboard" onclick="pubAbrirAba(this)">📊 Dashboard</button>
@@ -65,9 +70,15 @@
   </div>
 
   <div id="pubPainelDisciplinas" class="pub-painel active">
-    <div style="margin-bottom:10px;display:flex;gap:8px">
+    <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
       <button type="button" class="btn btn-secondary btn-sm" onclick="pubRecolherTudo(true)">Recolher tudo</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="pubRecolherTudo(false)">Expandir tudo</button>
+      <select id="pubFiltroStatusGlobal" class="filter-select" onchange="pubAplicarFiltroGlobal(this)">
+        <option value="">Filtrar por status: todos</option>
+        {% for s in STATUS_DISC %}
+        <option value="{{ s }}">{{ 'Não iniciada' if s == 'nao_iniciado' else STATUS_DISC_LABEL[s] }}</option>
+        {% endfor %}
+      </select>
     </div>
     <div class="card">
       <div class="card-body">
@@ -78,6 +89,13 @@
             <span class="badge {% if grupo.liberadas == grupo.total %}badge-ativo{% else %}badge-em_edicao{% endif %}">
               {{ grupo.liberadas }} de {{ grupo.total }} liberadas no Moodle
             </span>
+            <select class="filter-select pub-filtro-status-tipo" style="font-size:11px"
+                    onclick="event.stopPropagation()" onchange="event.stopPropagation();pubAplicarFiltroTipo(this)">
+              <option value="">Status: todos</option>
+              {% for s in STATUS_DISC %}
+              <option value="{{ s }}">{{ 'Não iniciada' if s == 'nao_iniciado' else STATUS_DISC_LABEL[s] }}</option>
+              {% endfor %}
+            </select>
           </summary>
           {% for sub in grupo.submodulos %}
           <details class="pub-submodulo" data-tipo="{{ grupo.tipo }}" data-submodulo="{{ sub.submodulo }}">
@@ -86,7 +104,7 @@
               <span class="badge {% if sub.liberadas == sub.total %}badge-ativo{% else %}badge-em_edicao{% endif %}" style="font-size:10px">{{ sub.liberadas }}/{{ sub.total }}</span>
             </summary>
             {% for it in sub.itens %}
-            <div class="pub-disc-row">
+            <div class="pub-disc-row" data-status="{{ it.status }}">
               <span>{{ it.nome }}</span>
               <span class="pub-status-pill" style="background:{{ STATUS_DISC_COR[it.status] }}22;color:{{ STATUS_DISC_COR[it.status] }}">{{ STATUS_DISC_LABEL[it.status] }}</span>
             </div>
@@ -207,6 +225,36 @@
     document.querySelectorAll('.pub-tipo, .pub-submodulo').forEach(function(det) {
       det._pubToggleUsuario = true;
       det.open = !fechar;
+    });
+  }
+
+  // Filtro por status: o de cima filtra tudo de uma vez (e sincroniza o
+  // seletor de cada Tipo); o de dentro de cada Tipo filtra só aquele Tipo.
+  function pubFiltrarLinhasDoTipo(tipoCard, status) {
+    let tipoTemVisivel = false;
+    tipoCard.querySelectorAll('.pub-submodulo').forEach(function(sub) {
+      let subTemVisivel = false;
+      sub.querySelectorAll('.pub-disc-row').forEach(function(row) {
+        const bate = !status || row.dataset.status === status;
+        row.hidden = !bate;
+        if (bate) subTemVisivel = true;
+      });
+      sub.hidden = !subTemVisivel;
+      if (subTemVisivel) tipoTemVisivel = true;
+    });
+    tipoCard.hidden = !tipoTemVisivel;
+  }
+
+  function pubAplicarFiltroTipo(sel) {
+    pubFiltrarLinhasDoTipo(sel.closest('.pub-tipo'), sel.value);
+  }
+
+  function pubAplicarFiltroGlobal(sel) {
+    const status = sel.value;
+    document.querySelectorAll('.pub-tipo').forEach(function(tipoCard) {
+      const seletorTipo = tipoCard.querySelector('.pub-filtro-status-tipo');
+      if (seletorTipo) seletorTipo.value = status;
+      pubFiltrarLinhasDoTipo(tipoCard, status);
     });
   }
 
