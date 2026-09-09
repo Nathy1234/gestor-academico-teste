@@ -956,21 +956,43 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
 
   function calRecolherTudo(fechar) {
     document.querySelectorAll('.cal-tipo-card, .cal-submodulo-card').forEach(function(det) {
+      det._calToggleUsuario = true;
       det.open = !fechar;
     });
   }
 
+  // O Ctrl+F do navegador força abrir automaticamente qualquer <details> que
+  // contenha o texto buscado (comportamento nativo, não dá pra bloquear) —
+  // sem isso aqui, esse "abrir forçado" ficava salvo como se o usuário
+  // tivesse aberto de propósito, e o Tipo/Módulo nunca mais recolhia sozinho.
+  // Por isso só gravamos no localStorage quando é o próprio usuário clicando
+  // ou usando teclado no cabeçalho — os demais continuam recolhidos.
+  function calRegistrarClickUsuario(det) {
+    const resumo = det.querySelector(':scope > summary');
+    if (!resumo) return;
+    const marcar = function() { det._calToggleUsuario = true; };
+    resumo.addEventListener('pointerdown', marcar);
+    resumo.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') marcar(); });
+  }
   document.querySelectorAll('.cal-tipo-card').forEach(function(det) {
     const key = 'calTipoAberto_' + det.dataset.tipo;
     const salvo = localStorage.getItem(key);
     det.open = salvo !== null ? salvo === '1' : true;
-    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+    calRegistrarClickUsuario(det);
+    det.addEventListener('toggle', function() {
+      if (det._calToggleUsuario) { localStorage.setItem(key, det.open ? '1' : '0'); }
+      det._calToggleUsuario = false;
+    });
   });
   document.querySelectorAll('.cal-submodulo-card').forEach(function(det) {
     const key = 'calModuloAberto_' + det.dataset.tipo + '||' + det.dataset.submodulo;
     const salvo = localStorage.getItem(key);
     det.open = salvo !== null ? salvo === '1' : true;
-    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+    calRegistrarClickUsuario(det);
+    det.addEventListener('toggle', function() {
+      if (det._calToggleUsuario) { localStorage.setItem(key, det.open ? '1' : '0'); }
+      det._calToggleUsuario = false;
+    });
   });
 
   {% if is_admin %}

@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.12'
+VERSAO = '1.19.13'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4848,8 +4848,8 @@ def calendario_publico():
 
     return render_template('calendario_publico.html',
         demandas=demandas_view, modulos=modulos, todos_tipos_resumo=todos_tipos_resumo,
-        STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL,
-        STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
+        STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC=STATUS_DISC_MODULO,
+        STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL, STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
 
 @app.route('/calendario/publico/toggle', methods=['POST'])
 @admin_required
@@ -5057,25 +5057,90 @@ def calendario_disciplinas_marcar_liberadas():
         status_alvo = 'liberada_moodle'
     modulo = (request.form.get('modulo') or '').strip()
     submodulo = (request.form.get('submodulo') or '').strip()
-    nomes_norm = {_norm_name(n) for n in nomes}
+
+    # tira nomes repetidos na própria lista colada (mantém o 1º jeito escrito)
+    vistos_norm = set()
+    nomes_unicos = []
+    for n in nomes:
+        norm = _norm_name(n)
+        if norm in vistos_norm:
+            continue
+        vistos_norm.add(norm)
+        nomes_unicos.append(n)
+
     query = DisciplinaModulo.query.filter_by(arquivado=False)
     if modulo:
         query = query.filter_by(modulo=modulo)
     if submodulo:
         query = query.filter_by(submodulo=submodulo)
-    candidatas = query.all()
-    encontradas = 0
-    for d in candidatas:
-        if _norm_name(d.nome) in nomes_norm:
-            d.status = status_alvo
-            d.status_em = datetime.utcnow()
-            encontradas += 1
+    candidatas_por_norm = {}
+    for d in query.all():
+        candidatas_por_norm.setdefault(_norm_name(d.nome), []).append(d)
+
+    # pra não criar duplicata "no Tipo errado": antes de criar uma disciplina
+    # nova, olha em TODA a base (sem filtro de Tipo/Módulo) se ela já existe
+    # em outro lugar — se existir, avisa em vez de criar.
+    todas_por_norm = None
+    if modulo:
+        todas_por_norm = {}
+        for d in DisciplinaModulo.query.filter_by(arquivado=False).all():
+            todas_por_norm.setdefault(_norm_name(d.nome), []).append(d)
+
+    alteradas = 0
+    inseridas = 0
+    sem_tipo_pra_criar = 0
+    existentes_em_outro_tipo = []  # [(nome_colado, "Tipo / Módulo"), ...]
+    agora = datetime.utcnow()
+    for nome in nomes_unicos:
+        norm = _norm_name(nome)
+        achadas = candidatas_por_norm.get(norm)
+        if achadas:
+            for d in achadas:
+                d.status = status_alvo
+                d.status_em = agora
+                alteradas += 1
+            continue
+        if not modulo:
+            sem_tipo_pra_criar += 1
+            continue
+        outras = todas_por_norm.get(norm)
+        if outras:
+            for d in outras:
+                onde = d.modulo + (f' / {d.submodulo}' if d.submodulo else '')
+                existentes_em_outro_tipo.append(f'{nome} (está em "{onde}")')
+            continue
+        db.session.add(DisciplinaModulo(modulo=modulo, submodulo=submodulo or None, nome=nome,
+                                         status=status_alvo, status_em=agora, created_by=session['user_id']))
+        inseridas += 1
     db.session.commit()
+
     escopo = f' em "{modulo}"' + (f' / "{submodulo}"' if submodulo else '') if modulo else ''
     status_label = STATUS_DISC_MODULO_LABEL.get(status_alvo, status_alvo)
+    total_unicos = len(nomes_unicos)
     log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo', 0,
-               f'status em massa via colar lista -> {status_alvo}{escopo} — {encontradas} de {len(nomes)} nome(s) colado(s)')
-    flash(f'{encontradas} disciplina(s) marcada(s) como "{status_label}"{escopo} (de {len(nomes)} nome(s) colado(s)).', 'success')
+               f'status em massa via colar lista -> {status_alvo}{escopo} — {inseridas} inserida(s), '
+               f'{alteradas} alterada(s), de {total_unicos} nome(s) colado(s) (únicos)'
+               + (f', {sem_tipo_pra_criar} não encontrada(s) sem Tipo escolhido pra criar' if sem_tipo_pra_criar else '')
+               + (f', {len(existentes_em_outro_tipo)} já existiam em outro Tipo (não criadas)' if existentes_em_outro_tipo else ''))
+
+    partes = []
+    if inseridas:
+        partes.append(f'{inseridas} disciplina(s) nova(s) inserida(s) já como "{status_label}"')
+    if alteradas:
+        partes.append(f'{alteradas} tiveram o status alterado para "{status_label}"')
+    if not partes:
+        msg = f'Nenhuma disciplina encontrada{escopo} entre os {total_unicos} nome(s) colado(s).'
+        if sem_tipo_pra_criar:
+            msg += ' Escolha um Tipo pra criar automaticamente as que não existem ainda.'
+        flash(msg, 'warning')
+    else:
+        msg = ', '.join(partes) + escopo + '.'
+        if sem_tipo_pra_criar:
+            msg += f' {sem_tipo_pra_criar} não encontrada(s) e não criada(s) (escolha um Tipo pra criar automaticamente).'
+        flash(msg, 'success')
+    if existentes_em_outro_tipo:
+        flash('Não criadas por já existirem em outro Tipo/Módulo (confira se selecionou o Tipo certo): '
+              + '; '.join(existentes_em_outro_tipo), 'warning')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 @app.route('/calendario/exportar')
@@ -5373,13 +5438,32 @@ def calendario_disciplina_importar():
     if not itens:
         flash('Cole ao menos uma disciplina, uma por linha.', 'danger')
         return redirect(url_for('calendario', aba='disciplinas'))
+
+    existentes = {d.nome.strip().lower()
+                  for d in DisciplinaModulo.query.filter_by(modulo=tipo, submodulo=submodulo).all()}
+    vistos = set()
+    criadas = 0
+    ignoradas = 0
     for nome, carga, professor in itens:
+        chave = nome.strip().lower()
+        if chave in existentes or chave in vistos:
+            ignoradas += 1
+            continue
+        vistos.add(chave)
         db.session.add(DisciplinaModulo(modulo=tipo, submodulo=submodulo, nome=nome, carga=carga,
                                          professor=professor, created_by=session['user_id']))
+        criadas += 1
     db.session.commit()
     log_action(session['user_id'], session['username'], 'criar', 'disciplina_modulo',
-               0, f'importação em massa — {len(itens)} disciplina(s) em {tipo}' + (f' / {submodulo}' if submodulo else ''))
-    flash(f'{len(itens)} disciplina(s) criada(s) em "{tipo}"!', 'success')
+               0, f'importação em massa — {criadas} disciplina(s) em {tipo}' + (f' / {submodulo}' if submodulo else '')
+               + (f', {ignoradas} repetida(s) ignorada(s)' if ignoradas else ''))
+    if criadas == 0:
+        flash(f'Nenhuma disciplina nova — as {ignoradas} da lista já existiam em "{tipo}".', 'warning')
+    else:
+        msg = f'{criadas} disciplina(s) criada(s) em "{tipo}"!'
+        if ignoradas:
+            msg += f' ({ignoradas} repetida(s) ignorada(s), já existiam ou vieram duplicadas na lista)'
+        flash(msg, 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 @app.route('/calendario/disciplinas/lista/editar', methods=['POST'])
@@ -5408,17 +5492,30 @@ def calendario_disciplinas_lista_editar():
     db.session.flush()
 
     itens = _parse_linhas_disciplinas(request.form.get('linhas'))
+    vistos = set()
+    repetidas = 0
+    novas = 0
     for nome, carga, professor in itens:
+        chave = nome.strip().lower()
+        if chave in vistos:
+            repetidas += 1
+            continue
+        vistos.add(chave)
         item = DisciplinaModulo(modulo=tipo, submodulo=submodulo, nome=nome, carga=carga,
                                  professor=professor, created_by=session['user_id'])
-        anterior = status_por_nome.get(nome.lower())
+        anterior = status_por_nome.get(chave)
         if anterior:
             item.status, item.status_em = anterior
         db.session.add(item)
+        novas += 1
     db.session.commit()
     log_action(session['user_id'], session['username'], 'editar', 'disciplina_modulo',
-               0, f'lista de {tipo}' + (f' / {submodulo}' if submodulo else '') + f' reescrita — {total_antes} -> {len(itens)}')
-    flash(f'Lista atualizada: {total_antes} removida(s), {len(itens)} nova(s). Andamento preservado por nome igual.', 'success')
+               0, f'lista de {tipo}' + (f' / {submodulo}' if submodulo else '') + f' reescrita — {total_antes} -> {novas}'
+               + (f' ({repetidas} repetida(s) ignorada(s))' if repetidas else ''))
+    msg = f'Lista atualizada: {total_antes} removida(s), {novas} nova(s). Andamento preservado por nome igual.'
+    if repetidas:
+        msg += f' ({repetidas} repetida(s) na lista colada foram ignoradas)'
+    flash(msg, 'success')
     return redirect(url_for('calendario', aba='disciplinas'))
 
 # ─── BACKUP ────────────────────────────────────────────────────────────────────

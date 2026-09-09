@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="light">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,12 +7,6 @@
   <title>Calendário — Gestor Acadêmico</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ versao }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script>
-    (function() {
-      const t = localStorage.getItem('theme') || 'light';
-      document.documentElement.setAttribute('data-theme', t);
-    })();
-  </script>
   <style>
     body { background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; }
     .pub-wrap { max-width:900px; margin:0 auto; padding:32px 20px 60px; }
@@ -117,6 +111,17 @@
           <div><div style="font-size:16px;font-weight:700;color:#b35700">{{ r.pendentes }}</div><div style="font-size:9.5px;color:var(--text-muted)">Pendentes</div></div>
           <div><div style="font-size:16px;font-weight:700;color:#15803d">{{ r.liberadas }}</div><div style="font-size:9.5px;color:var(--text-muted)">Liberadas</div></div>
         </div>
+        {% set ns = namespace(tem=false) %}
+        {% for s in STATUS_DISC %}{% if s != 'nao_iniciado' and r.por_status.get(s) %}{% set ns.tem = true %}{% endif %}{% endfor %}
+        {% if ns.tem %}
+        <div style="display:flex;flex-wrap:wrap;gap:6px 12px;border-top:1px solid var(--border);padding-top:7px">
+          {% for s in STATUS_DISC %}
+          {% if s != 'nao_iniciado' and r.por_status.get(s) %}
+          <span style="font-size:10px;color:var(--text-muted)">{{ STATUS_DISC_LABEL[s] }} <strong style="color:{{ STATUS_DISC_COR[s] }}">{{ r.por_status.get(s, 0) }}</strong></span>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% else %}
       <div class="card" style="padding:32px;text-align:center;color:var(--text-muted);grid-column:1/-1">Nenhum tipo cadastrado ainda.</div>
@@ -200,21 +205,41 @@
 
   function pubRecolherTudo(fechar) {
     document.querySelectorAll('.pub-tipo, .pub-submodulo').forEach(function(det) {
+      det._pubToggleUsuario = true;
       det.open = !fechar;
     });
   }
 
+  // Ctrl+F do navegador força abrir automaticamente qualquer <details> que
+  // contenha o texto buscado (nativo, não dá pra bloquear) — sem isso aqui,
+  // esse "abrir forçado" ficava salvo como se o usuário tivesse aberto de
+  // propósito. Só gravamos no localStorage quando é clique/teclado de verdade.
+  function pubRegistrarClickUsuario(det) {
+    const resumo = det.querySelector(':scope > summary');
+    if (!resumo) return;
+    const marcar = function() { det._pubToggleUsuario = true; };
+    resumo.addEventListener('pointerdown', marcar);
+    resumo.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') marcar(); });
+  }
   document.querySelectorAll('.pub-tipo').forEach(function(det) {
     const key = 'pubTipoAberto_' + det.dataset.tipo;
     const salvo = localStorage.getItem(key);
-    det.open = salvo !== null ? salvo === '1' : true;
-    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+    det.open = salvo === '1';
+    pubRegistrarClickUsuario(det);
+    det.addEventListener('toggle', function() {
+      if (det._pubToggleUsuario) { localStorage.setItem(key, det.open ? '1' : '0'); }
+      det._pubToggleUsuario = false;
+    });
   });
   document.querySelectorAll('.pub-submodulo').forEach(function(det) {
     const key = 'pubModuloAberto_' + det.dataset.tipo + '||' + det.dataset.submodulo;
     const salvo = localStorage.getItem(key);
-    det.open = salvo !== null ? salvo === '1' : true;
-    det.addEventListener('toggle', function() { localStorage.setItem(key, det.open ? '1' : '0'); });
+    det.open = salvo === '1';
+    pubRegistrarClickUsuario(det);
+    det.addEventListener('toggle', function() {
+      if (det._pubToggleUsuario) { localStorage.setItem(key, det.open ? '1' : '0'); }
+      det._pubToggleUsuario = false;
+    });
   });
 </script>
 </body>
