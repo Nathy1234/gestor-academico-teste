@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.13'
+VERSAO = '1.19.14'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -4681,8 +4681,16 @@ def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False, trimestre
         total_tipo = 0
         liberadas_tipo = 0
         for sub_nome in sorted(submodulos_dict.keys(), key=lambda s: (s == SEM_MODULO_LABEL, s.lower())):
-            itens = submodulos_dict[sub_nome]
-            liberadas = sum(1 for i in itens if i.status in ('liberada_moodle', 'liberada_inova'))
+            itens_originais = submodulos_dict[sub_nome]
+            # liberadas sobem pro topo, a mais recente liberada primeiro — assim que
+            # uma disciplina vira liberada ela já pula pra cima das demais; as que
+            # ainda não foram liberadas mantêm a ordem de sempre (ordem/nome) depois.
+            itens_liberados = sorted(
+                (i for i in itens_originais if i.status in ('liberada_moodle', 'liberada_inova')),
+                key=lambda i: i.status_em or datetime.min, reverse=True)
+            itens_pendentes = [i for i in itens_originais if i.status not in ('liberada_moodle', 'liberada_inova')]
+            itens = itens_liberados + itens_pendentes
+            liberadas = len(itens_liberados)
             linhas_texto = '\n'.join(
                 '\t'.join([i.nome, i.carga or '', i.professor or '']).rstrip('\t')
                 for i in itens
