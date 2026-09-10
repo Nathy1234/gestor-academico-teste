@@ -145,7 +145,16 @@
       <tbody>
         {% for d in lista_demandas %}
         <tr>
-          <td>{{ d.titulo }}</td>
+          <td>
+            {{ d.titulo }}
+            {% if d.descricao %}
+            <button type="button" class="cal-btn-obs" onclick="calVerObs({{ d.id }})" title="Ver observações">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+            </button>
+            {% endif %}
+          </td>
           <td>{{ d.responsaveis_usuarios()|map('nome_exibicao')|join(', ') or '—' }}</td>
           <td>{{ d.data_inicio.strftime('%d/%m/%Y') }}</td>
           <td>{{ d.data_fim.strftime('%d/%m/%Y') }}</td>
@@ -568,6 +577,19 @@
   </div>
 </div>
 
+<!-- ── MODAL: OBSERVAÇÕES DE UMA DEMANDA (só leitura) ── -->
+<div id="calInfoModalOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calFecharInfoModal()">
+  <div class="dash-modal" style="max-width:420px">
+    <div class="dash-modal-header">
+      <div class="card-title" id="calInfoModalTitulo"></div>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="calFecharInfoModal()">✕</button>
+    </div>
+    <div class="dash-modal-body">
+      <div id="calInfoModalTexto" style="font-size:13px;color:var(--text);white-space:pre-wrap"></div>
+    </div>
+  </div>
+</div>
+
 <form id="calFormExcluir" method="POST" style="display:none">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="voltar_para" id="calFormExcluirVoltar" value="">
@@ -842,6 +864,8 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
 .cal-tipo-acoes { display:flex; gap:8px; }
 .cal-tipo-acoes form { display:inline; }
 .cal-tipo-breakdown { display:flex; flex-wrap:wrap; gap:6px 16px; padding:0 20px 12px; font-size:10.5px; color:var(--text-muted); border-bottom:1px solid var(--border); }
+.cal-btn-obs { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; margin-left:4px; padding:0; vertical-align:-4px; background:none; border:1px solid var(--border); border-radius:50%; color:var(--text-muted); cursor:pointer; }
+.cal-btn-obs:hover { color:var(--primary); border-color:var(--primary); }
 
 .cal-submodulo-card { border-top:1px solid var(--border); }
 .cal-submodulo-card > summary { list-style:none; cursor:pointer; padding:10px 16px; }
@@ -943,6 +967,18 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
 
   function calFecharModal() {
     document.getElementById('calModalOverlay').style.display = 'none';
+  }
+
+  function calVerObs(id) {
+    const dem = CAL_DEMANDAS[id];
+    if (!dem) return;
+    document.getElementById('calInfoModalTitulo').textContent = dem.titulo;
+    document.getElementById('calInfoModalTexto').textContent = dem.descricao || 'Sem observações.';
+    document.getElementById('calInfoModalOverlay').style.display = 'flex';
+  }
+
+  function calFecharInfoModal() {
+    document.getElementById('calInfoModalOverlay').style.display = 'none';
   }
 
   function calExcluir() {
