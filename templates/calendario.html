@@ -400,6 +400,17 @@
       </span>
       {% endif %}
     </summary>
+    {% set ns_tipo = namespace(tem=false) %}
+    {% for s in STATUS_DISC %}{% if s != 'nao_iniciado' and grupo.por_status.get(s) %}{% set ns_tipo.tem = true %}{% endif %}{% endfor %}
+    {% if ns_tipo.tem %}
+    <div class="cal-tipo-breakdown">
+      {% for s in STATUS_DISC %}
+      {% if s != 'nao_iniciado' and grupo.por_status.get(s) %}
+      <span>{{ STATUS_DISC_LABEL[s] }} <strong style="color:{{ STATUS_DISC_COR[s] }}">{{ grupo.por_status.get(s, 0) }}</strong></span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
     {% for sub in grupo.submodulos %}
     <details class="cal-submodulo-card" data-tipo="{{ grupo.tipo }}" data-submodulo="{{ sub.submodulo }}">
       <summary class="cal-submodulo-summary">
@@ -830,6 +841,7 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
 .cal-tipo-nome:hover { color:var(--primary); }
 .cal-tipo-acoes { display:flex; gap:8px; }
 .cal-tipo-acoes form { display:inline; }
+.cal-tipo-breakdown { display:flex; flex-wrap:wrap; gap:6px 16px; padding:0 20px 12px; font-size:10.5px; color:var(--text-muted); border-bottom:1px solid var(--border); }
 
 .cal-submodulo-card { border-top:1px solid var(--border); }
 .cal-submodulo-card > summary { list-style:none; cursor:pointer; padding:10px 16px; }

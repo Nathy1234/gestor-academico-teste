@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.15'
+VERSAO = '1.19.17'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -2428,6 +2428,110 @@ def reembolsos():
                            busca=busca, f_colab=f_colab, f_cat=f_cat, f_pend=f_pend,
                            colabs=colabs, cats=cats)
 
+def _mask_meio(valor, manter_fim=4):
+    """Mascara um dado sensível mantendo só os últimos caracteres visíveis
+    (ex: CPF, PIX, celular) — pra planilha exportada não expor o dado
+    completo mesmo pra quem tem permissão de baixar."""
+    v = (valor or '').strip()
+    if not v:
+        return ''
+    if len(v) <= manter_fim:
+        return '*' * len(v)
+    return '*' * (len(v) - manter_fim) + v[-manter_fim:]
+
+def _mask_email(valor):
+    v = (valor or '').strip()
+    if not v or '@' not in v:
+        return _mask_meio(v, manter_fim=2)
+    usuario, _, dominio = v.partition('@')
+    if len(usuario) <= 2:
+        usuario_mask = '*' * len(usuario)
+    else:
+        usuario_mask = usuario[0] + '*' * (len(usuario) - 1)
+    return f'{usuario_mask}@{dominio}'
+
+@app.route('/reembolsos/exportar-excel')
+@perm_check('can_manage_reembolsos')
+def reembolsos_exportar_excel():
+    """Dados de pagamento (CPF/celular/PIX/e-mail) saem mascarados mesmo
+    pra quem tem permissão de ver a tela — a planilha baixada circula mais
+    fácil (anexo, pendrive, nuvem pessoal) do que a tela do sistema."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    busca   = request.args.get('q', '').strip()
+    f_colab = request.args.get('colab', '').strip()
+    f_cat   = request.args.get('categoria', '').strip()
+    f_pend  = request.args.get('pendencia', '').strip()
+
+    q = Refund.query
+    if busca:
+        q = q.filter(db.or_(
+            Refund.nome_aluno.ilike(f'%{busca}%'),
+            Refund.nome_curso.ilike(f'%{busca}%')
+        ))
+    if f_colab:
+        q = q.filter(Refund.colab.ilike(f'%{f_colab}%'))
+    if f_cat:
+        q = q.filter(Refund.categoria.ilike(f'%{f_cat}%'))
+    items = q.order_by(Refund.created_at.desc()).all()
+    if f_pend:
+        items = [r for r in items if r.pendencia[0] == f_pend]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Reembolsos'
+
+    thin  = Side(style='thin', color='CBD5E1')
+    bdr   = Border(left=thin, right=thin, top=thin, bottom=thin)
+    wrap  = Alignment(wrap_text=True, vertical='top')
+    center = Alignment(horizontal='center', vertical='center')
+    hfill = PatternFill('solid', fgColor='6366F1')
+    hfont = Font(bold=True, color='FFFFFF', size=10)
+
+    headers = ['Colaborador', 'Aluno', 'Curso', 'Categoria', 'Data Compra', 'Data Solicitação',
+               'Valor (R$)', 'Valor Estorno (R$)', '1ª Solicitação', '2ª Solicitação',
+               'Data Aprovação', 'Curso Excluído', 'Situação', 'CPF', 'Celular', 'PIX',
+               'E-mail Destino', 'Motivo', 'Obs']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=col, value=h)
+        c.fill = hfill; c.font = hfont; c.alignment = center; c.border = bdr
+    ws.row_dimensions[1].height = 28
+
+    def fdata(d):
+        return d.strftime('%d/%m/%Y') if d else ''
+
+    for i, r in enumerate(items, 2):
+        vals = [
+            r.colab or '', r.nome_aluno or '', r.nome_curso or '', r.categoria or '',
+            fdata(r.data_compra), fdata(r.data_solicitacao),
+            r.valor or 0, r.valor_estorno or 0,
+            fdata(r.solicitacao_1), fdata(r.solicitacao_2), fdata(r.data_aprovacao),
+            fdata(r.curso_excluido), r.pendencia[1],
+            _mask_meio(r.cpf, 3), _mask_meio(r.celular, 4), _mask_meio(r.pix, 4),
+            _mask_email(r.email_destino),
+            r.motivo or '', r.obs or '',
+        ]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=i, column=col, value=val)
+            cell.border = bdr; cell.alignment = wrap
+            if col in (7, 8):
+                cell.number_format = '#,##0.00'
+
+    larguras = [14, 24, 26, 16, 12, 14, 12, 14, 12, 12, 12, 12, 20, 16, 16, 20, 24, 24, 24]
+    for col, w in enumerate(larguras, 1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+    ws.freeze_panes = 'A2'
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    log_action(session['user_id'], session['username'], 'exportar_excel', 'reembolso', None,
+               f'{len(items)} registro(s)')
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      as_attachment=True, download_name=f'reembolsos_{date.today().isoformat()}.xlsx')
+
 @app.route('/reembolsos/novo', methods=['GET','POST'])
 @editor_required
 def reembolso_novo():
@@ -4716,18 +4820,19 @@ def _disciplinas_agrupadas(tipo_filtro=None, incluir_arquivadas=False, trimestre
                                 'linhas_texto': linhas_texto})
             total_tipo += len(itens)
             liberadas_tipo += liberadas
-        resultado.append({'tipo': tipo_nome, 'submodulos': submodulos, 'total': total_tipo, 'liberadas': liberadas_tipo})
+        por_status_tipo = {}
+        for sub in submodulos:
+            for it in sub['itens']:
+                por_status_tipo[it.status] = por_status_tipo.get(it.status, 0) + 1
+        resultado.append({'tipo': tipo_nome, 'submodulos': submodulos, 'total': total_tipo,
+                           'liberadas': liberadas_tipo, 'por_status': por_status_tipo})
     return resultado
 
 def _resumo_de_tipo(grupo):
     """Resumo (total/pendentes/liberadas/por etapa) de um grupo de
     _disciplinas_agrupadas — usado no Dashboard interno e no público."""
-    por_status = {}
-    for sub in grupo['submodulos']:
-        for it in sub['itens']:
-            por_status[it.status] = por_status.get(it.status, 0) + 1
     return {'nome': grupo['tipo'], 'total': grupo['total'], 'liberadas': grupo['liberadas'],
-            'pendentes': grupo['total'] - grupo['liberadas'], 'por_status': por_status}
+            'pendentes': grupo['total'] - grupo['liberadas'], 'por_status': grupo['por_status']}
 
 def _calendario_publico_ativo():
     setting = AppSetting.query.get('calendario_publico_ativo')
