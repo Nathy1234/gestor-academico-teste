@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.18'
+VERSAO = '1.19.19'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -819,6 +819,15 @@ class Demanda(db.Model):
     created_at     = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at     = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Aviso manual pra equipe toda ("avisar equipe") — disparado por um dos
+    # responsáveis ou admin (mesma regra de pode_registrar_status). Fica
+    # visível pra todo mundo até cada um clicar pra dispensar (ver
+    # DemandaAlertaDispensa); disparar de novo limpa as dispensas antigas.
+    alerta_texto      = db.Column(db.Text)
+    alerta_ativo      = db.Column(db.Boolean, default=False)
+    alerta_criado_em  = db.Column(db.DateTime)
+    alerta_criado_por = db.Column(db.Integer, db.ForeignKey('user.id'))
+
     autor = db.relationship('User', foreign_keys=[created_by])
 
     def responsaveis_ids(self):
@@ -838,8 +847,53 @@ class Demanda(db.Model):
 
     def pode_registrar_status(self, u):
         """Marcar stand by / em andamento / finalizado — admin ou qualquer
-        um dos responsáveis designados, sem precisar poder editar o prazo."""
+        um dos responsáveis designados, sem precisar poder editar o prazo.
+        Mesma regra usada pra disparar/cancelar o aviso da demanda."""
         return u.role == 'admin' or u.id in self.responsaveis_ids()
+
+class DemandaAlertaDispensa(db.Model):
+    """Quem já dispensou (clicou pra sumir) o aviso ativo de uma Demanda —
+    por pessoa: sumir pra um não some pros outros. Disparar um aviso novo
+    na mesma Demanda apaga essas dispensas, pra todo mundo ver de novo."""
+    id         = db.Column(db.Integer, primary_key=True)
+    demanda_id = db.Column(db.Integer, db.ForeignKey('demanda.id'), nullable=False)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('demanda_id', 'user_id', name='uq_demanda_alerta_dispensa'),)
+
+class LembreteFixo(db.Model):
+    """Lembrete mensal fixo e pessoal (ex: "todo dia 5 eu faço X") — cada
+    usuário cadastra os seus, e só ele enxerga (nem admin vê o dos outros).
+    Vira um aviso vermelho fixo no topo do sistema, em todas as telas, um
+    dia antes e no dia do vencimento — sem botão de fechar: só some quando
+    a data passa (ver _status_lembrete_fixo e inject_notificacoes)."""
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    titulo     = db.Column(db.String(200), nullable=False)
+    dia_mes    = db.Column(db.Integer, nullable=False)  # 1–31; em mês mais curto, cai no último dia
+    ativo      = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+def _status_lembrete_fixo(dia_mes, hoje=None):
+    """'hoje' | 'amanha' | None conforme a data de hoje em relação ao dia
+    fixo do mês. Ajusta pro último dia do mês quando ele for mais curto
+    (ex: dia_mes=31 cai em 28/29 em fevereiro) e cobre as viradas de mês
+    checando a ocorrência do mês anterior, atual e seguinte."""
+    hoje = hoje or date.today()
+    for delta_mes in (-1, 0, 1):
+        mes, ano = hoje.month + delta_mes, hoje.year
+        while mes < 1:
+            mes += 12; ano -= 1
+        while mes > 12:
+            mes -= 12; ano += 1
+        ultimo_dia = _calendar.monthrange(ano, mes)[1]
+        ocorrencia = date(ano, mes, min(dia_mes, ultimo_dia))
+        if ocorrencia == hoje:
+            return 'hoje'
+        if ocorrencia == hoje + timedelta(days=1):
+            return 'amanha'
+    return None
 
 STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'em_andamento', 'inserida', 'liberada_moodle', 'liberada_inova')
 # 'em_curadoria' saiu das opções (não é mais escolhível), mas o label/cor
@@ -1236,6 +1290,7 @@ def inject_notificacoes():
             'can_ia_assistente': False, 'can_ferramentas': False,
             'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
             'can_mural': False, 'can_formularios': False, 'can_calendario': False,
+            'lembretes_ativos': [], 'alertas_demandas_ativos': [],
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -1275,6 +1330,25 @@ def inject_notificacoes():
         solicitacoes_pendentes = Course.query.filter_by(via_formulario=True, status='em_edicao')\
             .order_by(Course.created_at.desc()).all()
 
+    # Lembretes mensais fixos e pessoais — só os do próprio usuário, só os
+    # que caem em "amanhã" ou "hoje" (ver _status_lembrete_fixo). Sem opção
+    # de fechar: somem sozinhos quando a data passa.
+    lembretes_ativos = []
+    for l in LembreteFixo.query.filter_by(user_id=u.id, ativo=True).order_by(LembreteFixo.dia_mes).all():
+        status = _status_lembrete_fixo(l.dia_mes)
+        if status:
+            lembretes_ativos.append({'id': l.id, 'titulo': l.titulo, 'status': status})
+
+    # Avisos manuais de Demanda do Calendário — visíveis pra quem enxerga o
+    # Calendário, exceto quem já dispensou (clicou pra sumir) este aviso.
+    alertas_demandas_ativos = []
+    if u.can_view_calendario():
+        dispensados = {row.demanda_id for row in DemandaAlertaDispensa.query.filter_by(user_id=u.id).all()}
+        alertas_demandas_ativos = [
+            d for d in Demanda.query.filter_by(alerta_ativo=True).order_by(Demanda.data_fim).all()
+            if d.id not in dispensados
+        ]
+
     return {
         'notif_count': len(pendentes),
         'notif_list': notif_list,
@@ -1302,6 +1376,8 @@ def inject_notificacoes():
         'can_mural': u.can_view_mural(),
         'can_formularios': u.can_view_formularios(),
         'can_calendario': u.can_view_calendario(),
+        'lembretes_ativos': lembretes_ativos,
+        'alertas_demandas_ativos': alertas_demandas_ativos,
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -4899,6 +4975,7 @@ def calendario():
             'status': d.status, 'responsavel_ids': d.responsaveis_ids(),
             'pode_editar': d.pode_editar(u),
             'pode_registrar_status': d.pode_registrar_status(u),
+            'alerta_ativo': d.alerta_ativo, 'alerta_texto': d.alerta_texto or '',
         }
         for d in set(demandas_mes) | set(lista_demandas)
     }
@@ -4906,7 +4983,14 @@ def calendario():
     ano_ant, mes_ant = _mes_ano_ajustado(ano, mes - 1)
     ano_prox, mes_prox = _mes_ano_ajustado(ano, mes + 1)
 
-    aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas', 'dashboard') else 'disciplinas'
+    aba = request.args.get('aba') if request.args.get('aba') in ('calendario', 'lista', 'disciplinas', 'dashboard', 'alertas') else 'disciplinas'
+
+    meus_lembretes = []
+    if aba == 'alertas':
+        meus_lembretes = [
+            {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes, 'status': _status_lembrete_fixo(l.dia_mes)}
+            for l in LembreteFixo.query.filter_by(user_id=u.id).order_by(LembreteFixo.dia_mes).all()
+        ]
     tipo_detalhe = request.args.get('tipo') or ''  # nome do Tipo selecionado — mostra o resumo só dele
     ver_arquivadas = request.args.get('arquivadas') == '1'
     trimestre_param = request.args.get('trimestre') or ''
@@ -4960,6 +5044,7 @@ def calendario():
         tipo_detalhe=tipo_detalhe, tipo_resumo=tipo_resumo, todos_tipos_resumo=todos_tipos_resumo,
         SEM_MODULO_LABEL=SEM_MODULO_LABEL,
         ver_arquivadas=ver_arquivadas, total_arquivadas=total_arquivadas,
+        meus_lembretes=meus_lembretes,
         is_admin=(u.role == 'admin'))
 
 @app.route('/calendario/publico')
@@ -5058,6 +5143,7 @@ def calendario_editar(id):
 def calendario_excluir(id):
     demanda = Demanda.query.get_or_404(id)
     titulo = demanda.titulo
+    DemandaAlertaDispensa.query.filter_by(demanda_id=id).delete()
     db.session.delete(demanda)
     db.session.commit()
     log_action(session['user_id'], session['username'], 'excluir', 'demanda', id, titulo)
@@ -5078,6 +5164,81 @@ def calendario_status(id):
         db.session.commit()
         log_action(session['user_id'], session['username'], 'editar', 'demanda', demanda.id, f'status -> {novo}')
     return redirect(_voltar_seguro(url_for('calendario', aba='calendario')))
+
+@app.route('/calendario/<int:id>/alertar', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_alertar(id):
+    """Dispara (ou atualiza) o aviso manual dessa Demanda pra equipe toda —
+    mesma permissão de registrar andamento. Limpa as dispensas antigas, pra
+    quem já tinha fechado o aviso anterior ver esse de novo."""
+    demanda = Demanda.query.get_or_404(id)
+    u = User.query.get(session['user_id'])
+    if not demanda.pode_registrar_status(u):
+        flash('Só o admin ou um dos responsáveis pode avisar a equipe sobre esta demanda.', 'danger')
+        return redirect(_voltar_seguro(url_for('calendario', aba='lista')))
+    texto = (request.form.get('alerta_texto') or '').strip()
+    demanda.alerta_ativo = True
+    demanda.alerta_texto = texto[:500] or None
+    demanda.alerta_criado_em = datetime.utcnow()
+    demanda.alerta_criado_por = u.id
+    DemandaAlertaDispensa.query.filter_by(demanda_id=demanda.id).delete()
+    db.session.commit()
+    log_action(u.id, u.username, 'alertar', 'demanda', demanda.id, demanda.titulo)
+    flash('Aviso enviado pra equipe!', 'success')
+    return redirect(_voltar_seguro(url_for('calendario', aba='lista')))
+
+@app.route('/calendario/<int:id>/alerta/cancelar', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_alerta_cancelar(id):
+    demanda = Demanda.query.get_or_404(id)
+    u = User.query.get(session['user_id'])
+    if not demanda.pode_registrar_status(u):
+        flash('Só o admin ou um dos responsáveis pode retirar este aviso.', 'danger')
+        return redirect(_voltar_seguro(url_for('calendario', aba='lista')))
+    demanda.alerta_ativo = False
+    db.session.commit()
+    log_action(u.id, u.username, 'cancelar_alerta', 'demanda', demanda.id, demanda.titulo)
+    flash('Aviso retirado.', 'success')
+    return redirect(_voltar_seguro(url_for('calendario', aba='lista')))
+
+@app.route('/calendario/<int:id>/alerta/dispensar', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_alerta_dispensar(id):
+    """A pessoa clica pra sumir com o aviso — só pra ela; quem não clicou
+    continua vendo. Chamado via fetch() pelo sino/aviso, em qualquer tela."""
+    Demanda.query.get_or_404(id)
+    ja = DemandaAlertaDispensa.query.filter_by(demanda_id=id, user_id=session['user_id']).first()
+    if not ja:
+        db.session.add(DemandaAlertaDispensa(demanda_id=id, user_id=session['user_id']))
+        db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/calendario/lembretes/novo', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_lembrete_novo():
+    """Lembrete mensal fixo e pessoal — cada um cadastra o seu; nem admin
+    vê o lembrete de outra pessoa."""
+    titulo = (request.form.get('titulo') or '').strip()
+    dia_mes = request.form.get('dia_mes', type=int)
+    if not titulo or not dia_mes or not (1 <= dia_mes <= 31):
+        flash('Preencha o título e um dia do mês válido (1 a 31).', 'danger')
+        return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+    db.session.add(LembreteFixo(user_id=session['user_id'], titulo=titulo[:200], dia_mes=dia_mes))
+    db.session.commit()
+    flash('Lembrete adicionado!', 'success')
+    return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+
+@app.route('/calendario/lembretes/<int:id>/excluir', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_lembrete_excluir(id):
+    lembrete = LembreteFixo.query.get_or_404(id)
+    if lembrete.user_id != session['user_id']:
+        flash('Você só pode excluir os seus próprios lembretes.', 'danger')
+        return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+    db.session.delete(lembrete)
+    db.session.commit()
+    flash('Lembrete removido.', 'success')
+    return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
 
 # ─── CALENDÁRIO — DISCIPLINAS POR MÓDULO (inserção) ─────────────────────────────
 
@@ -7066,6 +7227,10 @@ def _run_migrations():
         ("discipline", "plataforma_em",    "TIMESTAMP"),
         ("backup_record", "conteudo",      "BYTEA"),
         ("demanda", "responsaveis",        "TEXT"),
+        ("demanda", "alerta_texto",        "TEXT"),
+        ("demanda", "alerta_ativo",        "BOOLEAN DEFAULT false"),
+        ("demanda", "alerta_criado_em",    "TIMESTAMP"),
+        ("demanda", "alerta_criado_por",   "INTEGER"),
         ("disciplina_modulo", "submodulo", "VARCHAR(200)"),
         ("disciplina_modulo", "carga",     "VARCHAR(20)"),
         ("disciplina_modulo", "professor", "VARCHAR(200)"),

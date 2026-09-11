@@ -14,7 +14,7 @@
       </svg>
       Nova Demanda
     </button>
-    {% elif is_admin %}
+    {% elif is_admin and aba != 'alertas' %}
     <div style="display:flex;gap:8px">
       <button type="button" class="btn btn-secondary" onclick="calImportAbrir()">Colar lista</button>
       <button type="button" class="btn btn-primary" onclick="calDiscAbrirNova()">
@@ -62,6 +62,7 @@
     <a href="{{ url_for('calendario', aba='dashboard') }}" class="cal-tab {% if aba == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
     <a href="{{ url_for('calendario', aba='lista') }}" class="cal-tab {% if aba == 'lista' %}active{% endif %}">📋 Lista de Demandas</a>
     <a href="{{ url_for('calendario', aba='calendario') }}" class="cal-tab {% if aba == 'calendario' %}active{% endif %}">📅 Calendário</a>
+    <a href="{{ url_for('calendario', aba='alertas') }}" class="cal-tab {% if aba == 'alertas' %}active{% endif %}">🔔 Alertas</a>
   </div>
 
   {% if aba == 'calendario' %}
@@ -154,6 +155,9 @@
               </svg>
             </button>
             {% endif %}
+            {% if d.alerta_ativo %}
+            <span class="badge" style="background:#dc262620;color:#dc2626;margin-left:4px" title="{{ d.alerta_texto or 'Aviso ativo pra equipe' }}">🔔 Aviso ativo</span>
+            {% endif %}
           </td>
           <td>{{ d.responsaveis_usuarios()|map('nome_exibicao')|join(', ') or '—' }}</td>
           <td>{{ d.data_inicio.strftime('%d/%m/%Y') }}</td>
@@ -178,6 +182,18 @@
             <button type="button" class="btn btn-secondary btn-sm" onclick="calAbrirEditar({{ d.id }})">Editar</button>
             {% elif demandas_json[d.id].pode_registrar_status %}
             <button type="button" class="btn btn-secondary btn-sm" onclick="calAbrirEditar({{ d.id }})">Detalhes</button>
+            {% endif %}
+            {% if demandas_json[d.id].pode_registrar_status %}
+              {% if d.alerta_ativo %}
+              <button type="button" class="btn btn-secondary btn-sm" onclick="calAlertarAbrir({{ d.id }})" title="Editar aviso">🔔</button>
+              <form method="POST" action="{{ url_for('calendario_alerta_cancelar', id=d.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+                <button type="submit" class="btn btn-danger btn-sm" title="Retirar aviso" onclick="return confirm('Retirar o aviso desta demanda?')">Retirar aviso</button>
+              </form>
+              {% else %}
+              <button type="button" class="btn btn-secondary btn-sm" onclick="calAlertarAbrir({{ d.id }})" title="Avisar a equipe">🔔 Avisar</button>
+              {% endif %}
             {% endif %}
           </td>
         </tr>
@@ -250,6 +266,64 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  {% elif aba == 'alertas' %}
+  <!-- ═══════════════════════ ABA: ALERTAS (lembretes fixos pessoais) ═══════════════════════ -->
+  <div class="card" style="max-width:520px">
+    <div class="card-header"><div class="card-title" style="font-size:15px">Meus lembretes mensais fixos</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+        Cada pessoa cadastra os seus próprios lembretes ("todo dia X eu faço Y") — só você enxerga os seus,
+        nem admin vê o dos outros. Um dia antes e no dia, aparece um aviso vermelho fixo no topo do sistema,
+        em qualquer tela; não tem botão de fechar, ele some sozinho quando a data passa.
+      </div>
+      <form method="POST" action="{{ url_for('calendario_lembrete_novo') }}" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:18px;flex-wrap:wrap">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+        <div class="form-group" style="flex:1;min-width:180px;margin:0">
+          <label>O que é</label>
+          <input type="text" name="titulo" maxlength="200" placeholder="Ex: Fechar ponto da equipe" required>
+        </div>
+        <div class="form-group" style="width:110px;margin:0">
+          <label>Dia do mês</label>
+          <input type="number" name="dia_mes" min="1" max="31" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Adicionar</button>
+      </form>
+
+      {% if meus_lembretes %}
+      <table class="table">
+        <thead><tr><th>O que é</th><th>Dia</th><th>Situação</th><th></th></tr></thead>
+        <tbody>
+          {% for l in meus_lembretes %}
+          <tr>
+            <td>{{ l.titulo }}</td>
+            <td>Dia {{ l.dia_mes }}</td>
+            <td>
+              {% if l.status == 'hoje' %}
+              <span class="badge" style="background:#dc262620;color:#dc2626">É hoje</span>
+              {% elif l.status == 'amanha' %}
+              <span class="badge" style="background:#dc262620;color:#dc2626">É amanhã</span>
+              {% else %}
+              <span class="badge" style="background:var(--border);color:var(--text-muted)">—</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap">
+              <form method="POST" action="{{ url_for('calendario_lembrete_excluir', id=l.id) }}" onsubmit="return confirm('Excluir este lembrete?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+                <button type="submit" class="btn btn-danger btn-sm">Excluir</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="text-align:center;color:var(--text-muted);padding:16px 0">Você ainda não tem nenhum lembrete cadastrado.</div>
+      {% endif %}
+    </div>
+  </div>
 
   {% else %}
   <!-- ═══════════════════════ ABA: DISCIPLINAS POR TIPO ═══════════════════════ -->
@@ -587,6 +661,33 @@
     <div class="dash-modal-body">
       <div id="calInfoModalTexto" style="font-size:13px;color:var(--text);white-space:pre-wrap"></div>
     </div>
+  </div>
+</div>
+
+<!-- ── MODAL: AVISAR EQUIPE SOBRE UMA DEMANDA ── -->
+<div id="calAlertaModalOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calAlertarFechar()">
+  <div class="dash-modal" style="max-width:420px">
+    <div class="dash-modal-header">
+      <div class="card-title" id="calAlertaModalTitulo">Avisar equipe</div>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="calAlertarFechar()">✕</button>
+    </div>
+    <form id="calAlertaForm" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="voltar_para" id="calAlertaVoltar" value="">
+      <div class="dash-modal-body">
+        <div class="form-group">
+          <label>Mensagem do aviso (aparece em vermelho no topo, pra todo mundo)</label>
+          <textarea name="alerta_texto" id="calAlertaTexto" rows="3" maxlength="500" style="width:100%;resize:vertical" placeholder="Ex: precisamos fechar isso até sexta, ajudem quem puder"></textarea>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">
+          Fica visível pra todo mundo até cada um clicar pra dispensar — dispensar não avisa os outros.
+        </div>
+      </div>
+      <div class="dash-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="calAlertarFechar()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Enviar aviso</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -975,6 +1076,20 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
     document.getElementById('calInfoModalTitulo').textContent = dem.titulo;
     document.getElementById('calInfoModalTexto').textContent = dem.descricao || 'Sem observações.';
     document.getElementById('calInfoModalOverlay').style.display = 'flex';
+  }
+
+  function calAlertarAbrir(id) {
+    const dem = CAL_DEMANDAS[id];
+    if (!dem) return;
+    document.getElementById('calAlertaModalTitulo').textContent = 'Avisar equipe — ' + dem.titulo;
+    document.getElementById('calAlertaTexto').value = dem.alerta_texto || '';
+    document.getElementById('calAlertaForm').action = '/calendario/' + id + '/alertar';
+    document.getElementById('calAlertaVoltar').value = window.location.pathname + window.location.search;
+    document.getElementById('calAlertaModalOverlay').style.display = 'flex';
+  }
+
+  function calAlertarFechar() {
+    document.getElementById('calAlertaModalOverlay').style.display = 'none';
   }
 
   function calFecharInfoModal() {

@@ -243,6 +243,37 @@
 
   <!-- MAIN -->
   <main class="main-content">
+    {% if lembretes_ativos or alertas_demandas_ativos %}
+    <div id="topAlertBar">
+      {% for l in lembretes_ativos %}
+      <div class="top-alert top-alert-lembrete">
+        <span class="top-alert-icon">⏰</span>
+        <span class="top-alert-text"><strong>{{ 'HOJE' if l.status == 'hoje' else 'AMANHÃ' }}:</strong> {{ l.titulo }}</span>
+        <span class="top-alert-tag">lembrete pessoal — some sozinho depois da data</span>
+      </div>
+      {% endfor %}
+      {% for d in alertas_demandas_ativos %}
+      <div class="top-alert top-alert-demanda" data-demanda-alert-id="{{ d.id }}">
+        <span class="top-alert-icon">🔔</span>
+        <span class="top-alert-text"><strong>{{ d.titulo }}:</strong> {{ d.alerta_texto or 'Aviso da equipe — confira a demanda no Calendário.' }}</span>
+        <button type="button" class="top-alert-close" onclick="dispensarAlertaDemanda({{ d.id }}, this)" title="Marcar como visto">✕</button>
+      </div>
+      {% endfor %}
+    </div>
+    <script>
+      function dispensarAlertaDemanda(id, btn) {
+        fetch('/calendario/' + id + '/alerta/dispensar', { method: 'POST' })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data && data.ok) {
+              const row = btn.closest('.top-alert');
+              if (row) row.remove();
+            }
+          })
+          .catch(function() {});
+      }
+    </script>
+    {% endif %}
     <div class="topbar">
       <div class="search-bar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
