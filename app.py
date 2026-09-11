@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.27'
+VERSAO = '1.19.28'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -1037,13 +1037,15 @@ def _lembrete_para_exibir(l, hoje=None):
 
 _BRASIL_TZ = timezone(timedelta(hours=-3))
 
+AGENDA_DIAS_JANELA = 7  # até quantos dias à frente uma reunião já aparece no aviso do topo
+
 def _reunioes_hoje_amanha(u, hoje=None):
-    """Reuniões de hoje/amanhã a partir do link ICS da agenda pessoal
-    (Outlook/Google, ver campo agenda_ics_url) — cacheia o resultado por 20
-    minutos (agenda_cache_json/agenda_cache_em) pra não buscar a URL
-    externa a cada carregamento de página. Nunca deixa a agenda fora do ar
-    ou mal configurada quebrar a tela: qualquer erro cai no cache antigo
-    (ou lista vazia, se nunca buscou)."""
+    """Reuniões dos próximos AGENDA_DIAS_JANELA dias a partir do link ICS da
+    agenda pessoal (Outlook/Google, ver campo agenda_ics_url) — cacheia o
+    resultado por 20 minutos (agenda_cache_json/agenda_cache_em) pra não
+    buscar a URL externa a cada carregamento de página. Nunca deixa a
+    agenda fora do ar ou mal configurada quebrar a tela: qualquer erro cai
+    no cache antigo (ou lista vazia, se nunca buscou)."""
     if not u.agenda_ics_url:
         return []
     hoje = hoje or date.today()
@@ -1053,7 +1055,8 @@ def _reunioes_hoje_amanha(u, hoje=None):
             resp = _requests.get(u.agenda_ics_url, timeout=8)
             resp.raise_for_status()
             cal = _icalendar.Calendar.from_ical(resp.content)
-            ocorrencias = _recurring_ical_events.of(cal).between(hoje, hoje + timedelta(days=2))
+            fim_janela = hoje + timedelta(days=AGENDA_DIAS_JANELA)
+            ocorrencias = _recurring_ical_events.of(cal).between(hoje, fim_janela + timedelta(days=1))
             eventos = []
             for ev in ocorrencias:
                 inicio = ev.get('dtstart').dt
@@ -1065,14 +1068,20 @@ def _reunioes_hoje_amanha(u, hoje=None):
                 else:
                     dia = inicio
                     hora = None
-                if dia not in (hoje, hoje + timedelta(days=1)):
+                dias_para = (dia - hoje).days
+                if dias_para < 0 or dias_para > AGENDA_DIAS_JANELA:
                     continue
+                if dias_para == 0:
+                    label = 'HOJE'
+                elif dias_para == 1:
+                    label = 'AMANHÃ'
+                else:
+                    label = f'EM {dias_para} DIAS ({dia.strftime("%d/%m")})'
                 eventos.append({
                     'titulo': str(ev.get('summary') or 'Sem título'),
-                    'hora': hora,
-                    'status': 'hoje' if dia == hoje else 'amanha',
+                    'hora': hora, 'dias_para': dias_para, 'label': label,
                 })
-            eventos.sort(key=lambda e: (e['status'] != 'hoje', e['hora'] or ''))
+            eventos.sort(key=lambda e: (e['dias_para'], e['hora'] or ''))
             u.agenda_cache_json = json.dumps(eventos, ensure_ascii=False)
             u.agenda_cache_em = datetime.utcnow()
             db.session.commit()

@@ -256,7 +256,7 @@
       <div class="top-alert top-alert-reuniao">
         <span class="top-alert-icon">📅</span>
         <span class="top-alert-text">
-          <strong>{{ 'HOJE' if r.status == 'hoje' else 'AMANHÃ' }}{{ ' ' ~ r.hora if r.hora else '' }}:</strong> {{ r.titulo }}
+          <strong>{{ r.label }}{{ ' ' ~ r.hora if r.hora else '' }}:</strong> {{ r.titulo }}
         </span>
         <span class="top-alert-tag">da sua agenda</span>
       </div>
