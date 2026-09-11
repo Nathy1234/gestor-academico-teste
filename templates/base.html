@@ -248,8 +248,8 @@
       {% for l in lembretes_ativos %}
       <div class="top-alert top-alert-lembrete">
         <span class="top-alert-icon">⏰</span>
-        <span class="top-alert-text"><strong>{{ 'HOJE' if l.status == 'hoje' else 'AMANHÃ' }}:</strong> {{ l.titulo }}</span>
-        <span class="top-alert-tag">lembrete pessoal — some sozinho depois da data</span>
+        <span class="top-alert-text"><strong>{{ l.label }}:</strong> {{ l.titulo }}</span>
+        <button type="button" class="top-alert-check" onclick="concluirLembrete({{ l.id }}, this)" title="Marcar que já fiz">✓ Já fiz isso</button>
       </div>
       {% endfor %}
       {% for d in alertas_demandas_ativos %}
@@ -263,6 +263,17 @@
     <script>
       function dispensarAlertaDemanda(id, btn) {
         fetch('/calendario/' + id + '/alerta/dispensar', { method: 'POST' })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data && data.ok) {
+              const row = btn.closest('.top-alert');
+              if (row) row.remove();
+            }
+          })
+          .catch(function() {});
+      }
+      function concluirLembrete(id, btn) {
+        fetch('/calendario/lembretes/' + id + '/concluir', { method: 'POST' })
           .then(function(r) { return r.json(); })
           .then(function(data) {
             if (data && data.ok) {

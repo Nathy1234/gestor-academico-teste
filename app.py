@@ -50,7 +50,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.19'
+VERSAO = '1.19.20'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -865,35 +865,61 @@ class DemandaAlertaDispensa(db.Model):
 class LembreteFixo(db.Model):
     """Lembrete mensal fixo e pessoal (ex: "todo dia 5 eu faço X") — cada
     usuário cadastra os seus, e só ele enxerga (nem admin vê o dos outros).
-    Vira um aviso vermelho fixo no topo do sistema, em todas as telas, um
-    dia antes e no dia do vencimento — sem botão de fechar: só some quando
-    a data passa (ver _status_lembrete_fixo e inject_notificacoes)."""
-    id         = db.Column(db.Integer, primary_key=True)
-    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    titulo     = db.Column(db.String(200), nullable=False)
-    dia_mes    = db.Column(db.Integer, nullable=False)  # 1–31; em mês mais curto, cai no último dia
-    ativo      = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    Vira um aviso vermelho fixo no topo do sistema, em todas as telas, a
+    partir de 1 dia antes do vencimento — e continua aparecendo (inclusive
+    atrasado, contando os dias) até a própria pessoa clicar em "Já fiz
+    isso"; não some sozinho com o tempo (ver _lembrete_pendencia)."""
+    id                       = db.Column(db.Integer, primary_key=True)
+    user_id                  = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    titulo                   = db.Column(db.String(200), nullable=False)
+    dia_mes                  = db.Column(db.Integer, nullable=False)  # 1–31; em mês mais curto, cai no último dia
+    ativo                    = db.Column(db.Boolean, default=True)
+    ultimo_checkin_ocorrencia = db.Column(db.Date)  # última ocorrência que a pessoa já confirmou ter feito
+    created_at               = db.Column(db.DateTime, default=datetime.utcnow)
 
-def _status_lembrete_fixo(dia_mes, hoje=None):
-    """'hoje' | 'amanha' | None conforme a data de hoje em relação ao dia
-    fixo do mês. Ajusta pro último dia do mês quando ele for mais curto
-    (ex: dia_mes=31 cai em 28/29 em fevereiro) e cobre as viradas de mês
-    checando a ocorrência do mês anterior, atual e seguinte."""
+def _lembrete_pendencia(lembrete, hoje=None):
+    """Calcula se um LembreteFixo está pendente hoje. A partir de 1 dia
+    antes do dia fixo do mês ele entra "em janela" e continua pendente -
+    inclusive atrasado, contando os dias corridos - até a pessoa confirmar
+    (ultimo_checkin_ocorrencia); nunca some sozinho só por o tempo passar.
+    Ajusta o dia fixo pro último dia do mês quando ele for mais curto (ex:
+    dia_mes=31 cai em 28/29 em fevereiro). Retorna None quando não há nada
+    pendente ainda, ou um dict {ocorrencia, status, dias_atraso}."""
     hoje = hoje or date.today()
-    for delta_mes in (-1, 0, 1):
+    dia_mes = lembrete.dia_mes
+
+    def _ocorrencia(delta_mes):
         mes, ano = hoje.month + delta_mes, hoje.year
         while mes < 1:
             mes += 12; ano -= 1
         while mes > 12:
             mes -= 12; ano += 1
         ultimo_dia = _calendar.monthrange(ano, mes)[1]
-        ocorrencia = date(ano, mes, min(dia_mes, ultimo_dia))
-        if ocorrencia == hoje:
-            return 'hoje'
-        if ocorrencia == hoje + timedelta(days=1):
-            return 'amanha'
-    return None
+        return date(ano, mes, min(dia_mes, ultimo_dia))
+
+    candidatas = sorted({_ocorrencia(-1), _ocorrencia(0), _ocorrencia(1)})
+    pendente = None
+    for oc in candidatas:
+        if hoje >= oc - timedelta(days=1):
+            pendente = oc  # fica com a mais recente cuja janela já abriu
+    if pendente is None:
+        return None
+    if lembrete.ultimo_checkin_ocorrencia and lembrete.ultimo_checkin_ocorrencia >= pendente:
+        return None
+    dias_atraso = (hoje - pendente).days
+    status = 'amanha' if dias_atraso < 0 else ('hoje' if dias_atraso == 0 else 'atrasado')
+    return {'ocorrencia': pendente, 'status': status, 'dias_atraso': dias_atraso}
+
+def _lembrete_para_exibir(l, hoje=None):
+    """Monta o dict usado tanto no aviso global (inject_notificacoes) quanto
+    na lista de gerenciamento (aba Alertas) — uma função só, pra nunca os
+    dois lugares calcularem a pendência de um jeito diferente."""
+    pend = _lembrete_pendencia(l, hoje)
+    if not pend:
+        return {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes, 'status': None, 'dias_atraso': 0, 'label': None}
+    label = {'hoje': 'HOJE', 'amanha': 'AMANHÃ'}.get(pend['status'], f"ATRASADO {pend['dias_atraso']}D")
+    return {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes,
+            'status': pend['status'], 'dias_atraso': pend['dias_atraso'], 'label': label}
 
 STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'em_andamento', 'inserida', 'liberada_moodle', 'liberada_inova')
 # 'em_curadoria' saiu das opções (não é mais escolhível), mas o label/cor
@@ -1331,13 +1357,12 @@ def inject_notificacoes():
             .order_by(Course.created_at.desc()).all()
 
     # Lembretes mensais fixos e pessoais — só os do próprio usuário, só os
-    # que caem em "amanhã" ou "hoje" (ver _status_lembrete_fixo). Sem opção
-    # de fechar: somem sozinhos quando a data passa.
-    lembretes_ativos = []
-    for l in LembreteFixo.query.filter_by(user_id=u.id, ativo=True).order_by(LembreteFixo.dia_mes).all():
-        status = _status_lembrete_fixo(l.dia_mes)
-        if status:
-            lembretes_ativos.append({'id': l.id, 'titulo': l.titulo, 'status': status})
+    # que estão pendentes (ver _lembrete_pendencia). Não somem sozinhos: só
+    # saem daqui quando a própria pessoa clica em "Já fiz isso".
+    lembretes_ativos = [
+        d for l in LembreteFixo.query.filter_by(user_id=u.id, ativo=True).order_by(LembreteFixo.dia_mes).all()
+        for d in [_lembrete_para_exibir(l)] if d['status']
+    ]
 
     # Avisos manuais de Demanda do Calendário — visíveis pra quem enxerga o
     # Calendário, exceto quem já dispensou (clicou pra sumir) este aviso.
@@ -4988,7 +5013,7 @@ def calendario():
     meus_lembretes = []
     if aba == 'alertas':
         meus_lembretes = [
-            {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes, 'status': _status_lembrete_fixo(l.dia_mes)}
+            _lembrete_para_exibir(l)
             for l in LembreteFixo.query.filter_by(user_id=u.id).order_by(LembreteFixo.dia_mes).all()
         ]
     tipo_detalhe = request.args.get('tipo') or ''  # nome do Tipo selecionado — mostra o resumo só dele
@@ -5227,6 +5252,38 @@ def calendario_lembrete_novo():
     db.session.commit()
     flash('Lembrete adicionado!', 'success')
     return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+
+@app.route('/calendario/lembretes/<int:id>/editar', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_lembrete_editar(id):
+    lembrete = LembreteFixo.query.get_or_404(id)
+    if lembrete.user_id != session['user_id']:
+        flash('Você só pode editar os seus próprios lembretes.', 'danger')
+        return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+    titulo = (request.form.get('titulo') or '').strip()
+    dia_mes = request.form.get('dia_mes', type=int)
+    if not titulo or not dia_mes or not (1 <= dia_mes <= 31):
+        flash('Preencha o título e um dia do mês válido (1 a 31).', 'danger')
+        return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+    lembrete.titulo = titulo[:200]
+    lembrete.dia_mes = dia_mes
+    db.session.commit()
+    flash('Lembrete atualizado!', 'success')
+    return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+
+@app.route('/calendario/lembretes/<int:id>/concluir', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_lembrete_concluir(id):
+    """A pessoa clica em "Já fiz isso" — grava a ocorrência atual como
+    confirmada, e o aviso some até o próximo mês. Chamado via fetch() tanto
+    pelo aviso no topo (qualquer tela) quanto pela lista da aba Alertas."""
+    lembrete = LembreteFixo.query.get_or_404(id)
+    if lembrete.user_id != session['user_id']:
+        return jsonify({'ok': False, 'erro': 'Este lembrete não é seu.'}), 403
+    pend = _lembrete_pendencia(lembrete)
+    lembrete.ultimo_checkin_ocorrencia = pend['ocorrencia'] if pend else date.today()
+    db.session.commit()
+    return jsonify({'ok': True})
 
 @app.route('/calendario/lembretes/<int:id>/excluir', methods=['POST'])
 @perm_check('can_view_calendario')
@@ -7231,6 +7288,7 @@ def _run_migrations():
         ("demanda", "alerta_ativo",        "BOOLEAN DEFAULT false"),
         ("demanda", "alerta_criado_em",    "TIMESTAMP"),
         ("demanda", "alerta_criado_por",   "INTEGER"),
+        ("lembrete_fixo", "ultimo_checkin_ocorrencia", "DATE"),
         ("disciplina_modulo", "submodulo", "VARCHAR(200)"),
         ("disciplina_modulo", "carga",     "VARCHAR(20)"),
         ("disciplina_modulo", "professor", "VARCHAR(200)"),

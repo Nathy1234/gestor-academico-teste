@@ -274,8 +274,9 @@
     <div class="card-body">
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
         Cada pessoa cadastra os seus próprios lembretes ("todo dia X eu faço Y") — só você enxerga os seus,
-        nem admin vê o dos outros. Um dia antes e no dia, aparece um aviso vermelho fixo no topo do sistema,
-        em qualquer tela; não tem botão de fechar, ele some sozinho quando a data passa.
+        nem admin vê o dos outros. A partir de 1 dia antes, aparece um aviso vermelho fixo no topo do sistema,
+        em qualquer tela — e continua aparecendo (mostrando os dias de atraso) até você clicar em
+        "✓ Já fiz isso"; não some sozinho só porque a data passou.
       </div>
       <form method="POST" action="{{ url_for('calendario_lembrete_novo') }}" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:18px;flex-wrap:wrap">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -304,12 +305,18 @@
               <span class="badge" style="background:#dc262620;color:#dc2626">É hoje</span>
               {% elif l.status == 'amanha' %}
               <span class="badge" style="background:#dc262620;color:#dc2626">É amanhã</span>
+              {% elif l.status == 'atrasado' %}
+              <span class="badge" style="background:#dc262620;color:#dc2626">Atrasado {{ l.dias_atraso }}d</span>
               {% else %}
               <span class="badge" style="background:var(--border);color:var(--text-muted)">—</span>
               {% endif %}
             </td>
             <td style="white-space:nowrap">
-              <form method="POST" action="{{ url_for('calendario_lembrete_excluir', id=l.id) }}" onsubmit="return confirm('Excluir este lembrete?')">
+              {% if l.status %}
+              <button type="button" class="btn btn-primary btn-sm" onclick="calLembreteConcluir({{ l.id }})">✓ Concluí</button>
+              {% endif %}
+              <button type="button" class="btn btn-secondary btn-sm" onclick="calLembreteEditarAbrir({{ l.id }})">Editar</button>
+              <form method="POST" action="{{ url_for('calendario_lembrete_excluir', id=l.id) }}" style="display:inline" onsubmit="return confirm('Excluir este lembrete?')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
                 <button type="submit" class="btn btn-danger btn-sm">Excluir</button>
@@ -324,6 +331,57 @@
       {% endif %}
     </div>
   </div>
+
+  <script>const CAL_LEMBRETES = {{ meus_lembretes|tojson }};</script>
+
+  <!-- ── MODAL: EDITAR LEMBRETE ── -->
+  <div id="calLembreteModalOverlay" class="dash-modal-overlay" style="display:none" onclick="if(event.target===this) calLembreteEditarFechar()">
+    <div class="dash-modal" style="max-width:380px">
+      <div class="dash-modal-header">
+        <div class="card-title">Editar lembrete</div>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="calLembreteEditarFechar()">✕</button>
+      </div>
+      <form id="calLembreteForm" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar_para" id="calLembreteVoltar" value="">
+        <div class="dash-modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div class="form-group">
+            <label>O que é</label>
+            <input type="text" name="titulo" id="calLembreteTitulo" maxlength="200" required>
+          </div>
+          <div class="form-group">
+            <label>Dia do mês</label>
+            <input type="number" name="dia_mes" id="calLembreteDia" min="1" max="31" required>
+          </div>
+        </div>
+        <div class="dash-modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="calLembreteEditarFechar()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function calLembreteEditarAbrir(id) {
+      const l = CAL_LEMBRETES.find(function(x) { return x.id === id; });
+      if (!l) return;
+      document.getElementById('calLembreteTitulo').value = l.titulo;
+      document.getElementById('calLembreteDia').value = l.dia_mes;
+      document.getElementById('calLembreteForm').action = '/calendario/lembretes/' + id + '/editar';
+      document.getElementById('calLembreteVoltar').value = window.location.pathname + window.location.search;
+      document.getElementById('calLembreteModalOverlay').style.display = 'flex';
+    }
+    function calLembreteEditarFechar() {
+      document.getElementById('calLembreteModalOverlay').style.display = 'none';
+    }
+    function calLembreteConcluir(id) {
+      fetch('/calendario/lembretes/' + id + '/concluir', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { if (data && data.ok) location.reload(); })
+        .catch(function() {});
+    }
+  </script>
 
   {% else %}
   <!-- ═══════════════════════ ABA: DISCIPLINAS POR TIPO ═══════════════════════ -->
