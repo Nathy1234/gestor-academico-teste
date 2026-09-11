@@ -41,7 +41,8 @@ def _load_env_var(key):
 
 # Carrega do .env (se não estiverem no ambiente) apenas as chaves de serviços
 # externos — nunca SECRET_KEY/DATABASE_URL, pra manter SQLite local por padrão.
-for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
+for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD',
+               'ZAPI_INSTANCE_ID', 'ZAPI_TOKEN', 'ZAPI_CLIENT_TOKEN'):
     if not os.environ.get(_chave):
         _val = _load_env_var(_chave)
         if _val and _val != 'sua-chave-aqui':
@@ -50,7 +51,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.20'
+VERSAO = '1.19.21'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -319,6 +320,11 @@ limiter = Limiter(get_remote_address, app=app, storage_uri='memory://', default_
 EMAIL_SMTP_USER = os.environ.get('EMAIL_SMTP_USER')
 EMAIL_SMTP_PASSWORD = os.environ.get('EMAIL_SMTP_PASSWORD')
 
+# ─── WHATSAPP (Z-API ou compatível) ─────────────────────────────────────────────
+ZAPI_INSTANCE_ID = os.environ.get('ZAPI_INSTANCE_ID')
+ZAPI_TOKEN = os.environ.get('ZAPI_TOKEN')
+ZAPI_CLIENT_TOKEN = os.environ.get('ZAPI_CLIENT_TOKEN')
+
 def enviar_email(destinatario, assunto, texto):
     """Envia e-mail via Gmail SMTP. Se EMAIL_SMTP_USER/PASSWORD não estiverem
     configurados, não falha — só registra no console, o que permite testar os
@@ -379,6 +385,40 @@ def enviar_email_com_anexo(destinatario, assunto, texto, anexo_bytes, anexo_nome
         print(f'[ERRO EMAIL] {e}')
         return False
 
+def _telefone_whatsapp_normalizado(telefone):
+    """Só dígitos, com DDI 55 na frente se a pessoa não tiver digitado
+    (Z-API espera o telefone assim, ex: 5544999998888)."""
+    digitos = _re.sub(r'\D', '', telefone or '')
+    if digitos and not digitos.startswith('55'):
+        digitos = '55' + digitos
+    return digitos
+
+def enviar_whatsapp(telefone, mensagem):
+    """Envia uma mensagem de WhatsApp via Z-API (ou provedor compatível com a
+    mesma rota send-text). Se ZAPI_INSTANCE_ID/TOKEN não estiverem
+    configurados, não falha — só registra no console, igual enviar_email faz
+    com o SMTP, pra dar pra testar o fluxo local sem conta configurada."""
+    telefone = _telefone_whatsapp_normalizado(telefone)
+    if not telefone:
+        return False
+    if not (ZAPI_INSTANCE_ID and ZAPI_TOKEN):
+        try:
+            print(f'[WHATSAPP SIMULADO - ZAPI_INSTANCE_ID/TOKEN nao configurados]\nPara: {telefone}\n\n{mensagem}\n')
+        except UnicodeEncodeError:
+            pass  # console local (Windows/cp1252) pode não engolir emoji — nunca deve derrubar o envio por causa disso
+        return True
+    try:
+        url = f'https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text'
+        headers = {'Client-Token': ZAPI_CLIENT_TOKEN} if ZAPI_CLIENT_TOKEN else {}
+        resp = _requests.post(url, json={'phone': telefone, 'message': mensagem}, headers=headers, timeout=15)
+        if resp.status_code >= 400:
+            print(f'[ERRO WHATSAPP] {resp.status_code} {resp.text[:300]}')
+            return False
+        return True
+    except Exception as e:
+        print(f'[ERRO WHATSAPP] {e}')
+        return False
+
 def _reset_senha_serializer():
     return URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='reset-senha')
 
@@ -398,6 +438,7 @@ class User(db.Model):
     equipe       = db.Column(db.Boolean, default=True)  # faz parte da equipe?
     foto         = db.Column(db.LargeBinary)  # foto de perfil de exibição
     foto_mimetype = db.Column(db.String(50))
+    telefone_whatsapp = db.Column(db.String(30))  # opcional — só usado se a pessoa optar por receber aviso no WhatsApp
     ultimo_login = db.Column(db.DateTime)  # usado pra listar colaboradores inativos e avisar quem voltou
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -827,6 +868,11 @@ class Demanda(db.Model):
     alerta_ativo      = db.Column(db.Boolean, default=False)
     alerta_criado_em  = db.Column(db.DateTime)
     alerta_criado_por = db.Column(db.Integer, db.ForeignKey('user.id'))
+    # Opcional, escolhido em cada disparo: manda WhatsApp (ver enviar_whatsapp)
+    # pros responsáveis que tiverem telefone cadastrado — enviado uma vez só
+    # por disparo, pelo cron diário (alerta_whatsapp_enviado zera a cada novo aviso).
+    alerta_whatsapp          = db.Column(db.Boolean, default=False)
+    alerta_whatsapp_enviado  = db.Column(db.Boolean, default=False)
 
     autor = db.relationship('User', foreign_keys=[created_by])
 
@@ -875,6 +921,10 @@ class LembreteFixo(db.Model):
     dia_mes                  = db.Column(db.Integer, nullable=False)  # 1–31; em mês mais curto, cai no último dia
     ativo                    = db.Column(db.Boolean, default=True)
     ultimo_checkin_ocorrencia = db.Column(db.Date)  # última ocorrência que a pessoa já confirmou ter feito
+    # Opcional: além do aviso no sistema, manda WhatsApp (ver enviar_whatsapp)
+    # pro telefone cadastrado da própria pessoa, uma vez por ocorrência pendente.
+    avisar_whatsapp          = db.Column(db.Boolean, default=False)
+    ultimo_whatsapp_ocorrencia = db.Column(db.Date)
     created_at               = db.Column(db.DateTime, default=datetime.utcnow)
 
 def _lembrete_pendencia(lembrete, hoje=None):
@@ -916,10 +966,12 @@ def _lembrete_para_exibir(l, hoje=None):
     dois lugares calcularem a pendência de um jeito diferente."""
     pend = _lembrete_pendencia(l, hoje)
     if not pend:
-        return {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes, 'status': None, 'dias_atraso': 0, 'label': None}
+        return {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes, 'status': None, 'dias_atraso': 0,
+                'label': None, 'avisar_whatsapp': l.avisar_whatsapp}
     label = {'hoje': 'HOJE', 'amanha': 'AMANHÃ'}.get(pend['status'], f"ATRASADO {pend['dias_atraso']}D")
     return {'id': l.id, 'titulo': l.titulo, 'dia_mes': l.dia_mes,
-            'status': pend['status'], 'dias_atraso': pend['dias_atraso'], 'label': label}
+            'status': pend['status'], 'dias_atraso': pend['dias_atraso'], 'label': label,
+            'avisar_whatsapp': l.avisar_whatsapp}
 
 STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'em_andamento', 'inserida', 'liberada_moodle', 'liberada_inova')
 # 'em_curadoria' saiu das opções (não é mais escolhível), mas o label/cor
@@ -1582,6 +1634,19 @@ def minha_conta():
             flash('Senha alterada com sucesso!', 'success')
             return redirect(url_for('dashboard'))
     return render_template('minha_conta.html', u=u)
+
+@app.route('/minha-conta/whatsapp', methods=['POST'])
+@login_required
+def minha_conta_whatsapp():
+    """Telefone opcional, usado só se a pessoa marcar 'avisar por WhatsApp
+    também' em algum lembrete/aviso — sem telefone cadastrado, esse aviso
+    simplesmente não é enviado (ver _enviar_avisos_whatsapp_pendentes)."""
+    u = User.query.get(session['user_id'])
+    telefone = (request.form.get('telefone_whatsapp') or '').strip()
+    u.telefone_whatsapp = telefone[:30] or None
+    db.session.commit()
+    flash('Telefone atualizado!', 'success')
+    return redirect(url_for('minha_conta'))
 
 # ─── DASHBOARD ─────────────────────────────────────────────────────────────────
 
@@ -5001,6 +5066,7 @@ def calendario():
             'pode_editar': d.pode_editar(u),
             'pode_registrar_status': d.pode_registrar_status(u),
             'alerta_ativo': d.alerta_ativo, 'alerta_texto': d.alerta_texto or '',
+            'alerta_whatsapp': d.alerta_whatsapp,
         }
         for d in set(demandas_mes) | set(lista_demandas)
     }
@@ -5016,6 +5082,7 @@ def calendario():
             _lembrete_para_exibir(l)
             for l in LembreteFixo.query.filter_by(user_id=u.id).order_by(LembreteFixo.dia_mes).all()
         ]
+    tem_whatsapp = bool(u.telefone_whatsapp)
     tipo_detalhe = request.args.get('tipo') or ''  # nome do Tipo selecionado — mostra o resumo só dele
     ver_arquivadas = request.args.get('arquivadas') == '1'
     trimestre_param = request.args.get('trimestre') or ''
@@ -5069,7 +5136,7 @@ def calendario():
         tipo_detalhe=tipo_detalhe, tipo_resumo=tipo_resumo, todos_tipos_resumo=todos_tipos_resumo,
         SEM_MODULO_LABEL=SEM_MODULO_LABEL,
         ver_arquivadas=ver_arquivadas, total_arquivadas=total_arquivadas,
-        meus_lembretes=meus_lembretes,
+        meus_lembretes=meus_lembretes, tem_whatsapp=tem_whatsapp,
         is_admin=(u.role == 'admin'))
 
 @app.route('/calendario/publico')
@@ -5206,6 +5273,8 @@ def calendario_alertar(id):
     demanda.alerta_texto = texto[:500] or None
     demanda.alerta_criado_em = datetime.utcnow()
     demanda.alerta_criado_por = u.id
+    demanda.alerta_whatsapp = request.form.get('alerta_whatsapp') == 'on'
+    demanda.alerta_whatsapp_enviado = False
     DemandaAlertaDispensa.query.filter_by(demanda_id=demanda.id).delete()
     db.session.commit()
     log_action(u.id, u.username, 'alertar', 'demanda', demanda.id, demanda.titulo)
@@ -5248,7 +5317,8 @@ def calendario_lembrete_novo():
     if not titulo or not dia_mes or not (1 <= dia_mes <= 31):
         flash('Preencha o título e um dia do mês válido (1 a 31).', 'danger')
         return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
-    db.session.add(LembreteFixo(user_id=session['user_id'], titulo=titulo[:200], dia_mes=dia_mes))
+    db.session.add(LembreteFixo(user_id=session['user_id'], titulo=titulo[:200], dia_mes=dia_mes,
+                                 avisar_whatsapp=request.form.get('avisar_whatsapp') == 'on'))
     db.session.commit()
     flash('Lembrete adicionado!', 'success')
     return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
@@ -5267,6 +5337,7 @@ def calendario_lembrete_editar(id):
         return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
     lembrete.titulo = titulo[:200]
     lembrete.dia_mes = dia_mes
+    lembrete.avisar_whatsapp = request.form.get('avisar_whatsapp') == 'on'
     db.session.commit()
     flash('Lembrete atualizado!', 'success')
     return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
@@ -6239,6 +6310,37 @@ def api_eventos_pendentes_ocultar():
         for e in eventos
     ]})
 
+def _enviar_avisos_whatsapp_pendentes():
+    """Roda uma vez por dia (junto do cron de backup, ver cron_backup):
+    manda WhatsApp pra quem optou em cada lembrete/aviso — só uma vez por
+    ocorrência/disparo, mesmo rodando todo dia (ver ultimo_whatsapp_ocorrencia
+    e alerta_whatsapp_enviado). Nunca deixa a falta de telefone ou de
+    ZAPI configurado quebrar o cron (enviar_whatsapp já é à prova disso)."""
+    enviados_lembretes = 0
+    for l in LembreteFixo.query.filter_by(ativo=True, avisar_whatsapp=True).all():
+        pend = _lembrete_pendencia(l)
+        if not pend or l.ultimo_whatsapp_ocorrencia == pend['ocorrencia']:
+            continue
+        dono = User.query.get(l.user_id)
+        if dono and dono.telefone_whatsapp:
+            label = {'hoje': 'hoje', 'amanha': 'amanhã'}.get(pend['status'], f"atrasado {pend['dias_atraso']} dia(s)")
+            if enviar_whatsapp(dono.telefone_whatsapp,
+                                f'⏰ Lembrete do Gestor Acadêmico — {label}: {l.titulo}'):
+                enviados_lembretes += 1
+        l.ultimo_whatsapp_ocorrencia = pend['ocorrencia']
+    db.session.commit()
+
+    enviados_demandas = 0
+    for d in Demanda.query.filter_by(alerta_ativo=True, alerta_whatsapp=True, alerta_whatsapp_enviado=False).all():
+        for u in d.responsaveis_usuarios():
+            if u.telefone_whatsapp:
+                texto = f'🔔 Aviso da equipe (Gestor Acadêmico) — {d.titulo}: {d.alerta_texto or "confira a demanda no Calendário."}'
+                if enviar_whatsapp(u.telefone_whatsapp, texto):
+                    enviados_demandas += 1
+        d.alerta_whatsapp_enviado = True
+    db.session.commit()
+    return {'lembretes': enviados_lembretes, 'demandas': enviados_demandas}
+
 @app.route('/cron/backup')
 def cron_backup():
     """Chamada automaticamente pelo Vercel Cron (veja vercel.json). Como o
@@ -6246,13 +6348,20 @@ def cron_backup():
     diário e o arquivamento de logs precisam de um gatilho externo como esse,
     em vez da thread usada quando roda local (backup_scheduler). Rodar todo
     dia também mantém o projeto Supabase "ativo", evitando a pausa automática
-    por inatividade do plano gratuito."""
+    por inatividade do plano gratuito. Aproveita a mesma chamada diária pra
+    também mandar os avisos de WhatsApp pendentes (ver _enviar_avisos_whatsapp_pendentes)."""
     secret = os.environ.get('CRON_SECRET')
     if secret and request.headers.get('Authorization') != f'Bearer {secret}':
         return 'Não autorizado', 401
     rec = make_backup(tipo='auto')
     qtd_arquivados = arquivar_logs_antigos()
-    return jsonify({'backup_id': rec.id, 'tamanho_kb': rec.size_kb, 'logs_arquivados': qtd_arquivados})
+    try:
+        whatsapp_enviados = _enviar_avisos_whatsapp_pendentes()
+    except Exception as e:
+        print(f'[ERRO CRON WHATSAPP] {e}')
+        whatsapp_enviados = None
+    return jsonify({'backup_id': rec.id, 'tamanho_kb': rec.size_kb, 'logs_arquivados': qtd_arquivados,
+                     'whatsapp_enviados': whatsapp_enviados})
 
 # ─── SEED DATA ─────────────────────────────────────────────────────────────────
 
@@ -7288,7 +7397,11 @@ def _run_migrations():
         ("demanda", "alerta_ativo",        "BOOLEAN DEFAULT false"),
         ("demanda", "alerta_criado_em",    "TIMESTAMP"),
         ("demanda", "alerta_criado_por",   "INTEGER"),
+        ("demanda", "alerta_whatsapp",         "BOOLEAN DEFAULT false"),
+        ("demanda", "alerta_whatsapp_enviado", "BOOLEAN DEFAULT false"),
         ("lembrete_fixo", "ultimo_checkin_ocorrencia", "DATE"),
+        ("lembrete_fixo", "avisar_whatsapp", "BOOLEAN DEFAULT false"),
+        ("lembrete_fixo", "ultimo_whatsapp_ocorrencia", "DATE"),
         ("disciplina_modulo", "submodulo", "VARCHAR(200)"),
         ("disciplina_modulo", "carga",     "VARCHAR(20)"),
         ("disciplina_modulo", "professor", "VARCHAR(200)"),
@@ -7326,7 +7439,8 @@ def _run_migrations():
                            ("dashboard_prefs", "TEXT"),
                            ("notas_pessoais", "TEXT"),
                            ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
-                           ("foto_mimetype", "VARCHAR(50)"), ("ultimo_login", "TIMESTAMP")]:
+                           ("foto_mimetype", "VARCHAR(50)"), ("ultimo_login", "TIMESTAMP"),
+                           ("telefone_whatsapp", "VARCHAR(30)")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'

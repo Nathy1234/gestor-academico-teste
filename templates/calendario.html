@@ -289,8 +289,16 @@
           <label>Dia do mês</label>
           <input type="number" name="dia_mes" min="1" max="31" required>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;margin-bottom:9px">
+          <input type="checkbox" name="avisar_whatsapp"> Avisar por WhatsApp também
+        </label>
         <button type="submit" class="btn btn-primary">Adicionar</button>
       </form>
+      {% if not tem_whatsapp %}
+      <div style="font-size:11px;color:var(--text-muted);margin:-10px 0 16px">
+        Pra avisar por WhatsApp, cadastre seu telefone em <a href="{{ url_for('minha_conta') }}">Minha Conta</a>.
+      </div>
+      {% endif %}
 
       {% if meus_lembretes %}
       <table class="table">
@@ -353,6 +361,9 @@
             <label>Dia do mês</label>
             <input type="number" name="dia_mes" id="calLembreteDia" min="1" max="31" required>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500">
+            <input type="checkbox" name="avisar_whatsapp" id="calLembreteWhatsapp"> Avisar por WhatsApp também
+          </label>
         </div>
         <div class="dash-modal-footer">
           <button type="button" class="btn btn-secondary" onclick="calLembreteEditarFechar()">Cancelar</button>
@@ -368,6 +379,7 @@
       if (!l) return;
       document.getElementById('calLembreteTitulo').value = l.titulo;
       document.getElementById('calLembreteDia').value = l.dia_mes;
+      document.getElementById('calLembreteWhatsapp').checked = !!l.avisar_whatsapp;
       document.getElementById('calLembreteForm').action = '/calendario/lembretes/' + id + '/editar';
       document.getElementById('calLembreteVoltar').value = window.location.pathname + window.location.search;
       document.getElementById('calLembreteModalOverlay').style.display = 'flex';
@@ -737,9 +749,12 @@
           <label>Mensagem do aviso (aparece em vermelho no topo, pra todo mundo)</label>
           <textarea name="alerta_texto" id="calAlertaTexto" rows="3" maxlength="500" style="width:100%;resize:vertical" placeholder="Ex: precisamos fechar isso até sexta, ajudem quem puder"></textarea>
         </div>
-        <div style="font-size:11px;color:var(--text-muted)">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
           Fica visível pra todo mundo até cada um clicar pra dispensar — dispensar não avisa os outros.
         </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500">
+          <input type="checkbox" name="alerta_whatsapp" id="calAlertaWhatsapp"> Avisar por WhatsApp também (só quem tem telefone cadastrado)
+        </label>
       </div>
       <div class="dash-modal-footer">
         <button type="button" class="btn btn-secondary" onclick="calAlertarFechar()">Cancelar</button>
@@ -1141,6 +1156,7 @@ select.cal-disc-badge-liberada_inova  { background:#ede9fe; color:#6d28d9; }
     if (!dem) return;
     document.getElementById('calAlertaModalTitulo').textContent = 'Avisar equipe — ' + dem.titulo;
     document.getElementById('calAlertaTexto').value = dem.alerta_texto || '';
+    document.getElementById('calAlertaWhatsapp').checked = !!dem.alerta_whatsapp;
     document.getElementById('calAlertaForm').action = '/calendario/' + id + '/alertar';
     document.getElementById('calAlertaVoltar').value = window.location.pathname + window.location.search;
     document.getElementById('calAlertaModalOverlay').style.display = 'flex';
