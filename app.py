@@ -51,7 +51,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.25'
+VERSAO = '1.19.26'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -7626,6 +7626,18 @@ def restringir_somente_erp_moodle():
     u = User.query.get(session['user_id'])
     if u and u.is_restrito_erp_moodle():
         return redirect(url_for('erp_moodle'))
+
+@app.after_request
+def sem_cache_paginas_dinamicas(response):
+    """Sem isso, o navegador (ou algum cache no meio do caminho) pode
+    mostrar uma versão antiga da página numa navegação normal — foi o que
+    fazia o aviso vermelho de Demanda/lembrete sumir sozinho até dar um
+    refresh forte. Arquivos estáticos (/static/...) já têm cache-busting
+    por versão (?v=) e continuam cacheáveis normalmente."""
+    if not request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+    return response
 
 @app.errorhandler(Exception)
 def erro_nao_tratado(e):
