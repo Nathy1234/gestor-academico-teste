@@ -273,14 +273,24 @@
     <div class="card-header"><div class="card-title" style="font-size:15px">WhatsApp</div></div>
     <div class="card-body">
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
-        Telefone opcional — só é usado se você marcar "avisar por WhatsApp também" em algum lembrete ou aviso abaixo.
+        Opcional — só é usado se você marcar "avisar por WhatsApp também" em algum lembrete ou aviso abaixo.
+        Gratuito, via <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a>. Pra ativar (1 minuto, no seu celular):
       </div>
+      <ol style="font-size:11.5px;color:var(--text-muted);margin:0 0 14px 18px;padding:0;line-height:1.6">
+        <li>Salve o contato <strong>+34 644 59 71 07</strong> como "CallMeBot" no seu WhatsApp.</li>
+        <li>Mande pra ele, pelo WhatsApp, a mensagem: <em>"I allow callmebot to send me messages"</em>.</li>
+        <li>Ele responde com sua <strong>apikey</strong> (alguns segundos a poucos minutos) — cola ela abaixo, junto com seu telefone.</li>
+      </ol>
       <form method="POST" action="{{ url_for('minha_conta_whatsapp') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
-        <div class="form-group" style="flex:1;min-width:180px;margin:0">
+        <div class="form-group" style="flex:1;min-width:150px;margin:0">
           <label>Telefone (com DDD)</label>
           <input type="text" name="telefone_whatsapp" value="{{ telefone_whatsapp }}" placeholder="Ex: 44999998888" maxlength="30">
+        </div>
+        <div class="form-group" style="flex:1;min-width:150px;margin:0">
+          <label>Apikey do CallMeBot</label>
+          <input type="text" name="whatsapp_apikey" value="{{ whatsapp_apikey }}" placeholder="Ex: 123456" maxlength="50">
         </div>
         <button type="submit" class="btn btn-primary">Salvar</button>
       </form>
