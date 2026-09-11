@@ -269,6 +269,56 @@
 
   {% elif aba == 'alertas' %}
   <!-- ═══════════════════════ ABA: ALERTAS (lembretes fixos pessoais) ═══════════════════════ -->
+  <div class="card" style="max-width:520px;margin-bottom:16px">
+    <div class="card-header"><div class="card-title" style="font-size:15px">WhatsApp</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+        Telefone opcional — só é usado se você marcar "avisar por WhatsApp também" em algum lembrete ou aviso abaixo.
+      </div>
+      <form method="POST" action="{{ url_for('minha_conta_whatsapp') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+        <div class="form-group" style="flex:1;min-width:180px;margin:0">
+          <label>Telefone (com DDD)</label>
+          <input type="text" name="telefone_whatsapp" value="{{ telefone_whatsapp }}" placeholder="Ex: 44999998888" maxlength="30">
+        </div>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </form>
+    </div>
+  </div>
+
+  {% if is_admin %}
+  <div class="card" style="max-width:520px;margin-bottom:16px">
+    <div class="card-header"><div class="card-title" style="font-size:15px">Notificações no WhatsApp (admin)</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        Fora dos lembretes e avisos de Demanda abaixo (que já têm opção própria em cada um), escolha o que mais
+        você quer receber no seu WhatsApp.
+      </div>
+      <form method="POST" action="{{ url_for('minha_conta_whatsapp_prefs') }}" style="display:flex;flex-direction:column;gap:10px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="pref_disciplinas_concluidas" {% if whatsapp_prefs.disciplinas_concluidas %}checked{% endif %}>
+          Disciplinas marcadas como concluídas no ERP Moodle
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="pref_erros_plataforma" {% if whatsapp_prefs.erros_plataforma %}checked{% endif %}>
+          Erros da plataforma (quando algo quebra em produção)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="pref_sino_diario" {% if whatsapp_prefs.sino_diario %}checked{% endif %}>
+          Resumo diário do sino (disciplinas pendentes, eventos vencendo, solicitações, cursos finalizados)
+        </label>
+        <div style="font-size:10.5px;color:var(--text-muted)">
+          As duas primeiras avisam na hora; o resumo do sino é só 1x por dia, junto do backup automático.
+        </div>
+        <button type="submit" class="btn btn-primary" style="align-self:flex-start;margin-top:6px">Salvar preferências</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card" style="max-width:520px">
     <div class="card-header"><div class="card-title" style="font-size:15px">Meus lembretes mensais fixos</div></div>
     <div class="card-body">
@@ -296,7 +346,7 @@
       </form>
       {% if not tem_whatsapp %}
       <div style="font-size:11px;color:var(--text-muted);margin:-10px 0 16px">
-        Pra avisar por WhatsApp, cadastre seu telefone em <a href="{{ url_for('minha_conta') }}">Minha Conta</a>.
+        Pra avisar por WhatsApp, cadastre seu telefone no card "WhatsApp" acima.
       </div>
       {% endif %}
 

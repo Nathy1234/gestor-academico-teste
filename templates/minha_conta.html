@@ -10,62 +10,11 @@
   </div>
 
   <div class="card" style="margin-bottom:20px">
-    <div class="card-header"><div class="card-title">WhatsApp</div></div>
-    <div class="card-body">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
-        Opcional — só é usado se você marcar "avisar por WhatsApp também" em algum lembrete ou aviso.
-        Gratuito, via <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a>. Pra ativar (1 minuto, no seu celular):
-      </div>
-      <ol style="font-size:11.5px;color:var(--text-muted);margin:0 0 14px 18px;padding:0;line-height:1.6">
-        <li>Salve o contato <strong>+34 644 59 71 07</strong> como "CallMeBot" no seu WhatsApp.</li>
-        <li>Mande pra ele, pelo WhatsApp, a mensagem: <em>"I allow callmebot to send me messages"</em>.</li>
-        <li>Ele responde com sua <strong>apikey</strong> (alguns segundos a poucos minutos) — cola ela abaixo, junto com seu telefone.</li>
-      </ol>
-      <form method="POST" action="{{ url_for('minha_conta_whatsapp') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group" style="flex:1;min-width:150px;margin:0">
-          <label>Telefone (com DDD)</label>
-          <input type="text" name="telefone_whatsapp" value="{{ u.telefone_whatsapp or '' }}" placeholder="Ex: 44999998888" maxlength="30">
-        </div>
-        <div class="form-group" style="flex:1;min-width:150px;margin:0">
-          <label>Apikey do CallMeBot</label>
-          <input type="text" name="whatsapp_apikey" value="{{ u.whatsapp_apikey or '' }}" placeholder="Ex: 123456" maxlength="50">
-        </div>
-        <button type="submit" class="btn btn-primary">Salvar</button>
-      </form>
+    <div class="card-body" style="font-size:12.5px;color:var(--text-muted)">
+      As configurações de aviso por WhatsApp (telefone e preferências) agora ficam no
+      <a href="{{ url_for('calendario', aba='alertas') }}">Calendário → aba Alertas</a>, junto com os lembretes e avisos.
     </div>
   </div>
-
-  {% if u.role == 'admin' %}
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header"><div class="card-title">Notificações no WhatsApp (admin)</div></div>
-    <div class="card-body">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-        Fora dos lembretes e avisos de Demanda (que já têm opção própria em cada um), escolha o que mais
-        você quer receber no seu WhatsApp em tempo real.
-      </div>
-      <form method="POST" action="{{ url_for('minha_conta_whatsapp_prefs') }}" style="display:flex;flex-direction:column;gap:10px">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
-          <input type="checkbox" name="pref_disciplinas_concluidas" {% if whatsapp_prefs.disciplinas_concluidas %}checked{% endif %}>
-          Disciplinas marcadas como concluídas no ERP Moodle
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
-          <input type="checkbox" name="pref_erros_plataforma" {% if whatsapp_prefs.erros_plataforma %}checked{% endif %}>
-          Erros da plataforma (quando algo quebra em produção)
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
-          <input type="checkbox" name="pref_sino_diario" {% if whatsapp_prefs.sino_diario %}checked{% endif %}>
-          Resumo diário do sino (disciplinas pendentes, eventos vencendo, solicitações, cursos finalizados)
-        </label>
-        <div style="font-size:10.5px;color:var(--text-muted)">
-          As duas primeiras avisam na hora; o resumo do sino é só 1x por dia, junto do backup automático.
-        </div>
-        <button type="submit" class="btn btn-primary" style="align-self:flex-start;margin-top:6px">Salvar preferências</button>
-      </form>
-    </div>
-  </div>
-  {% endif %}
 
   <div class="card">
     <div class="card-header"><div class="card-title">Alterar senha</div></div>
