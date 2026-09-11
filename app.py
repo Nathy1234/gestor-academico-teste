@@ -42,8 +42,7 @@ def _load_env_var(key):
 
 # Carrega do .env (se não estiverem no ambiente) apenas as chaves de serviços
 # externos — nunca SECRET_KEY/DATABASE_URL, pra manter SQLite local por padrão.
-for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD',
-               'ZAPI_INSTANCE_ID', 'ZAPI_TOKEN', 'ZAPI_CLIENT_TOKEN'):
+for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
     if not os.environ.get(_chave):
         _val = _load_env_var(_chave)
         if _val and _val != 'sua-chave-aqui':
@@ -52,7 +51,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD',
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.22'
+VERSAO = '1.19.23'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -321,10 +320,6 @@ limiter = Limiter(get_remote_address, app=app, storage_uri='memory://', default_
 EMAIL_SMTP_USER = os.environ.get('EMAIL_SMTP_USER')
 EMAIL_SMTP_PASSWORD = os.environ.get('EMAIL_SMTP_PASSWORD')
 
-# ─── WHATSAPP (Z-API ou compatível) ─────────────────────────────────────────────
-ZAPI_INSTANCE_ID = os.environ.get('ZAPI_INSTANCE_ID')
-ZAPI_TOKEN = os.environ.get('ZAPI_TOKEN')
-ZAPI_CLIENT_TOKEN = os.environ.get('ZAPI_CLIENT_TOKEN')
 
 def enviar_email(destinatario, assunto, texto):
     """Envia e-mail via Gmail SMTP. Se EMAIL_SMTP_USER/PASSWORD não estiverem
@@ -394,25 +389,24 @@ def _telefone_whatsapp_normalizado(telefone):
         digitos = '55' + digitos
     return digitos
 
-def enviar_whatsapp(telefone, mensagem):
-    """Envia uma mensagem de WhatsApp via Z-API (ou provedor compatível com a
-    mesma rota send-text). Se ZAPI_INSTANCE_ID/TOKEN não estiverem
-    configurados, não falha — só registra no console, igual enviar_email faz
-    com o SMTP, pra dar pra testar o fluxo local sem conta configurada."""
+def enviar_whatsapp(telefone, apikey, mensagem):
+    """Envia via CallMeBot (gratuito) — cada pessoa ativa o próprio WhatsApp
+    e gera sua apikey (ver instruções em Minha Conta), não tem credencial
+    compartilhada pro sistema todo. Sem telefone/apikey cadastrados, não
+    falha — só registra no console, igual enviar_email faz sem o SMTP."""
     telefone = _telefone_whatsapp_normalizado(telefone)
     if not telefone:
         return False
-    if not (ZAPI_INSTANCE_ID and ZAPI_TOKEN):
+    if not apikey:
         try:
-            print(f'[WHATSAPP SIMULADO - ZAPI_INSTANCE_ID/TOKEN nao configurados]\nPara: {telefone}\n\n{mensagem}\n')
+            print(f'[WHATSAPP SIMULADO - sem apikey do CallMeBot cadastrada]\nPara: {telefone}\n\n{mensagem}\n')
         except UnicodeEncodeError:
             pass  # console local (Windows/cp1252) pode não engolir emoji — nunca deve derrubar o envio por causa disso
         return True
     try:
-        url = f'https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text'
-        headers = {'Client-Token': ZAPI_CLIENT_TOKEN} if ZAPI_CLIENT_TOKEN else {}
-        resp = _requests.post(url, json={'phone': telefone, 'message': mensagem}, headers=headers, timeout=15)
-        if resp.status_code >= 400:
+        resp = _requests.get('https://api.callmebot.com/whatsapp.php',
+                              params={'phone': telefone, 'text': mensagem, 'apikey': apikey}, timeout=15)
+        if resp.status_code >= 400 or 'error' in resp.text.lower():
             print(f'[ERRO WHATSAPP] {resp.status_code} {resp.text[:300]}')
             return False
         return True
@@ -427,7 +421,7 @@ def _notificar_admins_whatsapp(categoria, mensagem):
     try:
         for a in User.query.filter_by(role='admin').all():
             if a.quer_whatsapp(categoria):
-                enviar_whatsapp(a.telefone_whatsapp, mensagem)
+                enviar_whatsapp(a.telefone_whatsapp, a.whatsapp_apikey, mensagem)
     except Exception as e:
         print(f'[ERRO NOTIFICAR ADMINS WHATSAPP] {e}')
 
@@ -487,6 +481,7 @@ class User(db.Model):
     foto         = db.Column(db.LargeBinary)  # foto de perfil de exibição
     foto_mimetype = db.Column(db.String(50))
     telefone_whatsapp = db.Column(db.String(30))  # opcional — só usado se a pessoa optar por receber aviso no WhatsApp
+    whatsapp_apikey = db.Column(db.String(50))  # apikey do CallMeBot (grátis) — gerada na ativação, ver instruções em Minha Conta
     whatsapp_prefs = db.Column(db.Text)  # JSON: {"disciplinas_concluidas": true, "sino_diario": true, "erros_plataforma": true} — só admin configura
     ultimo_login = db.Column(db.DateTime)  # usado pra listar colaboradores inativos e avisar quem voltou
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
@@ -502,8 +497,9 @@ class User(db.Model):
 
     def quer_whatsapp(self, categoria):
         """Só admin tem essas preferências (ver whatsapp_prefs) — precisa
-        também ter telefone_whatsapp cadastrado pra realmente receber algo."""
-        if self.role != 'admin' or not self.telefone_whatsapp:
+        também ter telefone/apikey do CallMeBot cadastrados pra realmente
+        receber algo."""
+        if self.role != 'admin' or not self.telefone_whatsapp or not self.whatsapp_apikey:
             return False
         try:
             prefs = json.loads(self.whatsapp_prefs or '{}')
@@ -1702,14 +1698,17 @@ def minha_conta():
 @app.route('/minha-conta/whatsapp', methods=['POST'])
 @login_required
 def minha_conta_whatsapp():
-    """Telefone opcional, usado só se a pessoa marcar 'avisar por WhatsApp
-    também' em algum lembrete/aviso — sem telefone cadastrado, esse aviso
-    simplesmente não é enviado (ver _enviar_avisos_whatsapp_pendentes)."""
+    """Telefone + apikey do CallMeBot, opcionais — usados só se a pessoa
+    marcar 'avisar por WhatsApp também' em algum lembrete/aviso. Sem os
+    dois cadastrados, esse aviso simplesmente não é enviado (ver
+    _enviar_avisos_whatsapp_pendentes)."""
     u = User.query.get(session['user_id'])
     telefone = (request.form.get('telefone_whatsapp') or '').strip()
+    apikey = (request.form.get('whatsapp_apikey') or '').strip()
     u.telefone_whatsapp = telefone[:30] or None
+    u.whatsapp_apikey = apikey[:50] or None
     db.session.commit()
-    flash('Telefone atualizado!', 'success')
+    flash('WhatsApp atualizado!', 'success')
     return redirect(url_for('minha_conta'))
 
 @app.route('/minha-conta/whatsapp-prefs', methods=['POST'])
@@ -6400,17 +6399,17 @@ def _enviar_avisos_whatsapp_pendentes():
     """Roda uma vez por dia (junto do cron de backup, ver cron_backup):
     manda WhatsApp pra quem optou em cada lembrete/aviso — só uma vez por
     ocorrência/disparo, mesmo rodando todo dia (ver ultimo_whatsapp_ocorrencia
-    e alerta_whatsapp_enviado). Nunca deixa a falta de telefone ou de
-    ZAPI configurado quebrar o cron (enviar_whatsapp já é à prova disso)."""
+    e alerta_whatsapp_enviado). Nunca deixa a falta de telefone/apikey do
+    CallMeBot quebrar o cron (enviar_whatsapp já é à prova disso)."""
     enviados_lembretes = 0
     for l in LembreteFixo.query.filter_by(ativo=True, avisar_whatsapp=True).all():
         pend = _lembrete_pendencia(l)
         if not pend or l.ultimo_whatsapp_ocorrencia == pend['ocorrencia']:
             continue
         dono = User.query.get(l.user_id)
-        if dono and dono.telefone_whatsapp:
+        if dono and dono.telefone_whatsapp and dono.whatsapp_apikey:
             label = {'hoje': 'hoje', 'amanha': 'amanhã'}.get(pend['status'], f"atrasado {pend['dias_atraso']} dia(s)")
-            if enviar_whatsapp(dono.telefone_whatsapp,
+            if enviar_whatsapp(dono.telefone_whatsapp, dono.whatsapp_apikey,
                                 f'⏰ Lembrete do Gestor Acadêmico — {label}: {l.titulo}'):
                 enviados_lembretes += 1
         l.ultimo_whatsapp_ocorrencia = pend['ocorrencia']
@@ -6419,9 +6418,9 @@ def _enviar_avisos_whatsapp_pendentes():
     enviados_demandas = 0
     for d in Demanda.query.filter_by(alerta_ativo=True, alerta_whatsapp=True, alerta_whatsapp_enviado=False).all():
         for u in d.responsaveis_usuarios():
-            if u.telefone_whatsapp:
+            if u.telefone_whatsapp and u.whatsapp_apikey:
                 texto = f'🔔 Aviso da equipe (Gestor Acadêmico) — {d.titulo}: {d.alerta_texto or "confira a demanda no Calendário."}'
-                if enviar_whatsapp(u.telefone_whatsapp, texto):
+                if enviar_whatsapp(u.telefone_whatsapp, u.whatsapp_apikey, texto):
                     enviados_demandas += 1
         d.alerta_whatsapp_enviado = True
     db.session.commit()
@@ -7531,7 +7530,8 @@ def _run_migrations():
                            ("notas_pessoais", "TEXT"),
                            ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
                            ("foto_mimetype", "VARCHAR(50)"), ("ultimo_login", "TIMESTAMP"),
-                           ("telefone_whatsapp", "VARCHAR(30)"), ("whatsapp_prefs", "TEXT")]:
+                           ("telefone_whatsapp", "VARCHAR(30)"), ("whatsapp_prefs", "TEXT"),
+                           ("whatsapp_apikey", "VARCHAR(50)")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
