@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.28'
+VERSAO = '1.19.29'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -1039,49 +1039,57 @@ _BRASIL_TZ = timezone(timedelta(hours=-3))
 
 AGENDA_DIAS_JANELA = 7  # até quantos dias à frente uma reunião já aparece no aviso do topo
 
+def _buscar_reunioes_ics(url, hoje):
+    """Busca e interpreta o link ICS de verdade — deixa a exceção subir (o
+    chamador decide o que fazer: cair pro cache, ou mostrar o erro exato
+    pra pessoa, no botão "Testar agora")."""
+    resp = _requests.get(url, timeout=8, headers={'User-Agent': 'Mozilla/5.0 (compatible; GestorAcademico/1.0)'})
+    resp.raise_for_status()
+    cal = _icalendar.Calendar.from_ical(resp.content)
+    fim_janela = hoje + timedelta(days=AGENDA_DIAS_JANELA)
+    ocorrencias = _recurring_ical_events.of(cal).between(hoje, fim_janela + timedelta(days=1))
+    eventos = []
+    for ev in ocorrencias:
+        inicio = ev.get('dtstart').dt
+        if isinstance(inicio, datetime):
+            if inicio.tzinfo:
+                inicio = inicio.astimezone(_BRASIL_TZ)
+            dia = inicio.date()
+            hora = inicio.strftime('%H:%M')
+        else:
+            dia = inicio
+            hora = None
+        dias_para = (dia - hoje).days
+        if dias_para < 0 or dias_para > AGENDA_DIAS_JANELA:
+            continue
+        if dias_para == 0:
+            label = 'HOJE'
+        elif dias_para == 1:
+            label = 'AMANHÃ'
+        else:
+            label = f'EM {dias_para} DIAS ({dia.strftime("%d/%m")})'
+        eventos.append({
+            'titulo': str(ev.get('summary') or 'Sem título'),
+            'hora': hora, 'dias_para': dias_para, 'label': label,
+        })
+    eventos.sort(key=lambda e: (e['dias_para'], e['hora'] or ''))
+    return eventos
+
 def _reunioes_hoje_amanha(u, hoje=None):
     """Reuniões dos próximos AGENDA_DIAS_JANELA dias a partir do link ICS da
     agenda pessoal (Outlook/Google, ver campo agenda_ics_url) — cacheia o
     resultado por 20 minutos (agenda_cache_json/agenda_cache_em) pra não
     buscar a URL externa a cada carregamento de página. Nunca deixa a
     agenda fora do ar ou mal configurada quebrar a tela: qualquer erro cai
-    no cache antigo (ou lista vazia, se nunca buscou)."""
+    no cache antigo (ou lista vazia, se nunca buscou) — pra ver o erro de
+    verdade, usa o botão "Testar agora" (ver calendario_agenda_ics_testar)."""
     if not u.agenda_ics_url:
         return []
     hoje = hoje or date.today()
     cache_valido = u.agenda_cache_em and (datetime.utcnow() - u.agenda_cache_em) < timedelta(minutes=20)
     if not cache_valido:
         try:
-            resp = _requests.get(u.agenda_ics_url, timeout=8)
-            resp.raise_for_status()
-            cal = _icalendar.Calendar.from_ical(resp.content)
-            fim_janela = hoje + timedelta(days=AGENDA_DIAS_JANELA)
-            ocorrencias = _recurring_ical_events.of(cal).between(hoje, fim_janela + timedelta(days=1))
-            eventos = []
-            for ev in ocorrencias:
-                inicio = ev.get('dtstart').dt
-                if isinstance(inicio, datetime):
-                    if inicio.tzinfo:
-                        inicio = inicio.astimezone(_BRASIL_TZ)
-                    dia = inicio.date()
-                    hora = inicio.strftime('%H:%M')
-                else:
-                    dia = inicio
-                    hora = None
-                dias_para = (dia - hoje).days
-                if dias_para < 0 or dias_para > AGENDA_DIAS_JANELA:
-                    continue
-                if dias_para == 0:
-                    label = 'HOJE'
-                elif dias_para == 1:
-                    label = 'AMANHÃ'
-                else:
-                    label = f'EM {dias_para} DIAS ({dia.strftime("%d/%m")})'
-                eventos.append({
-                    'titulo': str(ev.get('summary') or 'Sem título'),
-                    'hora': hora, 'dias_para': dias_para, 'label': label,
-                })
-            eventos.sort(key=lambda e: (e['dias_para'], e['hora'] or ''))
+            eventos = _buscar_reunioes_ics(u.agenda_ics_url, hoje)
             u.agenda_cache_json = json.dumps(eventos, ensure_ascii=False)
             u.agenda_cache_em = datetime.utcnow()
             db.session.commit()
@@ -1797,6 +1805,24 @@ def calendario_agenda_ics():
     db.session.commit()
     flash('Agenda atualizada!', 'success')
     return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+
+@app.route('/calendario/agenda-ics/testar', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_agenda_ics_testar():
+    """Busca o link ICS na hora (ignora o cache de 20 min) e devolve o que
+    encontrou, ou o erro exato — usado pelo botão "Testar agora", pra
+    diagnosticar sem esperar o cache nem me passar o link."""
+    u = User.query.get(session['user_id'])
+    if not u.agenda_ics_url:
+        return jsonify({'ok': False, 'erro': 'Cadastre o link da agenda antes de testar.'})
+    try:
+        eventos = _buscar_reunioes_ics(u.agenda_ics_url, date.today())
+        u.agenda_cache_json = json.dumps(eventos, ensure_ascii=False)
+        u.agenda_cache_em = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'ok': True, 'eventos': eventos})
+    except Exception as e:
+        return jsonify({'ok': False, 'erro': str(e)[:400]})
 
 @app.route('/minha-conta/whatsapp-prefs', methods=['POST'])
 @admin_required

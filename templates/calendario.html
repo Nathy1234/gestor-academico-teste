@@ -273,7 +273,7 @@
     <div class="card-header"><div class="card-title" style="font-size:15px">Minha Agenda</div></div>
     <div class="card-body">
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
-        Cole o link secreto (formato iCal/ICS) da sua agenda — reuniões de hoje e amanhã aparecem
+        Cole o link secreto (formato iCal/ICS) da sua agenda — reuniões dos próximos 7 dias aparecem
         automaticamente no aviso do topo, sem precisar cadastrar nada aqui à mão.
       </div>
       <details style="margin-bottom:14px">
@@ -296,9 +296,41 @@
           <input type="text" name="agenda_ics_url" value="{{ agenda_ics_url }}" placeholder="https://outlook.office365.com/owa/calendar/.../calendar.ics" maxlength="1000">
         </div>
         <button type="submit" class="btn btn-primary">Salvar</button>
+        <button type="button" class="btn btn-secondary" onclick="calAgendaTestar(this)">Testar agora</button>
       </form>
+      <div id="calAgendaResultado" style="margin-top:12px"></div>
     </div>
   </div>
+
+  <script>
+    function calAgendaTestar(btn) {
+      const resultado = document.getElementById('calAgendaResultado');
+      resultado.innerHTML = '<span style="font-size:11.5px;color:var(--text-muted)">Buscando…</span>';
+      btn.disabled = true;
+      fetch('{{ url_for("calendario_agenda_ics_testar") }}', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          btn.disabled = false;
+          if (!data.ok) {
+            resultado.innerHTML = '<div class="alert alert-danger" style="margin:0">Erro: ' + data.erro + '</div>';
+            return;
+          }
+          if (data.eventos.length === 0) {
+            resultado.innerHTML = '<div style="font-size:11.5px;color:var(--text-muted)">Link funcionou, mas não achei nenhuma reunião nos próximos 7 dias.</div>';
+            return;
+          }
+          const itens = data.eventos.map(function(e) {
+            return '<li>' + e.label + (e.hora ? ' ' + e.hora : '') + ': ' + e.titulo + '</li>';
+          }).join('');
+          resultado.innerHTML = '<div style="font-size:11.5px;color:var(--text)">Encontrei ' + data.eventos.length + ' reunião(ões):</div>' +
+            '<ul style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0 18px;padding:0">' + itens + '</ul>';
+        })
+        .catch(function() {
+          btn.disabled = false;
+          resultado.innerHTML = '<div class="alert alert-danger" style="margin:0">Não consegui testar agora — tenta de novo.</div>';
+        });
+    }
+  </script>
 
   <div class="card" style="max-width:520px;margin-bottom:16px">
     <div class="card-header"><div class="card-title" style="font-size:15px">WhatsApp</div></div>
