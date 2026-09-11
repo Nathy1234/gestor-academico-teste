@@ -7,11 +7,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import HTTPException
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from markupsafe import Markup, escape
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from functools import wraps
 import hashlib, os, secrets, shutil, json, threading, time, io, zipfile, unicodedata as _ucd, re as _re, calendar as _calendar
 import requests as _requests
 from urllib.parse import urlsplit, urlunsplit, parse_qs, urlencode
+import icalendar as _icalendar
+import recurring_ical_events as _recurring_ical_events
 
 def _norm_name(s):
     """Remove acentos e converte para maiúsculo — para comparação de nomes de insersores."""
@@ -51,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.26'
+VERSAO = '1.19.27'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -484,6 +486,9 @@ class User(db.Model):
     telefone_whatsapp = db.Column(db.String(30))  # opcional — só usado se a pessoa optar por receber aviso no WhatsApp
     whatsapp_apikey = db.Column(db.String(50))  # apikey do CallMeBot (grátis) — gerada na ativação, ver instruções no Calendário → Alertas
     whatsapp_prefs = db.Column(db.Text)  # JSON: {"disciplinas_concluidas": true, "sino_diario": true, "erros_plataforma": true} — só admin configura
+    agenda_ics_url = db.Column(db.Text)  # link secreto ICS da agenda pessoal (Outlook/Google) — reuniões de hoje/amanhã viram aviso
+    agenda_cache_json = db.Column(db.Text)  # cache das reuniões já buscadas no link acima, pra não bater na URL a cada carregamento de página
+    agenda_cache_em = db.Column(db.DateTime)
     ultimo_login = db.Column(db.DateTime)  # usado pra listar colaboradores inativos e avisar quem voltou
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -1030,6 +1035,56 @@ def _lembrete_para_exibir(l, hoje=None):
             'status': pend['status'], 'dias_atraso': pend['dias_atraso'], 'label': label,
             'avisar_whatsapp': l.avisar_whatsapp}
 
+_BRASIL_TZ = timezone(timedelta(hours=-3))
+
+def _reunioes_hoje_amanha(u, hoje=None):
+    """Reuniões de hoje/amanhã a partir do link ICS da agenda pessoal
+    (Outlook/Google, ver campo agenda_ics_url) — cacheia o resultado por 20
+    minutos (agenda_cache_json/agenda_cache_em) pra não buscar a URL
+    externa a cada carregamento de página. Nunca deixa a agenda fora do ar
+    ou mal configurada quebrar a tela: qualquer erro cai no cache antigo
+    (ou lista vazia, se nunca buscou)."""
+    if not u.agenda_ics_url:
+        return []
+    hoje = hoje or date.today()
+    cache_valido = u.agenda_cache_em and (datetime.utcnow() - u.agenda_cache_em) < timedelta(minutes=20)
+    if not cache_valido:
+        try:
+            resp = _requests.get(u.agenda_ics_url, timeout=8)
+            resp.raise_for_status()
+            cal = _icalendar.Calendar.from_ical(resp.content)
+            ocorrencias = _recurring_ical_events.of(cal).between(hoje, hoje + timedelta(days=2))
+            eventos = []
+            for ev in ocorrencias:
+                inicio = ev.get('dtstart').dt
+                if isinstance(inicio, datetime):
+                    if inicio.tzinfo:
+                        inicio = inicio.astimezone(_BRASIL_TZ)
+                    dia = inicio.date()
+                    hora = inicio.strftime('%H:%M')
+                else:
+                    dia = inicio
+                    hora = None
+                if dia not in (hoje, hoje + timedelta(days=1)):
+                    continue
+                eventos.append({
+                    'titulo': str(ev.get('summary') or 'Sem título'),
+                    'hora': hora,
+                    'status': 'hoje' if dia == hoje else 'amanha',
+                })
+            eventos.sort(key=lambda e: (e['status'] != 'hoje', e['hora'] or ''))
+            u.agenda_cache_json = json.dumps(eventos, ensure_ascii=False)
+            u.agenda_cache_em = datetime.utcnow()
+            db.session.commit()
+            return eventos
+        except Exception as e:
+            print(f'[ERRO AGENDA ICS] usuario={u.id}: {e}')
+            # cai pro cache antigo abaixo em vez de quebrar a tela
+    try:
+        return json.loads(u.agenda_cache_json or '[]')
+    except (ValueError, TypeError):
+        return []
+
 STATUS_DISC_MODULO = ('nao_iniciado', 'em_producao', 'em_andamento', 'inserida', 'liberada_moodle', 'liberada_inova')
 # 'em_curadoria' saiu das opções (não é mais escolhível), mas o label/cor
 # continuam mapeados abaixo pra disciplina antiga que ainda tiver esse
@@ -1425,7 +1480,7 @@ def inject_notificacoes():
             'can_ia_assistente': False, 'can_ferramentas': False,
             'can_pagamentos_terceiros': False, 'can_opcoes_curso': False,
             'can_mural': False, 'can_formularios': False, 'can_calendario': False,
-            'lembretes_ativos': [], 'alertas_demandas_ativos': [],
+            'lembretes_ativos': [], 'alertas_demandas_ativos': [], 'reunioes_ativas': [],
         }
     # Disciplinas pendentes (plataforma_ok=False) em cursos atribuídos a este usuário
     q = db.session.query(Discipline, Course)\
@@ -1483,6 +1538,11 @@ def inject_notificacoes():
             if d.id not in dispensados
         ]
 
+    # Reuniões de hoje/amanhã puxadas do link ICS da agenda pessoal
+    # (Outlook/Google) — some sozinha quando o dia passa, não precisa
+    # check-in (diferente do lembrete fixo, que é recorrente).
+    reunioes_ativas = _reunioes_hoje_amanha(u)
+
     return {
         'notif_count': len(pendentes),
         'notif_list': notif_list,
@@ -1512,6 +1572,7 @@ def inject_notificacoes():
         'can_calendario': u.can_view_calendario(),
         'lembretes_ativos': lembretes_ativos,
         'alertas_demandas_ativos': alertas_demandas_ativos,
+        'reunioes_ativas': reunioes_ativas,
     }
 
 # ─── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -1710,6 +1771,22 @@ def minha_conta_whatsapp():
     u.whatsapp_apikey = apikey[:50] or None
     db.session.commit()
     flash('WhatsApp atualizado!', 'success')
+    return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
+
+@app.route('/calendario/agenda-ics', methods=['POST'])
+@perm_check('can_view_calendario')
+def calendario_agenda_ics():
+    """Link secreto ICS da agenda pessoal (Outlook/Google) — reuniões de
+    hoje/amanhã passam a aparecer no aviso do topo (ver
+    _reunioes_hoje_amanha). Limpa o cache antigo pra já buscar de novo com
+    o link certo na próxima página."""
+    u = User.query.get(session['user_id'])
+    url = (request.form.get('agenda_ics_url') or '').strip()
+    u.agenda_ics_url = url or None
+    u.agenda_cache_json = None
+    u.agenda_cache_em = None
+    db.session.commit()
+    flash('Agenda atualizada!', 'success')
     return redirect(_voltar_seguro(url_for('calendario', aba='alertas')))
 
 @app.route('/minha-conta/whatsapp-prefs', methods=['POST'])
@@ -5228,6 +5305,7 @@ def calendario():
         ver_arquivadas=ver_arquivadas, total_arquivadas=total_arquivadas,
         meus_lembretes=meus_lembretes, tem_whatsapp=tem_whatsapp, whatsapp_prefs=whatsapp_prefs,
         telefone_whatsapp=u.telefone_whatsapp or '', whatsapp_apikey=u.whatsapp_apikey or '',
+        agenda_ics_url=u.agenda_ics_url or '',
         is_admin=(u.role == 'admin'))
 
 @app.route('/calendario/publico')
@@ -7537,7 +7615,8 @@ def _run_migrations():
                            ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
                            ("foto_mimetype", "VARCHAR(50)"), ("ultimo_login", "TIMESTAMP"),
                            ("telefone_whatsapp", "VARCHAR(30)"), ("whatsapp_prefs", "TEXT"),
-                           ("whatsapp_apikey", "VARCHAR(50)")]:
+                           ("whatsapp_apikey", "VARCHAR(50)"), ("agenda_ics_url", "TEXT"),
+                           ("agenda_cache_json", "TEXT"), ("agenda_cache_em", "TIMESTAMP")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'

@@ -243,13 +243,22 @@
 
   <!-- MAIN -->
   <main class="main-content">
-    {% if lembretes_ativos or alertas_demandas_ativos %}
+    {% if lembretes_ativos or alertas_demandas_ativos or reunioes_ativas %}
     <div id="topAlertBar">
       {% for l in lembretes_ativos %}
       <div class="top-alert top-alert-lembrete">
         <span class="top-alert-icon">⏰</span>
         <span class="top-alert-text"><strong>{{ l.label }}:</strong> {{ l.titulo }}</span>
         <button type="button" class="top-alert-check" onclick="concluirLembrete({{ l.id }}, this)" title="Marcar que já fiz">✓ Já fiz isso</button>
+      </div>
+      {% endfor %}
+      {% for r in reunioes_ativas %}
+      <div class="top-alert top-alert-reuniao">
+        <span class="top-alert-icon">📅</span>
+        <span class="top-alert-text">
+          <strong>{{ 'HOJE' if r.status == 'hoje' else 'AMANHÃ' }}{{ ' ' ~ r.hora if r.hora else '' }}:</strong> {{ r.titulo }}
+        </span>
+        <span class="top-alert-tag">da sua agenda</span>
       </div>
       {% endfor %}
       {% for d in alertas_demandas_ativos %}

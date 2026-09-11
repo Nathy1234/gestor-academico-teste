@@ -270,6 +270,37 @@
   {% elif aba == 'alertas' %}
   <!-- ═══════════════════════ ABA: ALERTAS (lembretes fixos pessoais) ═══════════════════════ -->
   <div class="card" style="max-width:520px;margin-bottom:16px">
+    <div class="card-header"><div class="card-title" style="font-size:15px">Minha Agenda</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+        Cole o link secreto (formato iCal/ICS) da sua agenda — reuniões de hoje e amanhã aparecem
+        automaticamente no aviso do topo, sem precisar cadastrar nada aqui à mão.
+      </div>
+      <details style="margin-bottom:14px">
+        <summary style="font-size:11.5px;color:var(--text-muted);cursor:pointer">Como pegar o link no Outlook / Microsoft 365</summary>
+        <ol style="font-size:11.5px;color:var(--text-muted);margin:8px 0 0 18px;padding:0;line-height:1.6">
+          <li>Abra o Outlook na web (outlook.office.com) → ícone de engrenagem → "Ver todas as configurações do Outlook".</li>
+          <li>Vá em <strong>Calendário → Calendários compartilhados</strong>.</li>
+          <li>Em "Publicar um calendário", escolha o calendário "Calendário" e a permissão "Pode ver todos os detalhes" → Publicar.</li>
+          <li>Copie o link <strong>ICS</strong> (não o link HTML) e cole abaixo.</li>
+        </ol>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+          Se sua instituição bloquear "publicar calendário", peça pra usar a opção "Compartilhar calendário" com alguém — o link ICS pode não ficar disponível dependendo da política do Microsoft 365.
+        </div>
+      </details>
+      <form method="POST" action="{{ url_for('calendario_agenda_ics') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
+        <div class="form-group" style="flex:1;min-width:220px;margin:0">
+          <label>Link ICS da agenda</label>
+          <input type="text" name="agenda_ics_url" value="{{ agenda_ics_url }}" placeholder="https://outlook.office365.com/owa/calendar/.../calendar.ics" maxlength="1000">
+        </div>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:520px;margin-bottom:16px">
     <div class="card-header"><div class="card-title" style="font-size:15px">WhatsApp</div></div>
     <div class="card-body">
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
