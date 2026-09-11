@@ -4,6 +4,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import HTTPException
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from markupsafe import Markup, escape
 from datetime import datetime, timedelta, date
@@ -51,7 +52,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD',
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.21'
+VERSAO = '1.19.22'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -419,6 +420,53 @@ def enviar_whatsapp(telefone, mensagem):
         print(f'[ERRO WHATSAPP] {e}')
         return False
 
+def _notificar_admins_whatsapp(categoria, mensagem):
+    """Manda mensagem pra todo admin que tiver ligado essa categoria em
+    Minha Conta (ver User.quer_whatsapp) — nunca deixa erro no envio
+    (telefone inválido, Z-API fora do ar etc.) derrubar quem chamou."""
+    try:
+        for a in User.query.filter_by(role='admin').all():
+            if a.quer_whatsapp(categoria):
+                enviar_whatsapp(a.telefone_whatsapp, mensagem)
+    except Exception as e:
+        print(f'[ERRO NOTIFICAR ADMINS WHATSAPP] {e}')
+
+def _notificar_disciplina_concluida(curso_nome, qtd, nome_disciplina=None):
+    """Chamado em tempo real (não pelo cron) assim que uma disciplina é
+    marcada como concluída no ERP Moodle (ver disciplina_toggle e
+    disciplinas_marcar_todas)."""
+    if qtd == 1 and nome_disciplina:
+        texto = f'✅ Disciplina concluída — {curso_nome}: {nome_disciplina}'
+    else:
+        texto = f'✅ {qtd} disciplina(s) concluída(s) em {curso_nome}'
+    _notificar_admins_whatsapp('disciplinas_concluidas', texto)
+
+def _resumo_diario_sino():
+    """Resumo do que hoje aparece no sino de notificações — disciplinas
+    pendentes (não descontinuadas), eventos vencendo e solicitações
+    recebidas via formulário. Roda 1x por dia (ver cron_backup), não em
+    tempo real: os itens do sino mudam o dia inteiro em vários lugares
+    diferentes do sistema pra valer a pena um aviso a cada mudança."""
+    pendentes = Discipline.query.join(Course, Discipline.course_id == Course.id)\
+        .filter(Discipline.plataforma_ok == False, Course.status.notin_(['descontinuado'])).count()
+    eventos = len(_eventos_pendentes_ocultar())
+    solicitacoes = Course.query.filter_by(via_formulario=True, status='em_edicao').count()
+    finalizados = Course.query.filter_by(status='finalizado').count()
+    if not (pendentes or eventos or solicitacoes or finalizados):
+        return None
+    return (f'📋 Resumo diário do Gestor Acadêmico:\n'
+            f'- {pendentes} disciplina(s) pendente(s) no ERP Moodle\n'
+            f'- {eventos} evento(s) com prazo vencendo\n'
+            f'- {solicitacoes} solicitação(ões) recebida(s) aguardando\n'
+            f'- {finalizados} curso(s) finalizado(s) aguardando publicação')
+
+def _notificar_erro_plataforma(e):
+    """Chamado pelo errorhandler global (ver erro_nao_tratado) assim que
+    uma exceção não tratada estoura em qualquer rota."""
+    rota = request.path if request else '?'
+    texto = f'🚨 Erro no Gestor Acadêmico ({rota}): {type(e).__name__}: {str(e)[:200]}'
+    _notificar_admins_whatsapp('erros_plataforma', texto)
+
 def _reset_senha_serializer():
     return URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='reset-senha')
 
@@ -439,6 +487,7 @@ class User(db.Model):
     foto         = db.Column(db.LargeBinary)  # foto de perfil de exibição
     foto_mimetype = db.Column(db.String(50))
     telefone_whatsapp = db.Column(db.String(30))  # opcional — só usado se a pessoa optar por receber aviso no WhatsApp
+    whatsapp_prefs = db.Column(db.Text)  # JSON: {"disciplinas_concluidas": true, "sino_diario": true, "erros_plataforma": true} — só admin configura
     ultimo_login = db.Column(db.DateTime)  # usado pra listar colaboradores inativos e avisar quem voltou
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -450,6 +499,17 @@ class User(db.Model):
         except:
             p = {}
         return p.get(key, False)
+
+    def quer_whatsapp(self, categoria):
+        """Só admin tem essas preferências (ver whatsapp_prefs) — precisa
+        também ter telefone_whatsapp cadastrado pra realmente receber algo."""
+        if self.role != 'admin' or not self.telefone_whatsapp:
+            return False
+        try:
+            prefs = json.loads(self.whatsapp_prefs or '{}')
+        except (ValueError, TypeError):
+            prefs = {}
+        return bool(prefs.get(categoria))
 
     def _p(self):
         try:
@@ -1633,7 +1693,11 @@ def minha_conta():
             log_action(u.id, u.username, 'trocar_senha', 'user', u.id)
             flash('Senha alterada com sucesso!', 'success')
             return redirect(url_for('dashboard'))
-    return render_template('minha_conta.html', u=u)
+    try:
+        whatsapp_prefs = json.loads(u.whatsapp_prefs or '{}')
+    except (ValueError, TypeError):
+        whatsapp_prefs = {}
+    return render_template('minha_conta.html', u=u, whatsapp_prefs=whatsapp_prefs)
 
 @app.route('/minha-conta/whatsapp', methods=['POST'])
 @login_required
@@ -1646,6 +1710,22 @@ def minha_conta_whatsapp():
     u.telefone_whatsapp = telefone[:30] or None
     db.session.commit()
     flash('Telefone atualizado!', 'success')
+    return redirect(url_for('minha_conta'))
+
+@app.route('/minha-conta/whatsapp-prefs', methods=['POST'])
+@admin_required
+def minha_conta_whatsapp_prefs():
+    """Só admin escolhe o que quer receber no WhatsApp fora dos lembretes e
+    avisos de Demanda (esses dois já têm opt-in próprio, em cada um)."""
+    u = User.query.get(session['user_id'])
+    prefs = {
+        'disciplinas_concluidas': request.form.get('pref_disciplinas_concluidas') == 'on',
+        'erros_plataforma': request.form.get('pref_erros_plataforma') == 'on',
+        'sino_diario': request.form.get('pref_sino_diario') == 'on',
+    }
+    u.whatsapp_prefs = json.dumps(prefs)
+    db.session.commit()
+    flash('Preferências de WhatsApp atualizadas!', 'success')
     return redirect(url_for('minha_conta'))
 
 # ─── DASHBOARD ─────────────────────────────────────────────────────────────────
@@ -3021,6 +3101,9 @@ def disciplina_toggle(disc_id):
     d.plataforma_ok = not d.plataforma_ok
     d.plataforma_em = datetime.utcnow() if d.plataforma_ok else None
     db.session.commit()
+    if d.plataforma_ok:
+        curso = Course.query.get(d.course_id)
+        _notificar_disciplina_concluida(curso.nome if curso else '—', 1, d.nome)
     return jsonify({
         'ok': d.plataforma_ok, 'disc_id': disc_id,
         'data_formatada': d.plataforma_em.strftime('%d/%m/%Y') if d.plataforma_em else None,
@@ -3038,6 +3121,9 @@ def disciplinas_marcar_todas(course_id):
         d.plataforma_ok = marcar
         d.plataforma_em = now if marcar else None
     db.session.commit()
+    if marcar and discs:
+        curso = Course.query.get(course_id)
+        _notificar_disciplina_concluida(curso.nome if curso else '—', len(discs))
     return jsonify({'ok': True, 'total': len(discs), 'marcar': marcar})
 
 @app.route('/banco-disciplinas')
@@ -6339,6 +6425,11 @@ def _enviar_avisos_whatsapp_pendentes():
                     enviados_demandas += 1
         d.alerta_whatsapp_enviado = True
     db.session.commit()
+
+    resumo = _resumo_diario_sino()
+    if resumo:
+        _notificar_admins_whatsapp('sino_diario', resumo)
+
     return {'lembretes': enviados_lembretes, 'demandas': enviados_demandas}
 
 @app.route('/cron/backup')
@@ -7440,7 +7531,7 @@ def _run_migrations():
                            ("notas_pessoais", "TEXT"),
                            ("equipe", "BOOLEAN DEFAULT true"), ("foto", "BYTEA"),
                            ("foto_mimetype", "VARCHAR(50)"), ("ultimo_login", "TIMESTAMP"),
-                           ("telefone_whatsapp", "VARCHAR(30)")]:
+                           ("telefone_whatsapp", "VARCHAR(30)"), ("whatsapp_prefs", "TEXT")]:
             try:
                 tbl = '"user"' if is_pg else 'user'
                 sql = f'ALTER TABLE {tbl} ADD COLUMN {col} {dtype}'
@@ -7529,6 +7620,23 @@ def restringir_somente_erp_moodle():
     u = User.query.get(session['user_id'])
     if u and u.is_restrito_erp_moodle():
         return redirect(url_for('erp_moodle'))
+
+@app.errorhandler(Exception)
+def erro_nao_tratado(e):
+    """Pega qualquer exceção não tratada em qualquer rota, avisa por
+    WhatsApp quem tiver ligado 'erros_plataforma' em Minha Conta, e só
+    depois deixa o erro seguir seu caminho normal — nunca some com o
+    traceback do log do servidor nem muda o comportamento de erros HTTP
+    normais (404, 403 etc.), só de exceção mesmo."""
+    if isinstance(e, HTTPException):
+        return e
+    try:
+        _notificar_erro_plataforma(e)
+    except Exception:
+        pass
+    import traceback
+    traceback.print_exc()
+    return 'Erro interno. Tente novamente em instantes.', 500
 
 if __name__ == '__main__':
     t = threading.Thread(target=backup_scheduler, daemon=True)

@@ -26,6 +26,37 @@
     </div>
   </div>
 
+  {% if u.role == 'admin' %}
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Notificações no WhatsApp (admin)</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        Fora dos lembretes e avisos de Demanda (que já têm opção própria em cada um), escolha o que mais
+        você quer receber no seu WhatsApp em tempo real.
+      </div>
+      <form method="POST" action="{{ url_for('minha_conta_whatsapp_prefs') }}" style="display:flex;flex-direction:column;gap:10px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="pref_disciplinas_concluidas" {% if whatsapp_prefs.disciplinas_concluidas %}checked{% endif %}>
+          Disciplinas marcadas como concluídas no ERP Moodle
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="pref_erros_plataforma" {% if whatsapp_prefs.erros_plataforma %}checked{% endif %}>
+          Erros da plataforma (quando algo quebra em produção)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="pref_sino_diario" {% if whatsapp_prefs.sino_diario %}checked{% endif %}>
+          Resumo diário do sino (disciplinas pendentes, eventos vencendo, solicitações, cursos finalizados)
+        </label>
+        <div style="font-size:10.5px;color:var(--text-muted)">
+          As duas primeiras avisam na hora; o resumo do sino é só 1x por dia, junto do backup automático.
+        </div>
+        <button type="submit" class="btn btn-primary" style="align-self:flex-start;margin-top:6px">Salvar preferências</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card">
     <div class="card-header"><div class="card-title">Alterar senha</div></div>
     <div class="card-body">
