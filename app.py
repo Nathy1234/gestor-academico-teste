@@ -7771,6 +7771,19 @@ def exigir_troca_senha():
         flash('Por segurança, troque sua senha antes de continuar.', 'danger')
         return redirect(url_for('minha_conta'))
 
+@app.after_request
+def _nunca_cachear_paginas_dinamicas(resp):
+    """A Vercel aplica por padrão 'public, max-age=0, must-revalidate' nas
+    respostas do Python — em teoria isso força revalidação a cada acesso,
+    mas na prática já causou tela desatualizada em navegador/CDN mais de
+    uma vez (ex: aviso vermelho do topo só sumindo com refresh forçado).
+    Como é tudo dado dinâmico e por sessão, força 'no-store' de verdade em
+    qualquer resposta que não seja arquivo estático."""
+    if not request.path.startswith('/static/'):
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+    return resp
+
 ROTAS_LIVRES_ERP_MOODLE = {
     'erp_moodle', 'erp_moodle_novo', 'erp_moodle_editar', 'erp_moodle_excluir',
     'minha_conta', 'logout', 'login', 'static', 'esqueci_senha', 'resetar_senha',
