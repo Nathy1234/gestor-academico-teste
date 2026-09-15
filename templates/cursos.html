@@ -104,7 +104,42 @@
     <button type="button" class="btn btn-sm btn-primary" onclick="acaoEmLote(document.getElementById('loteStatusSelect').value)">
       Aplicar status
     </button>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="toggleEditarLote()">
+      Editar selecionados
+    </button>
     <button type="button" class="btn btn-sm btn-secondary" onclick="limparSelecao()">Cancelar</button>
+  </div>
+
+  <!-- PAINEL: EDITAR VENDA POR / VALOR / HORAS EM LOTE -->
+  <div id="editar-lote-painel" style="display:none;flex-direction:column;gap:10px;margin-bottom:10px;padding:12px 14px;
+              background:var(--surface);border:1px solid var(--border);border-radius:8px">
+    <div style="font-size:12px;color:var(--text-muted)">
+      Marque só os campos que quer aplicar — os desmarcados ficam como estavam em cada curso.
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <input type="checkbox" id="lote-aplicar-venda" onchange="toggleCampoLote('lote-aplicar-venda','lote-venda-modalidade')">
+      Venda por:
+      <select id="lote-venda-modalidade" class="filter-select" style="font-size:12px;padding:4px 8px" disabled>
+        <option value="">Nenhum</option>
+        {% for o in venda_opcoes %}
+        <option value="{{ o.label }}">{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <input type="checkbox" id="lote-aplicar-valor" onchange="toggleCampoLote('lote-aplicar-valor','lote-valor')">
+      Valor:
+      <input type="text" id="lote-valor" placeholder="Ex: 570" style="font-size:12px;padding:4px 8px;width:140px" disabled>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <input type="checkbox" id="lote-aplicar-horas" onchange="toggleCampoLote('lote-aplicar-horas','lote-horas')">
+      Horas:
+      <input type="text" id="lote-horas" placeholder="Ex: 180" style="font-size:12px;padding:4px 8px;width:140px" disabled>
+    </label>
+    <div>
+      <button type="button" class="btn btn-sm btn-primary" onclick="aplicarEdicaoLote()">Aplicar aos selecionados</button>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="toggleEditarLote()">Cancelar</button>
+    </div>
   </div>
   {% endif %}
 
@@ -257,6 +292,49 @@ const LOTE_STATUS_LABEL = {
   ativo: 'Ativo', em_edicao: 'Em Edição', finalizado: 'Finalizado',
   descontinuado: 'Arquivado', oculto: 'Oculto', inativo: 'Inativo'
 };
+
+function toggleEditarLote() {
+  const painel = document.getElementById('editar-lote-painel');
+  painel.style.display = (painel.style.display === 'none' || !painel.style.display) ? 'flex' : 'none';
+}
+
+function toggleCampoLote(chkId, campoId) {
+  document.getElementById(campoId).disabled = !document.getElementById(chkId).checked;
+}
+
+function aplicarEdicaoLote() {
+  const ids = Array.from(document.querySelectorAll('.chk-curso:checked')).map(chk => parseInt(chk.value));
+  if (ids.length === 0) return;
+  const payload = { ids: ids };
+  if (document.getElementById('lote-aplicar-venda').checked) {
+    payload.venda_modalidade = document.getElementById('lote-venda-modalidade').value;
+  }
+  if (document.getElementById('lote-aplicar-valor').checked) {
+    payload.valor = document.getElementById('lote-valor').value;
+  }
+  if (document.getElementById('lote-aplicar-horas').checked) {
+    payload.horas = document.getElementById('lote-horas').value;
+  }
+  if (Object.keys(payload).length === 1) {
+    alert('Marque pelo menos um campo pra aplicar.');
+    return;
+  }
+  if (!confirm('Aplicar essas mudanças em ' + ids.length + ' curso(s) selecionado(s)?')) return;
+  fetch('/cursos/editar-em-lote', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      alert(data.total + ' curso(s) atualizado(s)!');
+      location.reload();
+    } else {
+      alert(data.erro || 'Erro ao atualizar cursos.');
+    }
+  });
+}
 
 function acaoEmLote(novoStatus) {
   const ids = Array.from(document.querySelectorAll('.chk-curso:checked')).map(chk => parseInt(chk.value));

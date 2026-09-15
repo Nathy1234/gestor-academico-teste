@@ -2259,6 +2259,52 @@ def cursos_status_em_lote():
                    f'{total} curso(s) -> status={novo_status}')
     return jsonify({'ok': True, 'total': total})
 
+@app.route('/cursos/editar-em-lote', methods=['POST'])
+@editor_required
+@perm_check('can_view_cursos')
+def cursos_editar_em_lote():
+    """Aplica Venda por / Valor / Horas em vários cursos de uma vez. Só os
+    campos que vierem no JSON são alterados — marcar só 1 dos 3 não mexe
+    nos outros dois, pra não zerar campo por engano."""
+    data = request.json or {}
+    ids = data.get('ids', [])
+    if not ids:
+        return jsonify({'ok': False, 'erro': 'Nenhum curso selecionado.'}), 400
+    campos = [c for c in ('venda_modalidade', 'valor', 'horas') if c in data]
+    if not campos:
+        return jsonify({'ok': False, 'erro': 'Marque pelo menos um campo pra aplicar.'}), 400
+
+    if 'venda_modalidade' in data:
+        vm = (data.get('venda_modalidade') or '').strip()
+        if vm:
+            opcoes_validas = {o.label for o in VendaModalidadeOpcao.query.all()}
+            if vm not in opcoes_validas:
+                return jsonify({'ok': False, 'erro': 'Opção de "Venda por" inválida.'}), 400
+
+    cursos_sel = Course.query.filter(Course.id.in_(ids)).all()
+    if not cursos_sel:
+        return jsonify({'ok': False, 'erro': 'Nenhum curso encontrado.'}), 400
+
+    resumo = []
+    for c in cursos_sel:
+        if 'venda_modalidade' in data:
+            c.venda_modalidade = (data.get('venda_modalidade') or '').strip() or None
+        if 'valor' in data:
+            c.valor = (data.get('valor') or '').strip()
+        if 'horas' in data:
+            c.horas = (data.get('horas') or '').strip()
+    if 'venda_modalidade' in data:
+        resumo.append(f'Venda por="{(data.get("venda_modalidade") or "Nenhum")}"')
+    if 'valor' in data:
+        resumo.append(f'Valor="{data.get("valor") or ""}"')
+    if 'horas' in data:
+        resumo.append(f'Horas="{data.get("horas") or ""}"')
+
+    db.session.commit()
+    log_action(session['user_id'], session['username'], 'editar_em_lote', 'course', None,
+               f'{len(cursos_sel)} curso(s) -> ' + '; '.join(resumo))
+    return jsonify({'ok': True, 'total': len(cursos_sel)})
+
 @app.route('/cursos/exportar-excel')
 @perm_check('can_view_cursos')
 def cursos_exportar_excel():
