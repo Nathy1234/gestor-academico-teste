@@ -52,18 +52,17 @@
                  {% if item and item.concluido_manual %}checked{% endif %}
                  onchange="toggleConcluido(this)"
                  style="width:16px;height:16px;cursor:pointer;accent-color:#22c55e">
-          <span id="concluir-label">{% if item and item.concluido_manual %}Concluído manualmente{% else %}Concluir sem preencher todas as datas{% endif %}</span>
+          <span id="concluir-label">Marcar como concluído</span>
         </label>
       </div>
 
       <div id="datas-aviso" style="display:{% if item and item.concluido_manual %}flex{% else %}none{% endif %};align-items:center;gap:10px;background:#22c55e15;border:1px solid #22c55e40;border-radius:8px;padding:10px 14px;margin-bottom:12px">
         <span style="color:#22c55e;font-size:18px">✓</span>
-        <span style="font-size:13px;color:#22c55e;font-weight:500">Este reembolso será marcado como <strong>Concluído</strong> independente das datas preenchidas.</span>
+        <span style="font-size:13px;color:#22c55e;font-weight:500">Este reembolso está marcado como <strong>Concluído</strong>.</span>
       </div>
 
-      <div id="datas-pendentes-aviso" style="display:{% if not (item and item.concluido_manual) %}flex{% else %}none{% endif %};align-items:center;gap:10px;background:#f2780d15;border:1px solid #f2780d40;border-radius:8px;padding:10px 14px;margin-bottom:12px">
-        <span style="color:#f2780d;font-size:15px">⚠</span>
-        <span style="font-size:12px;color:var(--text-muted)">Preencha <strong>todas as datas</strong> para que o reembolso seja concluído automaticamente, ou marque a opção acima.</span>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px">
+        As datas abaixo são só pra acompanhar em que fase o reembolso está — nenhuma é obrigatória, preencha só as que já tiver.
       </div>
 
       <div class="form-grid" id="bloco-datas" style="margin-bottom:20px;opacity:{% if item and item.concluido_manual %}0.5{% else %}1{% endif %}">
@@ -97,18 +96,12 @@
       function toggleConcluido(cb) {
         var bloco = document.getElementById('bloco-datas');
         var aviso = document.getElementById('datas-aviso');
-        var avisoPend = document.getElementById('datas-pendentes-aviso');
-        var label = document.getElementById('concluir-label');
         if (cb.checked) {
           bloco.style.opacity = '0.5';
           aviso.style.display = 'flex';
-          avisoPend.style.display = 'none';
-          label.textContent = 'Concluído manualmente';
         } else {
           bloco.style.opacity = '1';
           aviso.style.display = 'none';
-          avisoPend.style.display = 'flex';
-          label.textContent = 'Concluir sem preencher todas as datas';
         }
       }
       </script>
