@@ -116,16 +116,23 @@
     <div style="font-size:12px;color:var(--text-muted)">
       Marque só os campos que quer aplicar — os desmarcados ficam como estavam em cada curso.
     </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px">
-      <input type="checkbox" id="lote-aplicar-venda" onchange="toggleCampoLote('lote-aplicar-venda','lote-venda-modalidade')">
-      Venda por:
-      <select id="lote-venda-modalidade" class="filter-select" style="font-size:12px;padding:4px 8px" disabled>
-        <option value="">Nenhum</option>
+    <div style="display:flex;align-items:flex-start;gap:8px;font-size:13px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="lote-aplicar-venda" onchange="toggleCampoLote('lote-aplicar-venda','lote-venda-modalidade')">
+        Venda por:
+      </label>
+      <div id="lote-venda-modalidade" style="display:flex;flex-wrap:wrap;gap:4px 14px;padding-top:1px">
         {% for o in venda_opcoes %}
-        <option value="{{ o.label }}">{{ o.label }}</option>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-muted);cursor:pointer">
+          <input type="checkbox" class="lote-venda-opcao" value="{{ o.label }}" disabled>
+          {{ o.label }}
+        </label>
         {% endfor %}
-      </select>
-    </label>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-left:24px">
+      Pode marcar mais de uma opção (ex: "Link, Site") — deixa todas desmarcadas pra aplicar "Nenhum".
+    </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px">
       <input type="checkbox" id="lote-aplicar-valor" onchange="toggleCampoLote('lote-aplicar-valor','lote-valor')">
       Valor:
@@ -299,7 +306,16 @@ function toggleEditarLote() {
 }
 
 function toggleCampoLote(chkId, campoId) {
-  document.getElementById(campoId).disabled = !document.getElementById(chkId).checked;
+  const habilitado = document.getElementById(chkId).checked;
+  const campo = document.getElementById(campoId);
+  // "Venda por" é um grupo de checkboxes dentro de uma div, não um único
+  // campo com .disabled — trata os dois casos.
+  const opcoes = campo.querySelectorAll('.lote-venda-opcao');
+  if (opcoes.length) {
+    opcoes.forEach(op => { op.disabled = !habilitado; });
+  } else {
+    campo.disabled = !habilitado;
+  }
 }
 
 function aplicarEdicaoLote() {
@@ -307,7 +323,9 @@ function aplicarEdicaoLote() {
   if (ids.length === 0) return;
   const payload = { ids: ids };
   if (document.getElementById('lote-aplicar-venda').checked) {
-    payload.venda_modalidade = document.getElementById('lote-venda-modalidade').value;
+    const marcadas = Array.from(document.querySelectorAll('#lote-venda-modalidade .lote-venda-opcao:checked'))
+      .map(op => op.value);
+    payload.venda_modalidade = marcadas.join(', ');
   }
   if (document.getElementById('lote-aplicar-valor').checked) {
     payload.valor = document.getElementById('lote-valor').value;

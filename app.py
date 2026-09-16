@@ -2275,11 +2275,13 @@ def cursos_editar_em_lote():
         return jsonify({'ok': False, 'erro': 'Marque pelo menos um campo pra aplicar.'}), 400
 
     if 'venda_modalidade' in data:
-        vm = (data.get('venda_modalidade') or '').strip()
-        if vm:
+        # Aceita mais de uma opção marcada, separadas por vírgula (ex: "Link, Site")
+        vm_itens = [v.strip() for v in (data.get('venda_modalidade') or '').split(',') if v.strip()]
+        if vm_itens:
             opcoes_validas = {o.label for o in VendaModalidadeOpcao.query.all()}
-            if vm not in opcoes_validas:
-                return jsonify({'ok': False, 'erro': 'Opção de "Venda por" inválida.'}), 400
+            invalidas = [v for v in vm_itens if v not in opcoes_validas]
+            if invalidas:
+                return jsonify({'ok': False, 'erro': f'Opção de "Venda por" inválida: {", ".join(invalidas)}.'}), 400
 
     cursos_sel = Course.query.filter(Course.id.in_(ids)).all()
     if not cursos_sel:
