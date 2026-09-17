@@ -216,6 +216,18 @@
       </div>
       </div>
       {% endif %}
+
+      {% if can_calendario %}
+      <div class="sidebar-section-block" data-section-id="alertas" {% if is_admin_nav %}draggable="true"{% endif %}>
+      <div class="nav-section" onclick="toggleSidebarSection(this)">{{ handle() }}<span class="section-title">ALERTAS</span>{{ chevron() }}</div>
+      <div class="sidebar-section-items">
+      <a href="{{ url_for('calendario', aba='alertas') }}" data-item-id="minha_agenda" class="nav-item {% if request.endpoint=='calendario' and aba=='alertas' %}active{% endif %}">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Minha Agenda
+      </a>
+      </div>
+      </div>
+      {% endif %}
       {% endif %}
 
       </div>
@@ -258,7 +270,7 @@
         <span class="top-alert-text">
           <strong>{{ r.label }}{{ ' ' ~ r.hora if r.hora else '' }}:</strong> {{ r.titulo }}
         </span>
-        <span class="top-alert-tag">da sua agenda</span>
+        <span class="top-alert-tag">{{ 'da agenda de ' ~ r.dono if r.dono else 'da sua agenda' }}</span>
       </div>
       {% endfor %}
       {% for d in alertas_demandas_ativos %}

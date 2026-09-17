@@ -487,6 +487,7 @@ class User(db.Model):
     whatsapp_apikey = db.Column(db.String(50))  # apikey do CallMeBot (grátis) — gerada na ativação, ver instruções no Calendário → Alertas
     whatsapp_prefs = db.Column(db.Text)  # JSON: {"disciplinas_concluidas": true, "sino_diario": true, "erros_plataforma": true} — só admin configura
     agenda_ics_url = db.Column(db.Text)  # link secreto ICS da agenda pessoal (Outlook/Google) — reuniões de hoje/amanhã viram aviso
+    agenda_ics_visibilidade = db.Column(db.String(20), default='pessoal')  # 'pessoal' (só eu vejo) ou 'todos' (aparece pra equipe inteira, marcado com meu nome)
     agenda_cache_json = db.Column(db.Text)  # cache das reuniões já buscadas no link acima, pra não bater na URL a cada carregamento de página
     agenda_cache_em = db.Column(db.DateTime)
     ultimo_login = db.Column(db.DateTime)  # usado pra listar colaboradores inativos e avisar quem voltou
@@ -1557,8 +1558,17 @@ def inject_notificacoes():
 
     # Reuniões de hoje/amanhã puxadas do link ICS da agenda pessoal
     # (Outlook/Google) — some sozinha quando o dia passa, não precisa
-    # check-in (diferente do lembrete fixo, que é recorrente).
-    reunioes_ativas = _reunioes_hoje_amanha(u)
+    # check-in (diferente do lembrete fixo, que é recorrente). As minhas
+    # aparecem sempre; as de quem marcou "Todo mundo vê" aparecem também,
+    # marcadas com o nome do dono (ver agenda_ics_visibilidade).
+    reunioes_ativas = list(_reunioes_hoje_amanha(u))
+    outros_com_agenda_publica = User.query.filter(
+        User.id != u.id, User.agenda_ics_url.isnot(None), User.agenda_ics_visibilidade == 'todos',
+    ).all()
+    for outro in outros_com_agenda_publica:
+        for ev in _reunioes_hoje_amanha(outro):
+            reunioes_ativas.append({**ev, 'dono': nome_exibicao(outro)})
+    reunioes_ativas.sort(key=lambda r: (r['dias_para'], r['hora'] or ''))
 
     return {
         'notif_count': len(pendentes),
@@ -1800,6 +1810,7 @@ def calendario_agenda_ics():
     u = User.query.get(session['user_id'])
     url = (request.form.get('agenda_ics_url') or '').strip()
     u.agenda_ics_url = url or None
+    u.agenda_ics_visibilidade = 'todos' if request.form.get('agenda_ics_visibilidade') == 'todos' else 'pessoal'
     u.agenda_cache_json = None
     u.agenda_cache_em = None
     db.session.commit()
@@ -5389,6 +5400,7 @@ def calendario():
         meus_lembretes=meus_lembretes, tem_whatsapp=tem_whatsapp, whatsapp_prefs=whatsapp_prefs,
         telefone_whatsapp=u.telefone_whatsapp or '', whatsapp_apikey=u.whatsapp_apikey or '',
         agenda_ics_url=u.agenda_ics_url or '',
+        agenda_ics_visibilidade=u.agenda_ics_visibilidade or 'pessoal',
         is_admin=(u.role == 'admin'))
 
 @app.route('/calendario/publico')
@@ -7699,6 +7711,7 @@ def _run_migrations():
                            ("foto_mimetype", "VARCHAR(50)"), ("ultimo_login", "TIMESTAMP"),
                            ("telefone_whatsapp", "VARCHAR(30)"), ("whatsapp_prefs", "TEXT"),
                            ("whatsapp_apikey", "VARCHAR(50)"), ("agenda_ics_url", "TEXT"),
+                           ("agenda_ics_visibilidade", "VARCHAR(20) DEFAULT 'pessoal'"),
                            ("agenda_cache_json", "TEXT"), ("agenda_cache_em", "TIMESTAMP")]:
             try:
                 tbl = '"user"' if is_pg else 'user'

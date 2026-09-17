@@ -94,6 +94,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const blocos = {};
     container.querySelectorAll('.sidebar-section-block').forEach(b => { blocos[b.dataset.sectionId] = b; });
     ordemSalva.forEach(id => { if (blocos[id]) container.appendChild(blocos[id]); });
+    // Seção nova, ainda não incluída na ordem salva (ex: acabou de ser lançada):
+    // fica no final, na ordem em que já aparecia no HTML — nunca pula pra frente.
+    Object.keys(blocos).forEach(id => { if (!ordemSalva.includes(id)) container.appendChild(blocos[id]); });
   }
 
   if (!ehAdmin) return;

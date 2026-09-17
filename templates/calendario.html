@@ -295,9 +295,22 @@
           <label>Link ICS da agenda</label>
           <input type="text" name="agenda_ics_url" value="{{ agenda_ics_url }}" placeholder="https://outlook.office365.com/owa/calendar/.../calendar.ics" maxlength="1000">
         </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="radio" name="agenda_ics_visibilidade" value="pessoal" {% if agenda_ics_visibilidade != 'todos' %}checked{% endif %}>
+            Só eu vejo
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="radio" name="agenda_ics_visibilidade" value="todos" {% if agenda_ics_visibilidade == 'todos' %}checked{% endif %}>
+            Todo mundo vê
+          </label>
+        </div>
         <button type="submit" class="btn btn-primary">Salvar</button>
         <button type="button" class="btn btn-secondary" onclick="calAgendaTestar(this)">Testar agora</button>
       </form>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">
+        "Todo mundo vê" faz seus avisos de reunião aparecerem pra equipe inteira (marcados com seu nome); "Só eu vejo" é o padrão.
+      </div>
       <div id="calAgendaResultado" style="margin-top:12px"></div>
     </div>
   </div>
