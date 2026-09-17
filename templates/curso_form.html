@@ -274,8 +274,9 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;
+    <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;position:sticky;bottom:0;
                 background:var(--bg);padding:14px 0;margin-top:-14px;border-top:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--text-muted);margin-right:auto">* campo obrigatório</span>
       <a href="{{ url_for('matrizes') if request.args.get('from') == 'matrizes' else url_for('cursos') }}" class="btn btn-secondary">Cancelar</a>
       <button type="submit" class="btn btn-primary">
         {% if curso %}Salvar Alterações{% else %}Criar Curso{% endif %}

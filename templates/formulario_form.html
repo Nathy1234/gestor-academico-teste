@@ -17,7 +17,7 @@
       <div class="card-header"><div class="card-title">Dados do Formulário</div></div>
       <div class="card-body">
         <div class="form-group" style="margin-bottom:16px">
-          <label>Título</label>
+          <label>Título *</label>
           <input type="text" name="titulo" required placeholder="Ex: Pesquisa de satisfação — Agosto"
                  value="{{ formulario.titulo if formulario else '' }}">
         </div>
@@ -85,6 +85,7 @@
       </div>
     </div>
 
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">* campo obrigatório</div>
     <div style="display:flex;gap:10px">
       <a href="{{ url_for('formularios') }}" class="btn btn-secondary">Cancelar</a>
       <button type="submit" class="btn btn-primary">Salvar</button>

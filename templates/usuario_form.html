@@ -34,7 +34,7 @@
         <form method="POST" id="userForm">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group" style="margin-bottom:16px">
-            <label>Nome de Usuário</label>
+            <label>Nome de Usuário *</label>
             <input type="text" name="username"
               value="{{ user.username if user else '' }}"
               required placeholder="Ex: NATÁLIA">
@@ -54,7 +54,7 @@
             </div>
           </div>
           <div class="form-group" style="margin-bottom:16px">
-            <label>E-mail institucional</label>
+            <label>E-mail institucional *</label>
             <input type="email" name="email"
               value="{{ user.email if user else '' }}"
               required placeholder="nome@fatecie.edu.br">
@@ -63,11 +63,11 @@
             </div>
           </div>
           <div class="form-group" style="margin-bottom:16px">
-            <label>Senha{% if user %} <span style="color:var(--text-muted);font-weight:400">(vazio = manter)</span>{% endif %}</label>
+            <label>Senha{% if not user %} *{% else %} <span style="color:var(--text-muted);font-weight:400">(vazio = manter)</span>{% endif %}</label>
             <input type="password" name="password" {% if not user %}required{% endif %}>
           </div>
           <div class="form-group" style="margin-bottom:16px">
-            <label>Confirmar senha</label>
+            <label>Confirmar senha{% if not user %} *{% endif %}</label>
             <input type="password" name="confirmar_senha" {% if not user %}required{% endif %}>
           </div>
           {% if user %}
@@ -106,6 +106,7 @@
             {% endif %}
           </div>
           {% endif %}
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">* campo obrigatório</div>
           <div style="display:flex;gap:10px">
             <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
             <button type="submit" class="btn btn-primary">Salvar</button>
