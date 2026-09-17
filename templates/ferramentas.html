@@ -65,9 +65,9 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-sm btn-secondary">Revalidar</button>
               </form>
-              <form method="POST" action="{{ url_for('ferramenta_excluir', id=t.id) }}" style="display:inline" onsubmit="return confirm('Remover esta ferramenta?')">
+              <form method="POST" action="{{ url_for('ferramenta_excluir', id=t.id) }}" style="display:inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626">Excluir</button>
+                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626" data-confirm="Remover a ferramenta &quot;{{ t.label|e }}&quot;? Essa ação é permanente.">Excluir</button>
               </form>
             </td>
             {% endif %}

@@ -84,10 +84,9 @@
               <td style="white-space:nowrap">
                 <div style="display:flex;gap:5px;align-items:center">
                   <a href="{{ url_for('pagamento_terceiro_editar', id=p.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-                  <form method="POST" action="{{ url_for('pagamento_terceiro_excluir', id=p.id) }}" style="display:inline"
-                        onsubmit="return confirm('Excluir este registro de {{ p.terceiro }}?')">
+                  <form method="POST" action="{{ url_for('pagamento_terceiro_excluir', id=p.id) }}" style="display:inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                    <button type="submit" class="btn btn-sm btn-danger" data-confirm="Excluir o registro de pagamento de {{ p.terceiro|e }}? Essa ação é permanente.">✕</button>
                   </form>
                 </div>
               </td>

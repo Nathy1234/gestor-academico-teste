@@ -48,10 +48,9 @@
           {% if session.role == 'admin' %}
           <a href="{{ url_for('formulario_indicadores', id=f.id) }}" class="btn btn-secondary btn-sm">Indicadores</a>
           <a href="{{ url_for('formulario_editar', id=f.id) }}" class="btn btn-secondary btn-sm">Editar</a>
-          <form method="POST" action="{{ url_for('formulario_excluir', id=f.id) }}"
-                onsubmit="return confirm('Excluir o formulário &quot;{{ f.titulo }}&quot;? Só funciona se ainda não tiver respostas.');">
+          <form method="POST" action="{{ url_for('formulario_excluir', id=f.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-sm" style="background:none;border:1px solid var(--border);color:#dc2626">Excluir</button>
+            <button type="submit" class="btn btn-sm" style="background:none;border:1px solid var(--border);color:#dc2626" data-confirm="Excluir o formulário &quot;{{ f.titulo|e }}&quot;? Só funciona se ainda não tiver respostas.">Excluir</button>
           </form>
           {% endif %}
         </div>

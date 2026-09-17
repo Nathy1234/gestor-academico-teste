@@ -9,10 +9,10 @@
     </div>
     <div style="display:flex;gap:8px">
       {% if session.role == 'admin' %}
-      <form method="POST" action="{{ url_for('reembolsos_marcar_todos_concluidos') }}"
-            onsubmit="return confirm('Marcar TODOS os reembolsos pendentes como concluídos?')">
+      <form method="POST" action="{{ url_for('reembolsos_marcar_todos_concluidos') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0">
+        <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0"
+                data-confirm="Marcar TODOS os reembolsos pendentes como concluídos?">
           ✓ Marcar todos concluídos
         </button>
       </form>
@@ -153,10 +153,9 @@
                 <a href="{{ url_for('reembolso_editar', id=r.id) }}" class="btn btn-sm btn-secondary">Editar</a>
                 {% endif %}
                 {% if session.role == 'admin' %}
-                <form method="POST" action="{{ url_for('reembolso_excluir', id=r.id) }}" style="display:inline"
-                      onsubmit="return confirm('Excluir reembolso de {{ r.nome_aluno }}?')">
+                <form method="POST" action="{{ url_for('reembolso_excluir', id=r.id) }}" style="display:inline">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                  <button type="submit" class="btn btn-sm btn-danger" data-confirm="Excluir o reembolso de {{ r.nome_aluno|e }}? Essa ação é permanente.">✕</button>
                 </form>
                 {% endif %}
               </div>

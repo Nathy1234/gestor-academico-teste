@@ -28,10 +28,12 @@
         Excel
       </a>
       {% if session.role == 'admin' %}
-      <form method="POST" action="{{ url_for('admin_migrar_externos') }}"
-            onsubmit="return confirm('Mover todos os cursos com status EXTERNO para a categoria PACOTE?\n\nEssa ação vai alterar o tipo deles para Pacote e o status para Ativo.')">
+      <form method="POST" action="{{ url_for('admin_migrar_externos') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#f2780d">
+        <button type="submit" class="btn btn-secondary" style="color:#f2780d"
+                data-confirm="Mover todos os cursos com status EXTERNO para a categoria PACOTE?
+
+Essa ação vai alterar o tipo deles para Pacote e o status para Ativo.">
           Migrar Externos → Pacotes
         </button>
       </form>

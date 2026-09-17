@@ -38,10 +38,9 @@
           <td>{{ r.colaborador|nome_exibicao }}</td>
           <td>{{ r.enviado_em.strftime('%d/%m/%Y %H:%M') }}</td>
           <td style="text-align:right">
-            <form method="POST" action="{{ url_for('formulario_resposta_excluir', form_id=formulario.id, resposta_id=r.id) }}"
-                  onsubmit="return confirm('Excluir a resposta de &quot;{{ (r.colaborador|nome_exibicao)|e }}&quot;? Essa ação não pode ser desfeita.');">
+            <form method="POST" action="{{ url_for('formulario_resposta_excluir', form_id=formulario.id, resposta_id=r.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm" style="background:none;border:1px solid var(--border);color:#dc2626">Excluir</button>
+              <button type="submit" class="btn btn-sm" style="background:none;border:1px solid var(--border);color:#dc2626" data-confirm="Excluir a resposta de &quot;{{ (r.colaborador|nome_exibicao)|e }}&quot;? Essa ação não pode ser desfeita.">Excluir</button>
             </form>
           </td>
         </tr>

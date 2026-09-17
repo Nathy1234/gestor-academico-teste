@@ -162,16 +162,14 @@
           <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">
             Editar
           </a>
-          <form method="POST" action="{{ url_for('usuario_redefinir_senha', id=u.id) }}"
-                onsubmit="return confirm('{{ u.username }} vai precisar trocar a senha no próximo login. Confirmar?')" title="Marcar para trocar senha no próximo login">
+          <form method="POST" action="{{ url_for('usuario_redefinir_senha', id=u.id) }}" title="Marcar para trocar senha no próximo login">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">🔑</button>
+            <button type="submit" class="btn btn-secondary" style="font-size:12px;padding:7px 12px" data-confirm="{{ u.username }} vai precisar trocar a senha no próximo login. Confirmar?">🔑</button>
           </form>
           {% if u.id != session.user_id %}
-          <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
-                onsubmit="return confirm('Excluir {{ u.username }}?')">
+          <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-danger" style="font-size:12px;padding:7px 12px">✕</button>
+            <button type="submit" class="btn btn-danger" style="font-size:12px;padding:7px 12px" data-confirm="Excluir o usuário {{ u.username|e }}? A conta de acesso é apagada permanentemente — cursos e histórico que ele já registrou continuam salvos.">✕</button>
           </form>
           {% endif %}
         </div>
@@ -223,16 +221,14 @@
           <td style="padding-right:16px">
             <div style="display:flex;gap:6px;justify-content:flex-end">
               <a href="{{ url_for('usuario_editar', id=u.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-              <form method="POST" action="{{ url_for('usuario_redefinir_senha', id=u.id) }}"
-                    onsubmit="return confirm('{{ u.username }} vai precisar trocar a senha no próximo login. Confirmar?')" title="Marcar para trocar senha no próximo login">
+              <form method="POST" action="{{ url_for('usuario_redefinir_senha', id=u.id) }}" title="Marcar para trocar senha no próximo login">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm btn-secondary">🔑</button>
+                <button type="submit" class="btn btn-sm btn-secondary" data-confirm="{{ u.username }} vai precisar trocar a senha no próximo login. Confirmar?">🔑</button>
               </form>
               {% if u.id != session.user_id %}
-              <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}"
-                    onsubmit="return confirm('Excluir {{ u.username }}?')">
+              <form method="POST" action="{{ url_for('usuario_excluir', id=u.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                <button type="submit" class="btn btn-sm btn-danger" data-confirm="Excluir o usuário {{ u.username|e }}? A conta de acesso é apagada permanentemente — cursos e histórico que ele já registrou continuam salvos.">Excluir</button>
               </form>
               {% endif %}
             </div>

@@ -103,10 +103,9 @@
             {% if can_edit %}
             <td style="white-space:nowrap">
               <a href="{{ url_for('erp_moodle_editar', id=it.id) }}" class="btn btn-sm btn-secondary">Editar</a>
-              <form method="POST" action="{{ url_for('erp_moodle_excluir', id=it.id) }}" style="display:inline"
-                    onsubmit="return confirm('Excluir este item?')">
+              <form method="POST" action="{{ url_for('erp_moodle_excluir', id=it.id) }}" style="display:inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626">Excluir</button>
+                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626" data-confirm="Excluir o registro de &quot;{{ it.nome_disciplina|e }}&quot;? Essa ação é permanente.">Excluir</button>
               </form>
             </td>
             {% endif %}

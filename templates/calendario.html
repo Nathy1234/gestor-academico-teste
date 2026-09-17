@@ -189,7 +189,7 @@
               <form method="POST" action="{{ url_for('calendario_alerta_cancelar', id=d.id) }}" style="display:inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
-                <button type="submit" class="btn btn-danger btn-sm" title="Retirar aviso" onclick="return confirm('Retirar o aviso desta demanda?')">Retirar aviso</button>
+                <button type="submit" class="btn btn-danger btn-sm" title="Retirar aviso" data-confirm="Retirar o aviso desta demanda? Ela continua registrada, só o alerta some.">Retirar aviso</button>
               </form>
               {% else %}
               <button type="button" class="btn btn-secondary btn-sm" onclick="calAlertarAbrir({{ d.id }})" title="Avisar a equipe">🔔 Avisar</button>
@@ -460,10 +460,10 @@
               <button type="button" class="btn btn-primary btn-sm" onclick="calLembreteConcluir({{ l.id }})">✓ Concluí</button>
               {% endif %}
               <button type="button" class="btn btn-secondary btn-sm" onclick="calLembreteEditarAbrir({{ l.id }})">Editar</button>
-              <form method="POST" action="{{ url_for('calendario_lembrete_excluir', id=l.id) }}" style="display:inline" onsubmit="return confirm('Excluir este lembrete?')">
+              <form method="POST" action="{{ url_for('calendario_lembrete_excluir', id=l.id) }}" style="display:inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="voltar_para" value="{{ request.full_path }}">
-                <button type="submit" class="btn btn-danger btn-sm">Excluir</button>
+                <button type="submit" class="btn btn-danger btn-sm" data-confirm="Excluir o lembrete &quot;{{ l.titulo|e }}&quot;? Essa ação é permanente.">Excluir</button>
               </form>
             </td>
           </tr>
@@ -548,10 +548,9 @@
         <span class="cal-modulo-chip">
           <span class="cal-modulo-chip-nome" onclick="calTipoRenomear({{ m.id }}, '{{ m.nome|e }}')" title="Clique pra renomear">{{ m.nome }}</span>
           <button type="button" class="cal-modulo-chip-editar" onclick="calTipoRenomear({{ m.id }}, '{{ m.nome|e }}')" title="Renomear tipo">✎</button>
-          <form method="POST" action="{{ url_for('calendario_tipo_excluir', id=m.id) }}" style="display:inline"
-                onsubmit="return confirm('Excluir o tipo &quot;{{ m.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele.');">
+          <form method="POST" action="{{ url_for('calendario_tipo_excluir', id=m.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" title="Excluir tipo">✕</button>
+            <button type="submit" title="Excluir tipo" data-confirm="Excluir o tipo &quot;{{ m.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele.">✕</button>
           </form>
         </span>
         {% else %}
@@ -581,10 +580,9 @@
         <span class="cal-modulo-chip">
           <span class="cal-modulo-chip-nome" onclick="calSubmoduloRenomear({{ s.id }}, '{{ s.nome|e }}')" title="Clique pra renomear">{{ s.nome }}</span>
           <button type="button" class="cal-modulo-chip-editar" onclick="calSubmoduloRenomear({{ s.id }}, '{{ s.nome|e }}')" title="Renomear módulo">✎</button>
-          <form method="POST" action="{{ url_for('calendario_submodulo_excluir', id=s.id) }}" style="display:inline"
-                onsubmit="return confirm('Excluir o módulo &quot;{{ s.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele (em nenhum tipo).');">
+          <form method="POST" action="{{ url_for('calendario_submodulo_excluir', id=s.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" title="Excluir módulo">✕</button>
+            <button type="submit" title="Excluir módulo" data-confirm="Excluir o módulo &quot;{{ s.nome|e }}&quot;? Só funciona se não tiver disciplina cadastrada nele (em nenhum tipo).">✕</button>
           </form>
         </span>
         {% else %}
@@ -675,16 +673,14 @@
       {% if is_admin and tipo_cadastrado %}
       <span class="cal-tipo-acoes">
         <form method="POST" action="{{ url_for('calendario_tipo_arquivar', id=tipo_cadastrado.id) }}"
-              onclick="event.stopPropagation()"
-              onsubmit="return confirm('{{ 'Restaurar' if ver_arquivadas else 'Arquivar' }} todas as disciplinas do tipo &quot;{{ grupo.tipo|e }}&quot;?');">
+              onclick="event.stopPropagation()">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-secondary btn-sm">{{ 'Restaurar tipo' if ver_arquivadas else 'Arquivar tipo' }}</button>
+          <button type="submit" class="btn btn-secondary btn-sm" data-confirm="{{ 'Restaurar' if ver_arquivadas else 'Arquivar' }} todas as disciplinas do tipo &quot;{{ grupo.tipo|e }}&quot;? {{ 'Elas voltam a aparecer na listagem normal.' if ver_arquivadas else 'Reversível: dá pra restaurar depois em Ver arquivadas.' }}">{{ 'Restaurar tipo' if ver_arquivadas else 'Arquivar tipo' }}</button>
         </form>
         <form method="POST" action="{{ url_for('calendario_tipo_limpar', id=tipo_cadastrado.id) }}"
-              onclick="event.stopPropagation()"
-              onsubmit="return confirm('Apagar TODAS as {{ grupo.total }} disciplina(s) de &quot;{{ grupo.tipo|e }}&quot;? O tipo continua cadastrado, só a listagem é apagada. Essa ação não pode ser desfeita.');">
+              onclick="event.stopPropagation()">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-danger btn-sm">Excluir listagem</button>
+          <button type="submit" class="btn btn-danger btn-sm" data-confirm="Apagar TODAS as {{ grupo.total }} disciplina(s) de &quot;{{ grupo.tipo|e }}&quot;? O tipo continua cadastrado, só a listagem é apagada. Essa ação não pode ser desfeita.">Excluir listagem</button>
         </form>
       </span>
       {% endif %}
@@ -714,12 +710,11 @@
                 data-linhas='{{ sub.linhas_texto|tojson }}'
                 onclick="event.stopPropagation();calListaEditarAbrir(this)">Editar lista</button>
         <form method="POST" action="{{ url_for('calendario_disciplinas_limpar') }}"
-              onclick="event.stopPropagation()"
-              onsubmit="return confirm('Apagar as {{ sub.total }} disciplina(s) de &quot;{{ sub.submodulo|e }}&quot; em {{ grupo.tipo|e }}? O tipo e o módulo continuam cadastrados.');">
+              onclick="event.stopPropagation()">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="modulo" value="{{ grupo.tipo }}">
           <input type="hidden" name="submodulo" value="{{ '' if sub.submodulo == SEM_MODULO_LABEL else sub.submodulo }}">
-          <button type="submit" class="btn btn-danger btn-sm">Excluir listagem</button>
+          <button type="submit" class="btn btn-danger btn-sm" data-confirm="Apagar as {{ sub.total }} disciplina(s) de &quot;{{ sub.submodulo|e }}&quot; em {{ grupo.tipo|e }}? O tipo e o módulo continuam cadastrados, só a listagem é apagada. Essa ação não pode ser desfeita.">Excluir listagem</button>
         </form>
         {% endif %}
       </summary>

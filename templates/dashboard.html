@@ -57,10 +57,10 @@
         <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" style="padding:5px 10px;font-size:12px">✕</a>
         {% endif %}
       </form>
-      <form method="POST" action="{{ url_for('admin_marcar_concluido') }}"
-            onsubmit="return confirm('Marcar TODAS as disciplinas como concluídas na plataforma?')">
+      <form method="POST" action="{{ url_for('admin_marcar_concluido') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0">
+        <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0"
+                data-confirm="Marcar TODAS as disciplinas como concluídas na plataforma?">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                style="width:13px;height:13px"><polyline points="20 6 9 17 4 12"/></svg>
           Marcar tudo concluído
@@ -73,10 +73,10 @@
           Backup
         </button>
       </form>
-      <form method="POST" action="{{ url_for('admin_importar_disciplinas') }}"
-            onsubmit="return confirm('Importar disciplinas do Excel para cursos sem matriz? Dados existentes não serão apagados.')">
+      <form method="POST" action="{{ url_for('admin_importar_disciplinas') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#6366f1">
+        <button type="submit" class="btn btn-secondary" style="color:#6366f1"
+                data-confirm="Importar disciplinas do Excel para cursos sem matriz? Dados existentes não serão apagados.">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
@@ -86,10 +86,12 @@
           Importar Matrizes
         </button>
       </form>
-      <form method="POST" action="{{ url_for('admin_corrigir_matriz_profissionalizantes') }}"
-            onsubmit="return confirm('Reconstruir a matriz de TODOS os cursos Profissionalizantes a partir do Excel?\n\nCorrige cursos com matriz incompleta (bug de desalinhamento entre os 2 blocos da planilha). O status \'na plataforma\' já marcado é preservado por nome da disciplina.')">
+      <form method="POST" action="{{ url_for('admin_corrigir_matriz_profissionalizantes') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#f59e0b">
+        <button type="submit" class="btn btn-secondary" style="color:#f59e0b"
+                data-confirm="Reconstruir a matriz de TODOS os cursos Profissionalizantes a partir do Excel?
+
+Corrige cursos com matriz incompleta (bug de desalinhamento entre os 2 blocos da planilha). O status 'na plataforma' já marcado é preservado por nome da disciplina.">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path d="M21.5 2v6h-6M2.5 22v-6h6"/>
             <path d="M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
@@ -97,10 +99,10 @@
           Corrigir Matriz Profissionalizantes
         </button>
       </form>
-      <form method="POST" action="{{ url_for('admin_importar_ggbr') }}"
-            onsubmit="return confirm('Importar cursos GGBR da planilha que ainda não estão cadastrados? Não duplica os que já existem.')">
+      <form method="POST" action="{{ url_for('admin_importar_ggbr') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="color:#7e22ce">
+        <button type="submit" class="btn btn-secondary" style="color:#7e22ce"
+                data-confirm="Importar cursos GGBR da planilha que ainda não estão cadastrados? Não duplica os que já existem.">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>

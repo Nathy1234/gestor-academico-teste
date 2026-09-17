@@ -99,10 +99,9 @@
               <button type="button" class="btn btn-sm btn-secondary mural-btn-salvar" data-msg-id="{{ m.id }}" onclick="salvarEdicaoMural(this)" style="display:none">Salvar</button>
               {% endif %}
               {% if m.user_id == session.user_id or session.role == 'admin' %}
-              <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="margin-left:auto"
-                    onsubmit="return confirm('Excluir esta mensagem?')">
+              <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="margin-left:auto">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626">Excluir</button>
+                <button type="submit" class="btn btn-sm btn-secondary" style="color:#dc2626" data-confirm="Excluir esta mensagem? Essa ação é permanente.">Excluir</button>
               </form>
               {% endif %}
             </div>
@@ -141,10 +140,9 @@
             {{ m.created_at.strftime('%d/%m %H:%M') }}
             {% if m.editado_em %}<span style="font-style:italic">(editado)</span>{% endif %}
             {% if m.user_id == session.user_id %}
-            <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="display:inline"
-                  onsubmit="return confirm('Excluir esta mensagem?')">
+            <form method="POST" action="{{ url_for('mural_excluir', id=m.id) }}" style="display:inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" title="Excluir">✕</button>
+              <button type="submit" title="Excluir" data-confirm="Excluir esta mensagem? Essa ação é permanente.">✕</button>
             </form>
             {% endif %}
           </div>
