@@ -250,7 +250,7 @@
             <input type="checkbox" name="perm_conta_demo" form="userForm"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('conta_demo') %}checked{% endif %}>
-            <div><div class="perm-name" style="color:#6d28d9">Conta de demonstração</div><div class="perm-desc">Navega e vê todas as telas liberadas, mas não consegue criar/editar/excluir nada, não vê valores em R$ e não consegue emitir relatório nem exportar. Ideal pra link de visualização com dado fictício.</div></div>
+            <div><div class="perm-name" style="color:#6d28d9">Conta de demonstração</div><div class="perm-desc">Navega e vê todas as telas liberadas, mas não consegue criar/editar/excluir nada, não vê valores em R$ e não consegue emitir relatório nem exportar. Marcando aqui, o link <code>/demonstracao</code> passa a entrar direto nessa conta, sem pedir senha — é isso que dá pra compartilhar publicamente.</div></div>
           </label>
         </div>
 

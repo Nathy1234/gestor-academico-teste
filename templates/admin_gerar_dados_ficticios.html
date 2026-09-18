@@ -40,5 +40,41 @@
       </form>
     </div>
   </div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="card-header"><div class="card-title">Link público sem senha (/demonstracao)</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.6">
+        Escolha qual conta o link <code>/demonstracao</code> usa — só funciona com uma
+        conta marcada como "Conta de demonstração" (em Usuários → Editar). Sem
+        nenhuma escolhida aqui, o link fica desligado (dá 404 pra quem tentar abrir).
+      </div>
+
+      {% if demo_publico_user_id %}
+      <div style="font-size:13px;margin-bottom:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;color:#15803d">
+        ✅ Link ativo, usando <strong>{{ contas_demo | selectattr('id','equalto',demo_publico_user_id) | map(attribute='username') | first }}</strong>
+      </div>
+      {% else %}
+      <div style="font-size:13px;margin-bottom:16px;color:var(--text-muted)">Link desligado no momento.</div>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('admin_demonstracao_config') }}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="user_id" class="filter-select" style="flex:1;min-width:200px">
+          <option value="">— Desligado —</option>
+          {% for u in contas_demo %}
+          <option value="{{ u.id }}" {% if demo_publico_user_id==u.id %}selected{% endif %}>{{ u.username }} ({{ u.email or 'sem e-mail' }})</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </form>
+      {% if not contas_demo %}
+      <div style="font-size:12px;color:var(--text-muted);margin-top:12px">
+        Nenhuma conta marcada como "Conta de demonstração" ainda — crie uma em
+        <a href="{{ url_for('usuarios') }}">Usuários</a> primeiro.
+      </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

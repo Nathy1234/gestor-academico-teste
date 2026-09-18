@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.43'
+VERSAO = '1.19.45'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -1666,6 +1666,31 @@ def login():
             return _home_redirect(u)
         flash('Usuário ou senha incorretos.', 'danger')
     return render_template('login.html')
+
+def _demo_publico_user_id():
+    setting = AppSetting.query.get('demo_publico_user_id')
+    return int(setting.value) if setting and setting.value else None
+
+@app.route('/demonstracao')
+@limiter.limit("30 per minute")
+def acesso_demonstracao():
+    """Link público de vitrine — entra direto, sem pedir senha, na conta
+    que o admin escolheu explicitamente em Admin → Dados Fictícios (nunca
+    detecta sozinho). Só funciona se essa conta existir, ainda estiver
+    marcada como 'Conta de demonstração' e o admin não tiver desligado o
+    link. É seguro ser público porque essa conta já não consegue criar/
+    editar/excluir nada nem emitir relatório (bloqueado globalmente em
+    restringir_conta_demo) — o pior que dá pra fazer é navegar vendo dado
+    fictício."""
+    uid = _demo_publico_user_id()
+    conta = User.query.get(uid) if uid else None
+    if not conta or not conta.is_conta_demo():
+        abort(404)
+    session.permanent = True
+    session['user_id'] = conta.id
+    session['username'] = conta.username
+    session['role'] = conta.role
+    return _home_redirect(conta)
 
 @app.route('/esqueci-senha', methods=['GET','POST'])
 @limiter.limit("5 per minute", methods=['POST'])
@@ -6535,7 +6560,36 @@ def admin_gerar_dados_ficticios():
         return redirect(url_for('dashboard'))
     host_match = _re.search(r'@([^/]+)/', _db_url)
     db_host = host_match.group(1) if host_match else _db_url
-    return render_template('admin_gerar_dados_ficticios.html', db_host=db_host)
+    contas_demo = [u for u in User.query.order_by(User.username).all() if u.is_conta_demo()]
+    return render_template('admin_gerar_dados_ficticios.html', db_host=db_host,
+                           contas_demo=contas_demo, demo_publico_user_id=_demo_publico_user_id())
+
+@app.route('/admin/demonstracao-config', methods=['POST'])
+@admin_required
+def admin_demonstracao_config():
+    """Escolhe (ou desliga) qual conta o link público /demonstracao usa —
+    sempre uma decisão explícita do admin, nunca detectada sozinha."""
+    uid = request.form.get('user_id', '').strip()
+    setting = AppSetting.query.get('demo_publico_user_id')
+    if not setting:
+        setting = AppSetting(key='demo_publico_user_id')
+        db.session.add(setting)
+    if uid:
+        conta = User.query.get(int(uid))
+        if not conta or not conta.is_conta_demo():
+            flash('Escolha uma conta que esteja marcada como "Conta de demonstração".', 'danger')
+            return redirect(url_for('admin_gerar_dados_ficticios'))
+        setting.value = str(conta.id)
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'ativar_demonstracao', 'sistema', None,
+                   f'Link /demonstracao ligado, usando a conta "{conta.username}"')
+        flash(f'Link público de demonstração ativado, usando a conta "{conta.username}".', 'success')
+    else:
+        setting.value = None
+        db.session.commit()
+        log_action(session['user_id'], session['username'], 'desativar_demonstracao', 'sistema', None)
+        flash('Link público de demonstração desativado.', 'success')
+    return redirect(url_for('admin_gerar_dados_ficticios'))
 
 def arquivar_logs_antigos():
     """Arquiva por e-mail e remove da tabela ativa os logs de auditoria com mais
@@ -8033,7 +8087,7 @@ def exigir_troca_senha():
     if 'user_id' not in session:
         return
     u = User.query.get(session['user_id'])
-    if u and u.must_change_password and u.can_change_own_password():
+    if u and u.must_change_password and u.can_change_own_password() and not u.is_conta_demo():
         flash('Por segurança, troque sua senha antes de continuar.', 'danger')
         return redirect(url_for('minha_conta'))
 

@@ -9,8 +9,8 @@ assim que for feito `git push origin main` (deploy automático via Vercel).
 Este projeto tem um ambiente de teste **totalmente isolado**, numa pasta irmã:
 
 - Pasta: `../gestor-academico-teste`
-- Repositório GitHub próprio: `Nathy1234/gestor-academico-teste`
-- Projeto Vercel próprio: `gestor-academico-teste` (mesmo time `gestao-pessoal`),
+- Repositório GitHub próprio: `Nathy1234/gestor-insercao-teste`
+- Projeto Vercel próprio (mesmo time `gestao-pessoal`),
   no ar em https://gestor-inseercao-teste.vercel.app/
 - Banco de dados Supabase próprio, em conta separada — nunca compartilha
   dados, credenciais nem `.env` com a produção.
@@ -20,7 +20,7 @@ Sempre teste mudanças arriscadas lá primeiro. Só traga pra cá depois de vali
 ### Remote já configurado
 Este repo tem um remote `teste` apontando pro repositório de teste:
 ```
-git remote -v          # mostra "teste" -> gestor-academico-teste.git
+git remote -v          # mostra "teste" -> gestor-insercao-teste.git
 ```
 
 ### Como levar uma mudança feita no ambiente teste para cá (produção)

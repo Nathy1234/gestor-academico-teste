@@ -259,6 +259,11 @@
 
   <!-- MAIN -->
   <main class="main-content">
+    {% if ocultar_valores %}
+    <div style="background:#6d28d9;color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:8px 12px;letter-spacing:.02em">
+      🧪 AMBIENTE DE DEMONSTRAÇÃO — dados fictícios, somente visualização. Não é possível criar, editar ou excluir nada aqui.
+    </div>
+    {% endif %}
     {% if lembretes_ativos or alertas_demandas_ativos or reunioes_ativas %}
     <div id="topAlertBar">
       {% for l in lembretes_ativos %}
