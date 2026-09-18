@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.45'
+VERSAO = '1.19.46'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -552,9 +552,17 @@ class User(db.Model):
         ADMIN no menu, não passa mais pelo padrão de visibilidade."""
         return self.role == 'admin'
 
+    def can_view_cupons(self):
+        """Só visualizar (sem criar/editar/excluir) — além do admin, só a
+        conta de demonstração, pra ela conseguir mostrar o módulo inteiro."""
+        return self.can_manage_cupons() or self.is_conta_demo()
+
     def can_manage_reembolsos(self):
         """Mesma coisa: Reembolsos é fixo só pro admin."""
         return self.role == 'admin'
+
+    def can_view_reembolsos(self):
+        return self.can_manage_reembolsos() or self.is_conta_demo()
 
     def can_view_historico(self):
         return self._modulo_ok('historico', 'block_historico')
@@ -592,6 +600,9 @@ class User(db.Model):
     def can_manage_pagamentos_terceiros(self):
         """Fixo só pro admin — mora dentro de ADMIN no menu."""
         return self.role == 'admin'
+
+    def can_view_pagamentos_terceiros(self):
+        return self.can_manage_pagamentos_terceiros() or self.is_conta_demo()
 
     def can_manage_opcoes_curso(self):
         """Fixo só pro admin — mora dentro de ADMIN no menu."""
@@ -1665,7 +1676,7 @@ def login():
             log_action(u.id, u.username, 'login', 'user', u.id)
             return _home_redirect(u)
         flash('Usuário ou senha incorretos.', 'danger')
-    return render_template('login.html')
+    return render_template('login.html', demo_link_ativo=bool(_demo_publico_user_id()))
 
 def _demo_publico_user_id():
     setting = AppSetting.query.get('demo_publico_user_id')
@@ -2873,7 +2884,7 @@ def erp_moodle_importar():
 # ─── CUPONS ────────────────────────────────────────────────────────────────────
 
 @app.route('/cupons')
-@perm_check('can_manage_cupons')
+@perm_check('can_view_cupons')
 def cupons():
     busca = request.args.get('q', '')
     q = Coupon.query
@@ -2930,7 +2941,7 @@ def cupom_editar(id):
 # ─── REEMBOLSOS ────────────────────────────────────────────────────────────────
 
 @app.route('/reembolsos')
-@perm_check('can_manage_reembolsos')
+@perm_check('can_view_reembolsos')
 def reembolsos():
     busca      = request.args.get('q', '').strip()
     f_colab    = request.args.get('colab', '').strip()
@@ -3230,7 +3241,7 @@ def _pagamentos_terceiros_filtrados():
     return items, f_terceiro, f_curso, f_ano
 
 @app.route('/pagamentos-terceiros')
-@perm_check('can_manage_pagamentos_terceiros')
+@perm_check('can_view_pagamentos_terceiros')
 def pagamentos_terceiros():
     items, f_terceiro, f_curso, f_ano = _pagamentos_terceiros_filtrados()
 

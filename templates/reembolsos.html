@@ -119,8 +119,8 @@
             </td>
             <td style="font-size:12px;white-space:nowrap">{{ r.data_compra.strftime('%d/%m/%Y') if r.data_compra else '—' }}</td>
             <td style="font-size:12px;white-space:nowrap">{{ r.data_solicitacao.strftime('%d/%m/%Y') if r.data_solicitacao else '—' }}</td>
-            <td style="white-space:nowrap;font-weight:500">{% if r.valor %}R$ {{ "%.2f"|format(r.valor) }}{% else %}—{% endif %}</td>
-            <td style="white-space:nowrap">{% if r.valor_estorno %}R$ {{ "%.2f"|format(r.valor_estorno) }}{% else %}—{% endif %}</td>
+            <td style="white-space:nowrap;font-weight:500">{% if ocultar_valores %}•••{% elif r.valor %}R$ {{ "%.2f"|format(r.valor) }}{% else %}—{% endif %}</td>
+            <td style="white-space:nowrap">{% if ocultar_valores %}•••{% elif r.valor_estorno %}R$ {{ "%.2f"|format(r.valor_estorno) }}{% else %}—{% endif %}</td>
             <td style="font-size:12px;white-space:nowrap">{{ r.solicitacao_1.strftime('%d/%m/%Y') if r.solicitacao_1 else '—' }}</td>
             <td style="font-size:12px;white-space:nowrap">{{ r.solicitacao_2.strftime('%d/%m/%Y') if r.solicitacao_2 else '—' }}</td>
             <td style="font-size:12px;white-space:nowrap">{{ r.data_aprovacao.strftime('%d/%m/%Y') if r.data_aprovacao else '—' }}</td>

@@ -33,7 +33,7 @@
 
   {% if total_registros > 0 %}
   <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid #16a34a;border-radius:8px;padding:10px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
-    <span style="font-weight:700;color:#16a34a">R$ {{ '{:,.2f}'.format(total_valor)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}</span>
+    <span style="font-weight:700;color:#16a34a">{% if ocultar_valores %}•••{% else %}R$ {{ '{:,.2f}'.format(total_valor)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}{% endif %}</span>
     <span style="font-size:13px;color:var(--text-muted)">somado em todos os terceiros filtrados</span>
   </div>
   {% endif %}
@@ -44,7 +44,7 @@
       <span class="accordion-caret">▸</span>
       <span style="font-weight:700;font-size:15px;flex:1">{{ terceiro }}</span>
       <span style="font-size:12px;color:var(--text-muted)">{{ cursos|length }} curso(s)</span>
-      <span style="font-weight:700;color:#16a34a;font-size:14px">R$ {{ '{:,.2f}'.format(subtotais_terceiro[terceiro])|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}</span>
+      <span style="font-weight:700;color:#16a34a;font-size:14px">{% if ocultar_valores %}•••{% else %}R$ {{ '{:,.2f}'.format(subtotais_terceiro[terceiro])|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}{% endif %}</span>
       <a href="{{ url_for('pagamento_terceiro_novo', terceiro=terceiro) }}" onclick="event.stopPropagation()"
          class="btn btn-sm btn-secondary" title="Novo registro para {{ terceiro }}">+ Novo p/ {{ terceiro }}</a>
     </summary>
@@ -55,7 +55,7 @@
         <span class="accordion-caret" style="font-size:11px">▸</span>
         <span style="font-weight:600;font-size:13px;color:var(--text-muted);flex:1">{{ curso }}</span>
         <span style="font-size:11px;color:var(--text-muted)">{{ registros|length }} intervalo(s)</span>
-        <span style="font-weight:600;font-size:12px">R$ {{ '{:,.2f}'.format(subtotal_curso)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}</span>
+        <span style="font-weight:600;font-size:12px">{% if ocultar_valores %}•••{% else %}R$ {{ '{:,.2f}'.format(subtotal_curso)|replace(',', 'X')|replace('.', ',')|replace('X', '.') }}{% endif %}</span>
       </summary>
       <div class="table-wrapper">
         <table style="min-width:900px">

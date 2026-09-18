@@ -36,6 +36,14 @@
       </div>
     </div>
 
+    {% if demo_link_ativo %}
+    <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px 14px;margin:0 0 16px;font-size:12.5px;color:#5b21b6;line-height:1.5">
+      🧪 Isso aqui é o ambiente de demonstração — dados fictícios. Quer só dar
+      uma olhada, sem precisar de senha?
+      <a href="{{ url_for('acesso_demonstracao') }}" style="color:#6d28d9;font-weight:600">Entrar como visitante</a>
+    </div>
+    {% endif %}
+
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in msgs %}
         <div class="alert alert-{{ cat }}" style="margin:0 0 16px">{{ msg }}</div>
