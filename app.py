@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.47'
+VERSAO = '1.19.48'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -2101,6 +2101,7 @@ def dashboard():
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u, dados_ficticios_ativos=_dados_ficticios_ativos(),
+        mostrar_toolbar_admin=is_admin or u.is_conta_demo(),
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
         widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos, widgets_tamanhos=widgets_tamanhos,
