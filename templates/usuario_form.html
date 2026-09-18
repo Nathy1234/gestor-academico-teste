@@ -240,11 +240,17 @@
               {% elif user and user._p().get('block_trocar_senha') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#dc2626">Bloquear Troca de Senha</div><div class="perm-desc">Este usuário não poderá alterar a própria senha em "Minha Conta" — só o admin poderá trocá-la</div></div>
           </label>
-          <label class="perm-item" style="border-bottom:none;background:#eff6ff">
+          <label class="perm-item" style="background:#eff6ff">
             <input type="checkbox" name="perm_somente_erp_moodle" form="userForm" id="permSomenteErpMoodle" onchange="syncSomenteErpMoodle()"
               {% if user and user.role=='admin' %}disabled
               {% elif user and user._p().get('somente_erp_moodle') %}checked{% endif %}>
             <div><div class="perm-name" style="color:#1d4ed8">Restringir só ao ERP Moodle</div><div class="perm-desc">Ideal para contas da equipe externa: a pessoa não enxerga cursos, financeiro, matrizes nem mais nada — só a tela de ERP Moodle. Marque junto com "Acessar ERP Moodle" acima.</div></div>
+          </label>
+          <label class="perm-item" style="border-bottom:none;background:#f5f3ff">
+            <input type="checkbox" name="perm_conta_demo" form="userForm"
+              {% if user and user.role=='admin' %}disabled
+              {% elif user and user._p().get('conta_demo') %}checked{% endif %}>
+            <div><div class="perm-name" style="color:#6d28d9">Conta de demonstração</div><div class="perm-desc">Navega e vê todas as telas liberadas, mas não consegue criar/editar/excluir nada, não vê valores em R$ e não consegue emitir relatório nem exportar. Ideal pra link de visualização com dado fictício.</div></div>
           </label>
         </div>
 
@@ -289,7 +295,7 @@ const EDITOR_DEFAULTS = {
   block_cursos: false, block_matrizes: false, block_banco_disciplinas: false,
   block_ia_assistente: false, block_ferramentas: false,
   block_mural: false, block_formularios: false, block_calendario: false,
-  block_trocar_senha: false, somente_erp_moodle: false,
+  block_trocar_senha: false, somente_erp_moodle: false, conta_demo: false,
 };
 
 // "Restringir só ao ERP Moodle" só faz sentido junto com "Acessar ERP

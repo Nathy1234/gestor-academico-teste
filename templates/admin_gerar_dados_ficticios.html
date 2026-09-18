@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Gerar Dados Fictícios — Gestor{% endblock %}
+{% block content %}
+<div class="page" style="max-width:560px">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('usuarios') }}" style="color:var(--text-muted);text-decoration:none;font-size:13px">← Usuários</a>
+      <div class="page-title" style="margin-top:6px">Gerar Dados Fictícios</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin-bottom:20px">
+        <div style="font-weight:600;font-size:13px;color:#dc2626;margin-bottom:6px">⚠️ Isso substitui nomes reais por fictícios — não tem como desfazer</div>
+        <div style="font-size:12px;color:#7f1d1d;line-height:1.6">
+          Nome de curso, disciplina, professor, insersor, aluno e parceiro de
+          repasse são trocados por dados de exemplo. Números (valor, carga
+          horária, datas, ids) e nenhuma conta de usuário são alterados — só
+          use isso num banco que pode perder os nomes reais de verdade
+          (ambiente de demonstração/teste), nunca na produção.
+        </div>
+      </div>
+
+      <div style="font-size:13px;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <strong>Banco de dados que será alterado:</strong><br>
+        <span style="color:var(--text-muted);font-family:monospace;font-size:12px">{{ db_host }}</span>
+      </div>
+
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin-bottom:20px">
+          <label>Pra confirmar, digite <strong>FICTICIO</strong> abaixo</label>
+          <input type="text" name="confirmacao" required placeholder="FICTICIO" autocomplete="off">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-danger">Gerar dados fictícios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

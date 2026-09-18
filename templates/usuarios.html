@@ -5,7 +5,9 @@
   <div class="page-header">
     <div>
       <div class="page-title">Usuários</div>
-      <div class="page-subtitle">{{ users|length }} usuário(s) cadastrado(s)</div>
+      <div class="page-subtitle">
+        {% if busca or filtro_role %}{{ users|length }} de {{ total_geral }} usuário(s){% else %}{{ total_geral }} usuário(s) cadastrado(s){% endif %}
+      </div>
     </div>
     <a href="{{ url_for('usuario_novo') }}" class="btn btn-primary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
@@ -14,6 +16,20 @@
       Novo Usuário
     </a>
   </div>
+
+  <form method="GET" class="filters">
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar por nome ou usuário..." class="filter-select" style="width:240px">
+    <select name="role" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todos os perfis</option>
+      <option value="admin" {% if filtro_role == 'admin' %}selected{% endif %}>Admin</option>
+      <option value="editor" {% if filtro_role == 'editor' %}selected{% endif %}>Editor</option>
+      <option value="viewer" {% if filtro_role == 'viewer' %}selected{% endif %}>Leitor</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    {% if busca or filtro_role %}
+    <a href="{{ url_for('usuarios') }}" class="btn btn-secondary">Limpar</a>
+    {% endif %}
+  </form>
 
   {% if inativos %}
   <!-- COLABORADORES INATIVOS ──────────────────── -->
@@ -45,6 +61,10 @@
       </table>
     </div>
   </div>
+  {% endif %}
+
+  {% if not users %}
+  <div class="card" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum usuário encontrado com esse filtro.</div>
   {% endif %}
 
   <!-- CARDS DE RESPONSABILIDADE ──────────────────── -->

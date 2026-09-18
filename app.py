@@ -53,12 +53,23 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.36'
+VERSAO = '1.19.43'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
 def inject_versao():
     return {'versao': VERSAO, 'no_ar_desde': NO_AR_DESDE}
+
+@app.context_processor
+def inject_ocultar_valores():
+    """Disponível em todo template como `ocultar_valores` — True só pra
+    conta de demonstração, pra mascarar R$ nas telas sem precisar checar
+    role/permissão espalhado em cada arquivo."""
+    ocultar = False
+    if 'user_id' in session:
+        u = User.query.get(session['user_id'])
+        ocultar = bool(u and u.is_conta_demo())
+    return {'ocultar_valores': ocultar}
 
 _RE_NEGRITO = _re.compile(r'\*\*(.+?)\*\*')
 
@@ -589,6 +600,14 @@ class User(db.Model):
     def can_change_own_password(self):
         if self.role == 'admin': return True
         return not self._p().get('block_trocar_senha')
+
+    def is_conta_demo(self):
+        """Conta de vitrine: navega e vê tudo que o papel dela já libera, mas
+        não consegue agir em nada (bloqueado globalmente em ensure_db/
+        before_request), não vê valores em R$ (ver contexto 'ocultar_valores')
+        e não emite relatório/exportação. Pensada pra link público de
+        demonstração com dado fictício, sem risco de mexer ou vazar valor."""
+        return self.role != 'admin' and bool(self._p().get('conta_demo'))
 
     def can_view_erp_moodle(self):
         """Enxerga a tela do ERP Moodle (inserção de conteúdo). Equipe interna
@@ -2274,16 +2293,21 @@ def cursos_status_em_lote():
 @editor_required
 @perm_check('can_view_cursos')
 def cursos_editar_em_lote():
-    """Aplica Venda por / Valor / Horas em vários cursos de uma vez. Só os
-    campos que vierem no JSON são alterados — marcar só 1 dos 3 não mexe
-    nos outros dois, pra não zerar campo por engano."""
+    """Aplica Venda por / Valor / Horas / Área em vários cursos de uma vez. Só os
+    campos que vierem no JSON são alterados — marcar só 1 deles não mexe
+    nos outros, pra não zerar campo por engano."""
     data = request.json or {}
     ids = data.get('ids', [])
     if not ids:
         return jsonify({'ok': False, 'erro': 'Nenhum curso selecionado.'}), 400
-    campos = [c for c in ('venda_modalidade', 'valor', 'horas') if c in data]
+    campos = [c for c in ('venda_modalidade', 'valor', 'horas', 'area') if c in data]
     if not campos:
         return jsonify({'ok': False, 'erro': 'Marque pelo menos um campo pra aplicar.'}), 400
+
+    if 'area' in data:
+        area_val = (data.get('area') or '').strip()
+        if area_val and area_val not in AREAS_VALIDAS:
+            return jsonify({'ok': False, 'erro': f'Área inválida: {area_val}.'}), 400
 
     if 'venda_modalidade' in data:
         # Aceita mais de uma opção marcada, separadas por vírgula (ex: "Link, Site")
@@ -2306,12 +2330,16 @@ def cursos_editar_em_lote():
             c.valor = (data.get('valor') or '').strip()
         if 'horas' in data:
             c.horas = (data.get('horas') or '').strip()
+        if 'area' in data:
+            c.area = (data.get('area') or '').strip() or None
     if 'venda_modalidade' in data:
         resumo.append(f'Venda por="{(data.get("venda_modalidade") or "Nenhum")}"')
     if 'valor' in data:
         resumo.append(f'Valor="{data.get("valor") or ""}"')
     if 'horas' in data:
         resumo.append(f'Horas="{data.get("horas") or ""}"')
+    if 'area' in data:
+        resumo.append(f'Área="{data.get("area") or "Nenhuma"}"')
 
     db.session.commit()
     log_action(session['user_id'], session['username'], 'editar_em_lote', 'course', None,
@@ -2606,6 +2634,69 @@ def api_busca():
     return jsonify([{'id': c.id, 'nome': c.nome, 'tipo': c.tipo, 'status': c.status,
                       'categoria': c.categoria or 'INOVA'} for c in results])
 
+def _horas_num(valor):
+    """Extrai o número inicial de um texto de carga horária livre (ex:
+    '180', '40h', '30 horas') — usado só pra comparar cursos, nunca gravado."""
+    if not valor:
+        return None
+    m = _re.match(r'^\s*(\d+\.?\d*)', str(valor))
+    return float(m.group(1)) if m else None
+
+@app.route('/api/curso/sugestao-matriz')
+@editor_required
+@perm_check('can_view_cursos')
+def api_curso_sugestao_matriz():
+    """Acha o curso existente mais parecido (mesmo tipo, de preferência
+    mesma área, carga horária mais próxima) que já tenha matriz cadastrada,
+    e devolve as disciplinas dele como rascunho — não grava nada, só serve
+    de ponto de partida pra pessoa editar antes de salvar o curso novo."""
+    tipo = request.args.get('tipo', '')
+    area = request.args.get('area', '')
+    horas = request.args.get('horas', '')
+    excluir_id = request.args.get('excluir_id', type=int)
+    if not tipo:
+        return jsonify({'ok': False, 'erro': 'Escolha o tipo do curso primeiro.'})
+
+    candidatos = Course.query.filter(Course.tipo == tipo).all()
+    if excluir_id:
+        candidatos = [c for c in candidatos if c.id != excluir_id]
+    ids_candidatos = [c.id for c in candidatos]
+    if not ids_candidatos:
+        return jsonify({'ok': False, 'erro': 'Nenhum outro curso desse tipo foi encontrado.'})
+
+    contagem = dict(
+        db.session.query(Discipline.course_id, db.func.count(Discipline.id))
+        .filter(Discipline.course_id.in_(ids_candidatos)).group_by(Discipline.course_id).all()
+    )
+    candidatos = [c for c in candidatos if contagem.get(c.id)]
+    if not candidatos:
+        return jsonify({'ok': False, 'erro': 'Nenhum curso desse tipo tem matriz cadastrada ainda pra servir de base.'})
+
+    mesma_area = [c for c in candidatos if area and c.area == area]
+    pool = mesma_area or candidatos
+
+    alvo_horas = _horas_num(horas)
+    if alvo_horas is not None:
+        com_horas = [c for c in pool if _horas_num(c.horas) is not None]
+        if com_horas:
+            pool = sorted(com_horas, key=lambda c: abs(_horas_num(c.horas) - alvo_horas))
+        else:
+            pool = sorted(pool, key=lambda c: c.updated_at or c.created_at, reverse=True)
+    else:
+        pool = sorted(pool, key=lambda c: c.updated_at or c.created_at, reverse=True)
+
+    similar = pool[0]
+    discs = Discipline.query.filter_by(course_id=similar.id).order_by(Discipline.ordem).all()
+    return jsonify({
+        'ok': True,
+        'curso_similar': {'nome': similar.nome, 'area': similar.area, 'horas': similar.horas},
+        'disciplinas': [
+            {'modulo': d.modulo or '', 'nome': d.nome or '', 'carga': d.carga or '',
+             'professor': '', 'titulacao': ''}
+            for d in discs
+        ],
+    })
+
 # ─── ERP MOODLE (inserção de conteúdo — categoria separada do INOVA) ───────────
 # Acompanhamento manual da equipe de inserção de materiais: cada linha é uma
 # disciplina em inserção/concluída, com o curso digitado à mão (não depende
@@ -2759,8 +2850,12 @@ def erp_moodle_importar():
 @app.route('/cupons')
 @perm_check('can_manage_cupons')
 def cupons():
-    cupons = Coupon.query.order_by(Coupon.created_at.desc()).all()
-    return render_template('cupons.html', cupons=cupons)
+    busca = request.args.get('q', '')
+    q = Coupon.query
+    if busca:
+        q = q.filter(Coupon.nome.ilike(f'%{busca}%'))
+    cupons = q.order_by(Coupon.created_at.desc()).all()
+    return render_template('cupons.html', cupons=cupons, busca=busca)
 
 @app.route('/cupons/novo', methods=['GET','POST'])
 @editor_required
@@ -4366,8 +4461,22 @@ def matrizes_exportar_excel():
 @perm_check('can_view_historico')
 def historico():
     page = request.args.get('page', 1, type=int)
-    logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=50)
-    return render_template('historico.html', logs=logs)
+    busca = request.args.get('q', '')
+    acao = request.args.get('acao', '')
+    entidade = request.args.get('entidade', '')
+    q = AuditLog.query
+    if busca:
+        termo = f'%{busca}%'
+        q = q.filter(db.or_(AuditLog.username.ilike(termo), AuditLog.detail.ilike(termo)))
+    if acao:
+        q = q.filter_by(action=acao)
+    if entidade:
+        q = q.filter_by(entity=entidade)
+    logs = q.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=50)
+    acoes_disponiveis = [a[0] for a in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all() if a[0]]
+    entidades_disponiveis = [e[0] for e in db.session.query(AuditLog.entity).distinct().order_by(AuditLog.entity).all() if e[0]]
+    return render_template('historico.html', logs=logs, busca=busca, filtro_acao=acao, filtro_entidade=entidade,
+                           acoes_disponiveis=acoes_disponiveis, entidades_disponiveis=entidades_disponiveis)
 
 # ─── USUÁRIOS ──────────────────────────────────────────────────────────────────
 
@@ -4401,6 +4510,8 @@ def admin_visibilidade():
 @app.route('/usuarios')
 @admin_required
 def usuarios():
+    busca = request.args.get('q', '')
+    role_filtro = request.args.get('role', '')
     users = User.query.order_by(User.username).all()
     # todos os cursos, sem exceção de tipo ou status
     todos_cursos = Course.query.all()
@@ -4446,8 +4557,18 @@ def usuarios():
             inativos.append({'user': u, 'dias': dias, 'nunca_logou': u.ultimo_login is None})
     inativos.sort(key=lambda x: x['dias'], reverse=True)
 
-    return render_template('usuarios.html', users=users, stats=stats, tipo_label=TIPO_LABEL,
-                           inativos=inativos, dias_inatividade=DIAS_INATIVIDADE)
+    total_geral = len(users)
+    users_filtrados = users
+    if busca:
+        termo = busca.lower()
+        users_filtrados = [u for u in users_filtrados
+                            if termo in u.username.lower() or termo in (u.nome or '').lower()]
+    if role_filtro:
+        users_filtrados = [u for u in users_filtrados if u.role == role_filtro]
+
+    return render_template('usuarios.html', users=users_filtrados, stats=stats, tipo_label=TIPO_LABEL,
+                           inativos=inativos, dias_inatividade=DIAS_INATIVIDADE,
+                           busca=busca, filtro_role=role_filtro, total_geral=total_geral)
 
 
 @app.route('/usuarios/<int:id>/cursos')
@@ -4553,7 +4674,7 @@ def _perms_from_form(d):
         'block_cursos', 'block_matrizes', 'block_banco_disciplinas',
         'block_ia_assistente', 'block_ferramentas',
         'block_mural', 'block_formularios', 'block_calendario',
-        'somente_erp_moodle',
+        'somente_erp_moodle', 'conta_demo',
     ]
     return {k: (d.get(f'perm_{k}') == 'on') for k in keys}
 
@@ -4567,6 +4688,21 @@ def usuario_redefinir_senha(id):
     flash(f'"{u.username}" precisará trocar a senha no próximo login.', 'success')
     return redirect(url_for('usuarios'))
 
+def _detectar_imagem(conteudo):
+    """Detecta o tipo real da imagem pelos primeiros bytes (assinatura do
+    arquivo) — nunca confia no mimetype que o navegador informou, porque
+    é só um texto que o próprio upload manda e pode ser forjado. Devolve
+    None se não reconhecer nenhum formato de imagem de verdade."""
+    if conteudo[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    if conteudo[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    if conteudo[:6] in (b'GIF87a', b'GIF89a'):
+        return 'image/gif'
+    if conteudo[:4] == b'RIFF' and conteudo[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
 @app.route('/usuarios/<int:id>/foto', methods=['POST'])
 @admin_required
 def usuario_foto_upload(id):
@@ -4577,10 +4713,14 @@ def usuario_foto_upload(id):
         if len(conteudo) > 3 * 1024 * 1024:
             flash('Foto muito grande (máx. 3MB).', 'danger')
         else:
-            u.foto = conteudo
-            u.foto_mimetype = arquivo.mimetype or 'image/jpeg'
-            db.session.commit()
-            flash('Foto atualizada!', 'success')
+            mimetype_real = _detectar_imagem(conteudo)
+            if not mimetype_real:
+                flash('Arquivo não parece ser uma imagem válida (jpg, png, gif ou webp).', 'danger')
+            else:
+                u.foto = conteudo
+                u.foto_mimetype = mimetype_real
+                db.session.commit()
+                flash('Foto atualizada!', 'success')
     return redirect(url_for('usuario_editar', id=id))
 
 @app.route('/usuarios/<int:id>/foto')
@@ -5412,6 +5552,10 @@ def calendario_publico():
     if not _calendario_publico_ativo():
         return render_template('calendario_publico_desativado.html'), 200
 
+    # Link pode vir filtrado pra um só Tipo (ex: ?tipo=PÓS), pra compartilhar
+    # com um stakeholder específico sem ele ver o andamento dos outros tipos.
+    tipo_filtro = request.args.get('tipo') or ''
+
     demandas = Demanda.query.order_by(Demanda.data_fim).all()
     demandas_view = [{
         'titulo': d.titulo, 'descricao': d.descricao or '',
@@ -5419,7 +5563,7 @@ def calendario_publico():
         'status': d.status,
         'responsavel': ', '.join(nome_exibicao(r) for r in d.responsaveis_usuarios()) or None,
     } for d in demandas]
-    modulos = _disciplinas_agrupadas()
+    modulos = _disciplinas_agrupadas(tipo_filtro or None)
     todos_tipos_resumo = [_resumo_de_tipo(g) for g in modulos]
     total_disc_geral = sum(g['total'] for g in modulos)
     liberadas_disc_geral = sum(g['liberadas'] for g in modulos)
@@ -5427,6 +5571,7 @@ def calendario_publico():
 
     return render_template('calendario_publico.html',
         demandas=demandas_view, modulos=modulos, todos_tipos_resumo=todos_tipos_resumo,
+        tipo_filtro=tipo_filtro,
         pronto_percentual=pronto_percentual, total_disc_geral=total_disc_geral, liberadas_disc_geral=liberadas_disc_geral,
         STATUS_LABEL=STATUS_DEMANDA_LABEL, STATUS_DISC=STATUS_DISC_MODULO,
         STATUS_DISC_LABEL=STATUS_DISC_MODULO_LABEL, STATUS_DISC_COR=STATUS_DISC_MODULO_COR)
@@ -6304,6 +6449,93 @@ def backup_restaurar_upload():
               f'(o estado anterior foi salvo no backup #{seguranca.id}, caso precise desfazer)', 'success')
         return redirect(url_for('dashboard'))
     return render_template('backup_restaurar.html', rec=None, upload=True)
+
+_NOMES_FICTICIOS_CURSO = [
+    'Curso Demonstrativo', 'Formação Exemplo', 'Capacitação Modelo',
+    'Programa Ilustrativo', 'Trilha de Estudo Fictícia', 'Especialização Exemplo',
+]
+_NOMES_FICTICIOS_DISCIPLINA = [
+    'Disciplina Introdutória', 'Fundamentos do Tema', 'Módulo Prático',
+    'Tópicos Avançados', 'Estudo de Caso', 'Revisão Aplicada',
+]
+_NOMES_FICTICIOS_PESSOA = [
+    'Ana Exemplo', 'Bruno Modelo', 'Carla Fictícia', 'Diego Amostra',
+    'Elisa Teste', 'Fábio Ilustrativo', 'Gabriela Demo', 'Hugo Simulado',
+]
+
+def _gerar_dados_ficticios():
+    """Troca nome de curso/disciplina/professor/insersor/aluno/parceiro por
+    dado fictício — nunca mexe em número (valor, horas, datas, ids) nem em
+    conta de usuário (login quebraria). O mesmo nome real de pessoa sempre
+    vira o mesmo nome fictício, pra não perder a coerência de "quem é
+    responsável por quê" na demonstração."""
+    mapa_pessoas = {}
+    def _fic_pessoa(nome_real):
+        if not nome_real:
+            return nome_real
+        partes = [p.strip() for p in nome_real.split(',') if p.strip()]
+        ficticias = []
+        for p in partes:
+            chave = p.upper()
+            if chave not in mapa_pessoas:
+                mapa_pessoas[chave] = _NOMES_FICTICIOS_PESSOA[len(mapa_pessoas) % len(_NOMES_FICTICIOS_PESSOA)]
+            ficticias.append(mapa_pessoas[chave])
+        return ', '.join(ficticias)
+
+    cursos = Course.query.order_by(Course.id).all()
+    for i, c in enumerate(cursos):
+        c.nome = f'{_NOMES_FICTICIOS_CURSO[i % len(_NOMES_FICTICIOS_CURSO)]} {i + 1:03d}'
+        if c.dono: c.dono = _fic_pessoa(c.dono)
+        if c.insersor: c.insersor = _fic_pessoa(c.insersor)
+        if c.obs: c.obs = 'Observação fictícia de demonstração.'
+        if c.descricao: c.descricao = 'Descrição fictícia de demonstração — texto de exemplo.'
+        if c.link_venda: c.link_venda = 'https://exemplo.com/curso-demo'
+
+    discs = Discipline.query.order_by(Discipline.id).all()
+    for i, d in enumerate(discs):
+        d.nome = f'{_NOMES_FICTICIOS_DISCIPLINA[i % len(_NOMES_FICTICIOS_DISCIPLINA)]} {i + 1:03d}'
+        if d.professor: d.professor = _fic_pessoa(d.professor)
+
+    refunds = Refund.query.order_by(Refund.id).all()
+    for i, r in enumerate(refunds):
+        r.nome_aluno = f'Aluno Fictício {i + 1:03d}'
+        r.nome_curso = f'Curso Fictício {i + 1:03d}'
+        if r.colab: r.colab = _fic_pessoa(r.colab)
+        if r.cpf: r.cpf = '000.000.000-00'
+        if r.celular: r.celular = '(00) 00000-0000'
+        if r.pix: r.pix = 'pix-demo@exemplo.com'
+        if r.email_destino: r.email_destino = 'aluno.demo@exemplo.com'
+        if r.motivo: r.motivo = 'Motivo fictício de demonstração.'
+        if r.obs: r.obs = 'Observação fictícia.'
+
+    terceiros = ThirdPartyPayment.query.order_by(ThirdPartyPayment.id).all()
+    for i, t in enumerate(terceiros):
+        t.terceiro = f'Parceiro Fictício {i + 1:03d}'
+
+    db.session.commit()
+    return {'cursos': len(cursos), 'disciplinas': len(discs),
+            'reembolsos': len(refunds), 'terceiros': len(terceiros)}
+
+@app.route('/admin/gerar-dados-ficticios', methods=['GET', 'POST'])
+@admin_required
+def admin_gerar_dados_ficticios():
+    """Ação irreversível pensada só pro ambiente de demonstração/teste —
+    troca nome real por fictício em todo o banco. Exige confirmação digitada
+    e mostra o host do banco de dados atual, igual à restauração de backup,
+    pra reduzir ao máximo o risco de rodar isso sem querer na produção."""
+    if request.method == 'POST':
+        if request.form.get('confirmacao', '').strip().upper() != 'FICTICIO':
+            flash('Digite exatamente "FICTICIO" (em maiúsculas) para confirmar.', 'danger')
+            return redirect(url_for('admin_gerar_dados_ficticios'))
+        resumo = _gerar_dados_ficticios()
+        log_action(session['user_id'], session['username'], 'gerar_dados_ficticios', 'sistema', None,
+                   f"Cursos={resumo['cursos']}, Disciplinas={resumo['disciplinas']}, "
+                   f"Reembolsos={resumo['reembolsos']}, Terceiros={resumo['terceiros']}")
+        flash('Dados fictícios gerados! Números e contas de usuário continuam iguais.', 'success')
+        return redirect(url_for('dashboard'))
+    host_match = _re.search(r'@([^/]+)/', _db_url)
+    db_host = host_match.group(1) if host_match else _db_url
+    return render_template('admin_gerar_dados_ficticios.html', db_host=db_host)
 
 def arquivar_logs_antigos():
     """Arquiva por e-mail e remove da tabela ativa os logs de auditoria com mais
@@ -7752,6 +7984,27 @@ def _run_migrations():
                 pass
     db.create_all()
 
+    # Correção de segurança: hash de senha em SHA-256 puro (sem sal, sem
+    # custo computacional) é mais fraco que pbkdf2/scrypt — o login já
+    # promove pro formato novo sozinho quando a pessoa entra (ver
+    # check_pw), mas quem não logou desde essa correção continua com o
+    # hash antigo guardado. Força troca de senha nessas contas: no
+    # próximo login o hash sobe de nível E a pessoa escolhe senha nova.
+    try:
+        legado = User.query.filter(
+            ~User.password.startswith('pbkdf2:'), ~User.password.startswith('scrypt:'),
+            User.must_change_password == False,
+        ).all()
+        for u in legado:
+            u.must_change_password = True
+        if legado:
+            db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
 
 @app.before_request
 def ensure_db():
@@ -7785,6 +8038,32 @@ def exigir_troca_senha():
         return redirect(url_for('minha_conta'))
 
 @app.after_request
+def _security_headers(resp):
+    """Cabeçalhos de segurança básicos — nenhum muda comportamento visível.
+    X-Frame-Options/frame-ancestors bloqueiam o sistema de ser embutido em
+    iframe de outro site (clickjacking); X-Content-Type-Options impede o
+    navegador de "adivinhar" tipo de arquivo diferente do declarado;
+    Referrer-Policy evita vazar a URL completa pra terceiros. O CSP libera
+    só o que o próprio sistema já usa de verdade: scripts/estilos inline
+    (o app inteiro depende disso hoje), Google Fonts, o Chart.js do cdnjs
+    e iframes https (usado pela tela de Ferramentas Externas embutidas)."""
+    resp.headers['X-Frame-Options'] = 'DENY'
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    resp.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    resp.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "frame-src https:; "
+        "frame-ancestors 'none'"
+    )
+    if _db_url.startswith('postgresql://'):
+        resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return resp
+
+@app.after_request
 def _nunca_cachear_paginas_dinamicas(resp):
     """A Vercel aplica por padrão 'public, max-age=0, must-revalidate' nas
     respostas do Python — em teoria isso força revalidação a cada acesso,
@@ -7814,6 +8093,37 @@ def restringir_somente_erp_moodle():
     u = User.query.get(session['user_id'])
     if u and u.is_restrito_erp_moodle():
         return redirect(url_for('erp_moodle'))
+
+# Rotas de relatório/exportação — indisponíveis pra conta de demonstração,
+# tanto pra não vazar valor quanto pra não gerar carga de exportação à toa.
+ROTAS_RELATORIO_EXPORT_DEMO = {
+    'cursos_exportar_excel', 'cursos_relatorio',
+    'reembolsos_exportar_excel', 'pagamentos_terceiros_exportar_excel',
+    'banco_disciplinas_exportar_excel', 'banco_disciplinas_relatorio',
+    'matrizes_relatorio', 'matrizes_exportar_excel',
+    'formulario_exportar', 'calendario_exportar', 'calendario_disciplinas_exportar',
+}
+
+@app.before_request
+def restringir_conta_demo():
+    """Conta de demonstração (permissão 'conta_demo'): só navega/visualiza.
+    Qualquer POST (criar/editar/excluir/ações em lote) é barrado aqui de uma
+    vez, sem precisar mexer rota por rota; telas de criar/editar (GET) e
+    relatório/exportação também ficam fora — ela só troca de tela."""
+    if request.endpoint is None or 'user_id' not in session:
+        return
+    u = User.query.get(session['user_id'])
+    if not (u and u.is_conta_demo()):
+        return
+    bloquear = (
+        request.method == 'POST'
+        or request.endpoint in ROTAS_RELATORIO_EXPORT_DEMO
+        or request.endpoint.endswith('_novo')
+        or request.endpoint.endswith('_editar')
+    )
+    if bloquear:
+        flash('Conta de demonstração — essa ação não está disponível, só a navegação entre telas.', 'warning')
+        return redirect(url_for('dashboard'))
 
 @app.after_request
 def sem_cache_paginas_dinamicas(response):

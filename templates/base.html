@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="light">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script>
     (function() {
-      const t = localStorage.getItem('theme') || 'light';
+      const t = localStorage.getItem('theme') || 'dark';
       document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
@@ -196,6 +196,10 @@
       <a href="{{ url_for('backup_lista') }}" class="nav-item {% if 'backup' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Backups
+      </a>
+      <a href="{{ url_for('admin_gerar_dados_ficticios') }}" class="nav-item {% if request.endpoint == 'admin_gerar_dados_ficticios' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+        Dados Fictícios
       </a>
       <a href="{{ url_for('cupons') }}" class="nav-item {% if 'cupom' in request.endpoint %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12.01V2h10.01l8.58 8.58a2 2 0 0 1 0 2.83Z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>

@@ -1,7 +1,7 @@
 # Gestor Acadêmico — SITE VERDADEIRO (produção)
 
 Você está na pasta do **site real**, em produção. Usuários reais, e-mails reais,
-dados reais. Qualquer mudança aqui vai direto pro ar em https://inova-system.vercel.app
+dados reais. Qualquer mudança aqui vai direto pro ar em https://gestor-insercao-zeta.vercel.app/
 assim que for feito `git push origin main` (deploy automático via Vercel).
 
 ## O par produção/teste
@@ -10,7 +10,8 @@ Este projeto tem um ambiente de teste **totalmente isolado**, numa pasta irmã:
 
 - Pasta: `../gestor-academico-teste`
 - Repositório GitHub próprio: `Nathy1234/gestor-academico-teste`
-- Projeto Vercel próprio: `gestor-academico-teste` (mesmo time `gestao-pessoal`)
+- Projeto Vercel próprio: `gestor-academico-teste` (mesmo time `gestao-pessoal`),
+  no ar em https://gestor-inseercao-teste.vercel.app/
 - Banco de dados Supabase próprio, em conta separada — nunca compartilha
   dados, credenciais nem `.env` com a produção.
 

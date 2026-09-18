@@ -74,6 +74,9 @@
       {% endfor %}
 
       {% if perguntas %}
+      {% if perguntas | selectattr('obrigatoria') | list %}
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px"><span style="color:#dc2626">*</span> pergunta obrigatória</div>
+      {% endif %}
       <div style="display:flex;gap:10px">
         <a href="{{ url_for('formularios') }}" class="btn btn-secondary">Cancelar</a>
         <button type="submit" class="btn btn-primary">{{ 'Atualizar resposta' if ja_respondeu else 'Enviar resposta' }}</button>

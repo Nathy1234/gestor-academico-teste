@@ -111,7 +111,9 @@ Essa ação vai alterar o tipo deles para Pacote e o status para Ativo.">
               <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status_label }}</span>
               {% if c.area %}<span style="font-size:11px;color:var(--text-muted)">· {{ c.area }}</span>{% endif %}
               {% if c.horas %}<span style="font-size:11px;color:var(--text-muted)">· {{ c.horas }}</span>{% endif %}
-              {% if c.valor and c.valor not in ['-','','None'] %}
+              {% if ocultar_valores %}
+              <span style="font-size:11px;color:var(--text-muted)">· •••</span>
+              {% elif c.valor and c.valor not in ['-','','None'] %}
               <span style="font-size:11px;color:var(--text-muted)">· R$ {{ c.valor }}</span>
               {% endif %}
               {% if c.insersor %}
@@ -149,7 +151,9 @@ Essa ação vai alterar o tipo deles para Pacote e o status para Ativo.">
               <span class="badge badge-{{ c.status }}" style="font-size:10px">{{ c.status_label }}</span>
               {% if c.area %}<span style="font-size:11px;color:var(--text-muted)">· {{ c.area }}</span>{% endif %}
               {% if c.horas %}<span style="font-size:11px;color:var(--text-muted)">· {{ c.horas }}</span>{% endif %}
-              {% if c.valor and c.valor not in ['-','','None'] %}
+              {% if ocultar_valores %}
+              <span style="font-size:11px;color:var(--text-muted)">· •••</span>
+              {% elif c.valor and c.valor not in ['-','','None'] %}
               <span style="font-size:11px;color:var(--text-muted)">· R$ {{ c.valor }}</span>
               {% endif %}
               {% if c.insersor %}

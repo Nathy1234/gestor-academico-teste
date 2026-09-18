@@ -251,7 +251,7 @@ function marcarTudo() {
   })
   .then(r => r.json())
   .then(data => {
-    if (data.ok) { alert(data.total + ' disciplinas marcadas como concluídas!'); location.reload(); }
+    if (data.ok) { showToast(data.total + ' disciplinas marcadas como concluídas!', 'success'); setTimeout(() => location.reload(), 900); }
   });
 }
 </script>

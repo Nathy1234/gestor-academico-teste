@@ -331,6 +331,32 @@ function limparMatriz() {
   renderMatrix();
 }
 
+// Preenche um rascunho de matriz com base no curso existente mais parecido
+// (mesmo tipo, de preferência mesma área e carga horária próxima) — só
+// sugestão em memória, nada é gravado até a pessoa salvar o curso.
+function sugerirMatriz(cursoIdAtual) {
+  const form = document.getElementById('courseForm');
+  const tipo = form.querySelector('[name="tipo"]')?.value || '';
+  const area = form.querySelector('[name="area"]')?.value || '';
+  const horas = form.querySelector('[name="horas"]')?.value || '';
+  if (!tipo) { showToast('Escolha o tipo do curso primeiro.', 'warning'); return; }
+
+  const qtdPreenchida = disciplines.filter(discPreenchida).length;
+  const params = new URLSearchParams({ tipo, area, horas });
+  if (cursoIdAtual) params.set('excluir_id', cursoIdAtual);
+
+  fetch('/api/curso/sugestao-matriz?' + params.toString())
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) { showToast(data.erro || 'Não foi possível sugerir uma matriz.', 'warning'); return; }
+      if (qtdPreenchida && !confirm(`Substituir ${qtdPreenchida === 1 ? 'a disciplina já preenchida' : `as ${qtdPreenchida} disciplinas já preenchidas`} pela sugestão baseada no curso "${data.curso_similar.nome}"?`)) return;
+      disciplines = data.disciplinas.length ? data.disciplinas : [blankDisc()];
+      renderMatrix();
+      showToast(`Rascunho de matriz sugerido com base em "${data.curso_similar.nome}" — revise antes de salvar.`, 'success');
+    })
+    .catch(() => showToast('Erro ao buscar sugestão de matriz.', 'danger'));
+}
+
 // A linha em branco que sempre existe (pra sempre ter onde colar) não pode
 // virar disciplina fantasma no banco se o curso for salvo sem preenchê-la.
 function discPreenchida(d) {
@@ -466,6 +492,25 @@ document.addEventListener('click', e => {
   if (!btn) return;
   if (!confirm(btn.dataset.confirm)) e.preventDefault();
 });
+
+// ── TOAST GENÉRICO ────────────────────────────────────────────────
+// Substitui alert() em feedback de ações via fetch — não trava a tela e
+// some sozinho. tipo: 'success' | 'danger' | 'warning' | 'info'.
+function showToast(mensagem, tipo) {
+  tipo = tipo || 'info';
+  let wrap = document.getElementById('appToastWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'appToastWrap';
+    document.body.appendChild(wrap);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'alert alert-' + tipo + ' app-toast';
+  toast.textContent = mensagem;
+  wrap.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; }, 4000);
+  setTimeout(() => toast.remove(), 4500);
+}
 
 // ── MOSTRAR/OCULTAR SENHA ─────────────────────────────────────────
 const EYE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';

@@ -8,6 +8,11 @@
     <a href="{{ url_for('cupom_novo') }}" class="btn btn-primary">+ Novo Cupom</a>
     {% endif %}
   </div>
+  <form method="GET" class="filters">
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar por nome do cupom..." class="filter-select" style="width:240px">
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    {% if busca %}<a href="{{ url_for('cupons') }}" class="btn btn-secondary">Limpar</a>{% endif %}
+  </form>
   <div class="card">
     <div class="table-wrapper">
       <table>
@@ -26,7 +31,7 @@
             <td>{% if session.role in ['admin','editor'] %}<a href="{{ url_for('cupom_editar', id=c.id) }}" class="btn btn-sm btn-secondary">Editar</a>{% endif %}</td>
           </tr>
           {% else %}
-          <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum cupom cadastrado.</td></tr>
+          <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:32px">{{ 'Nenhum cupom encontrado com esse filtro.' if busca else 'Nenhum cupom cadastrado.' }}</td></tr>
           {% endfor %}
         </tbody>
       </table>

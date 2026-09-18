@@ -35,7 +35,8 @@
           <div class="form-group full"><label>Observações</label>
             <textarea name="obs">{{ cupom.obs if cupom else '' }}</textarea></div>
         </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:16px">* campo obrigatório</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
           <a href="{{ url_for('cupons') }}" class="btn btn-secondary">Cancelar</a>
           <button type="submit" class="btn btn-primary">Salvar</button>
         </div>

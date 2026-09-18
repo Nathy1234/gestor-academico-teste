@@ -6,6 +6,25 @@
     <div class="page-title">Histórico de Ações</div>
     <div class="page-subtitle">Rastreamento completo de todas as operações</div>
   </div>
+  <form method="GET" class="filters">
+    <input type="text" name="q" value="{{ busca }}" placeholder="Buscar por usuário ou detalhe..." class="filter-select" style="width:260px">
+    <select name="acao" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todas as ações</option>
+      {% for a in acoes_disponiveis %}
+      <option value="{{ a }}" {% if filtro_acao == a %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+    <select name="entidade" class="filter-select" onchange="this.form.submit()">
+      <option value="">Todas as entidades</option>
+      {% for e in entidades_disponiveis %}
+      <option value="{{ e }}" {% if filtro_entidade == e %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary">Filtrar</button>
+    {% if busca or filtro_acao or filtro_entidade %}
+    <a href="{{ url_for('historico') }}" class="btn btn-secondary">Limpar</a>
+    {% endif %}
+  </form>
   <div class="card">
     <div class="table-wrapper">
       <table>
@@ -27,7 +46,7 @@
             <td style="font-size:12px;max-width:300px">{{ log.detail or '—' }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum registro.</td></tr>
+          <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px">{{ 'Nenhum registro encontrado com esse filtro.' if (busca or filtro_acao or filtro_entidade) else 'Nenhum registro.' }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -35,9 +54,9 @@
     <!-- PAGINATION -->
     {% if logs.pages > 1 %}
     <div style="padding:16px 20px;display:flex;gap:8px;align-items:center">
-      {% if logs.has_prev %}<a href="?page={{ logs.prev_num }}" class="btn btn-sm btn-secondary">← Anterior</a>{% endif %}
+      {% if logs.has_prev %}<a href="{{ url_for('historico', page=logs.prev_num, q=busca, acao=filtro_acao, entidade=filtro_entidade) }}" class="btn btn-sm btn-secondary">← Anterior</a>{% endif %}
       <span style="font-size:13px;color:var(--text-muted)">Página {{ logs.page }} de {{ logs.pages }}</span>
-      {% if logs.has_next %}<a href="?page={{ logs.next_num }}" class="btn btn-sm btn-secondary">Próximo →</a>{% endif %}
+      {% if logs.has_next %}<a href="{{ url_for('historico', page=logs.next_num, q=busca, acao=filtro_acao, entidade=filtro_entidade) }}" class="btn btn-sm btn-secondary">Próximo →</a>{% endif %}
     </div>
     {% endif %}
   </div>

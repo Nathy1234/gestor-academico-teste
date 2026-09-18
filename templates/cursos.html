@@ -134,6 +134,16 @@
       Pode marcar mais de uma opção (ex: "Link, Site") — deixa todas desmarcadas pra aplicar "Nenhum".
     </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <input type="checkbox" id="lote-aplicar-area" onchange="toggleCampoLote('lote-aplicar-area','lote-area')">
+      Área:
+      <select id="lote-area" class="filter-select" style="font-size:12px;padding:4px 8px" disabled>
+        <option value="">— Selecione —</option>
+        {% for a in areas %}
+        <option value="{{ a }}">{{ a }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px">
       <input type="checkbox" id="lote-aplicar-valor" onchange="toggleCampoLote('lote-aplicar-valor','lote-valor')">
       Valor:
       <input type="text" id="lote-valor" placeholder="Ex: 570" style="font-size:12px;padding:4px 8px;width:140px" disabled>
@@ -209,7 +219,7 @@
             <td><span class="badge badge-{{ c.tipo }}">{{ c.tipo|replace('_',' ')|title }}</span></td>
             <td>{{ c.area or '—' }}</td>
             <td>{{ c.horas or '—' }}</td>
-            <td>{% if c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</td>
+            <td>{% if ocultar_valores %}•••{% elif c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</td>
             <td><span class="badge badge-{{ c.status }}">{{ c.status_label }}</span></td>
             <td style="font-size:12px;color:var(--text-muted)">{{ c.insersor or '—' }}</td>
             <td class="td-link">
@@ -238,7 +248,13 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:32px">Nenhum curso encontrado.</td></tr>
+          <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:32px">
+            {% if busca or filtro_tipo or filtro_area or filtro_status or filtro_insersor or filtro_horas_min or filtro_horas_max %}
+            Nenhum curso encontrado com esses filtros — tente ajustá-los.
+            {% else %}
+            Nenhum curso cadastrado.
+            {% endif %}
+          </td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -289,10 +305,10 @@ function atualizaVendaModalidade(select) {
         select.style.borderColor = '#22c55e';
         setTimeout(() => { select.style.borderColor = corOriginal; }, 900);
       } else {
-        alert(data.erro || 'Não foi possível salvar.');
+        showToast(data.erro || 'Não foi possível salvar.', 'danger');
       }
     })
-    .catch(() => alert('Erro ao salvar. Tente novamente.'));
+    .catch(() => showToast('Erro ao salvar. Tente novamente.', 'danger'));
 }
 
 const LOTE_STATUS_LABEL = {
@@ -327,6 +343,9 @@ function aplicarEdicaoLote() {
       .map(op => op.value);
     payload.venda_modalidade = marcadas.join(', ');
   }
+  if (document.getElementById('lote-aplicar-area').checked) {
+    payload.area = document.getElementById('lote-area').value;
+  }
   if (document.getElementById('lote-aplicar-valor').checked) {
     payload.valor = document.getElementById('lote-valor').value;
   }
@@ -334,7 +353,7 @@ function aplicarEdicaoLote() {
     payload.horas = document.getElementById('lote-horas').value;
   }
   if (Object.keys(payload).length === 1) {
-    alert('Marque pelo menos um campo pra aplicar.');
+    showToast('Marque pelo menos um campo pra aplicar.', 'warning');
     return;
   }
   if (!confirm('Aplicar essas mudanças em ' + ids.length + ' curso(s) selecionado(s)?')) return;
@@ -346,10 +365,10 @@ function aplicarEdicaoLote() {
   .then(r => r.json())
   .then(data => {
     if (data.ok) {
-      alert(data.total + ' curso(s) atualizado(s)!');
-      location.reload();
+      showToast(data.total + ' curso(s) atualizado(s)!', 'success');
+      setTimeout(() => location.reload(), 900);
     } else {
-      alert(data.erro || 'Erro ao atualizar cursos.');
+      showToast(data.erro || 'Erro ao atualizar cursos.', 'danger');
     }
   });
 }
@@ -367,10 +386,10 @@ function acaoEmLote(novoStatus) {
   .then(r => r.json())
   .then(data => {
     if (data.ok) {
-      alert(data.total + ' curso(s) atualizado(s)!');
-      location.reload();
+      showToast(data.total + ' curso(s) atualizado(s)!', 'success');
+      setTimeout(() => location.reload(), 900);
     } else {
-      alert(data.erro || 'Erro ao atualizar cursos.');
+      showToast(data.erro || 'Erro ao atualizar cursos.', 'danger');
     }
   });
 }

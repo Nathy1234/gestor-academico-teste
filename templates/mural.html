@@ -277,7 +277,7 @@ function salvarEdicaoMural(btn) {
   })
     .then(r => r.json())
     .then(data => {
-      if (!data.ok) { alert(data.erro || 'Não foi possível editar.'); return; }
+      if (!data.ok) { showToast(data.erro || 'Não foi possível editar.', 'danger'); return; }
       const textoEl = card.querySelector('.mural-texto');
       textoEl.textContent = data.texto;
       textoEl.style.display = 'block';

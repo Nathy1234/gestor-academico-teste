@@ -1123,7 +1123,7 @@ Corrige cursos com matriz incompleta (bug de desalinhamento entre os 2 blocos da
       const data = await resp.json();
       if (!data.ok) throw new Error(data.erro || 'Erro ao salvar.');
     } catch (err) {
-      alert('Não foi possível salvar sua dashboard: ' + err.message);
+      showToast('Não foi possível salvar sua dashboard: ' + err.message, 'danger');
       return;
     }
     container.classList.remove('dash-edit-mode');
@@ -1144,7 +1144,7 @@ Corrige cursos com matriz incompleta (bug de desalinhamento entre os 2 blocos da
       if (!data.ok) throw new Error(data.erro || 'Erro ao restaurar.');
       location.reload();
     } catch (err) {
-      alert('Não foi possível restaurar: ' + err.message);
+      showToast('Não foi possível restaurar: ' + err.message, 'danger');
     }
   };
 
@@ -1205,7 +1205,7 @@ async function dashAdminCarregar() {
   document.getElementById('dashAdminHint').style.display = 'none';
   const resp = await fetch('/dashboard/prefs?user_id=' + uid);
   const data = await resp.json();
-  if (!data.ok) { alert(data.erro || 'Erro ao carregar.'); return; }
+  if (!data.ok) { showToast(data.erro || 'Erro ao carregar.', 'danger'); return; }
   dashAdminRenderList(data.order, data.hidden);
 }
 
@@ -1261,7 +1261,7 @@ function dashAdminInitSortable() {
 }
 
 async function dashAdminSalvar() {
-  if (!dashAdminUserId) { alert('Selecione um usuário.'); return; }
+  if (!dashAdminUserId) { showToast('Selecione um usuário.', 'warning'); return; }
   const items = Array.prototype.slice.call(document.querySelectorAll('#dashAdminList .dash-admin-item'));
   const order = items.map(function(li) { return li.dataset.widget; });
   const hidden = items.filter(function(li) { return !li.querySelector('input[type=checkbox]').checked; })
@@ -1276,7 +1276,7 @@ async function dashAdminSalvar() {
     if (!data.ok) throw new Error(data.erro || 'Erro ao salvar.');
     dashFecharAdminModal();
   } catch (err) {
-    alert('Não foi possível salvar: ' + err.message);
+    showToast('Não foi possível salvar: ' + err.message, 'danger');
   }
 }
 

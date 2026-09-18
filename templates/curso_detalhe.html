@@ -61,7 +61,7 @@
     'Área: ' ~ (c.area or '—'),
     'Tipo: ' ~ (c.tipo|replace('_',' ')|title),
     'Carga Horária: ' ~ (c.horas or '—'),
-    'Valor: ' ~ ('R$ ' ~ c.valor if c.valor and c.valor not in ['-','','None'] else '—'),
+    'Valor: ' ~ ('•••' if ocultar_valores else ('R$ ' ~ c.valor if c.valor and c.valor not in ['-','','None'] else '—')),
     cupom_linha,
     'Status: ' ~ c.status_label,
   ] %}
@@ -97,7 +97,7 @@
             </div>
             <div class="detail-field">
               <div class="detail-label">Valor</div>
-              <div class="detail-value">{% if c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</div>
+              <div class="detail-value">{% if ocultar_valores %}•••{% elif c.valor and c.valor not in ['-','','None'] %}R$ {{ c.valor }}{% else %}—{% endif %}</div>
             </div>
             <div class="detail-field">
               <div class="detail-label">Cupom</div>
@@ -285,7 +285,7 @@
 function copiarResumoCurso() {
   const texto = document.getElementById('resumoCursoTexto').value;
   navigator.clipboard.writeText(texto).then(() => {
-    alert('Resumo copiado! Já pode colar onde precisar enviar.');
+    showToast('Resumo copiado! Já pode colar onde precisar enviar.', 'success');
   });
 }
 
