@@ -40,7 +40,7 @@
           <path d="M2.5 17 L8.5 6 L12.5 13 L16.5 6 L21.5 17" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
-      <span class="logo-text">Gestor<br><small>Acadêmico</small></span>
+      <span class="logo-text">Gestor<br><small>{% if ocultar_valores %}Acesso de Demonstração{% else %}Acadêmico{% endif %}</small></span>
     </div>
     <nav class="sidebar-nav">
       {% if not somente_erp_moodle %}

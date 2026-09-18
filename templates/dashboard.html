@@ -9,7 +9,7 @@
       <div class="page-title">Olá, {{ session.username.split()[0] }} 👋</div>
       <div class="page-subtitle">
         {{ now().strftime('%d/%m/%Y') if now else '' }}
-        {% if mostrar_toolbar_admin %} · Visão geral do sistema (Admin)
+        {% if is_admin %} · Visão geral do sistema (Admin)
         {% else %} · Seus cursos e disciplinas
         {% endif %}
       </div>
@@ -26,7 +26,7 @@
           </svg>
           Personalizar
         </button>
-        {% if is_admin %}
+        {% if session.role == 'admin' %}
         <button type="button" class="btn btn-secondary" onclick="dashAbrirAdminModal()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -43,9 +43,10 @@
         <button type="button" class="btn btn-primary" onclick="dashConcluirEdicao()">Concluir</button>
       </div>
 
-      {% if mostrar_toolbar_admin %}
       {% if is_admin %}
-      <!-- FILTRO INSERSOR (só admin de verdade vê — lista nome real da equipe) -->
+      <!-- FILTRO INSERSOR — pra conta de demonstração, "insersores" já vem
+           com nome fictício (ver equipe_exibicao no dashboard()), nunca
+           nome real de usuário. -->
       <form method="GET" style="display:flex;gap:6px;align-items:center">
         <select name="insersor" class="filter-select" style="font-size:12px;padding:6px 10px"
                 onchange="this.form.submit()">
@@ -58,7 +59,6 @@
         <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" style="padding:5px 10px;font-size:12px">✕</a>
         {% endif %}
       </form>
-      {% endif %}
       <form method="POST" action="{{ url_for('admin_marcar_concluido') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary" style="color:#16a34a;border-color:#bbf7d0"

@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.48'
+VERSAO = '1.19.49'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -1914,7 +1914,12 @@ def dashboard():
     from sqlalchemy import or_ as sql_or, func as sql_func
 
     u = User.query.get(session['user_id'])
-    is_admin = u.role == 'admin'
+    # Conta de demonstração vê o dashboard como admin (visão agregada da
+    # equipe) — só pra exibição/consulta; a rota é GET-only e o bloqueio
+    # real de criar/editar/excluir continua em restringir_conta_demo. Nome
+    # de responsável é trocado por fictício logo abaixo (equipe_exibicao),
+    # nunca aparece nome de usuário real pra essa conta.
+    is_admin = u.role == 'admin' or u.is_conta_demo()
     filtro_ins = request.args.get('insersor', '')
 
     # Para não-admins, aplica filtro automático pelo nome do próprio usuário
@@ -1964,9 +1969,18 @@ def dashboard():
 
     ultimo_bk = BackupRecord.query.order_by(BackupRecord.created_at.desc()).first()
 
+    # Nome de responsável exibido — pra conta de demonstração, troca cada
+    # nome real da equipe pelo fictício correspondente (mesmo mapa usado em
+    # "Gerar Dados Fictícios", então bate com o que já está gravado em
+    # Course.insersor). Pra todo mundo, é só a lista real mesmo.
+    equipe_exibicao = responsaveis_atuais()
+    if u.is_conta_demo():
+        _mapa_demo = _mapa_nomes_ficticios()
+        equipe_exibicao = [_mapa_demo.get(_norm_name(n), n) for n in equipe_exibicao]
+
     # Andamento por insersor: pendentes e concluídas por pessoa
     # Para não-admins: apenas a própria linha
-    equipe = [n.upper() for n in responsaveis_atuais()] if is_admin else [u.username.upper()]
+    equipe = [n.upper() for n in equipe_exibicao] if is_admin else [u.username.upper()]
 
     stats_map = {nome.upper(): {'pendentes': 0, 'concluidas': 0, 'total': 0} for nome in equipe}
 
@@ -1997,7 +2011,7 @@ def dashboard():
         key=lambda x: x[1], reverse=True
     )
 
-    insersores = responsaveis_atuais() if is_admin else []
+    insersores = equipe_exibicao if is_admin else []
 
     # Total real de disciplinas pendentes (conta também cursos sem insersor
     # atribuído — o quadro por pessoa acima não os contabiliza, porque não
@@ -2017,7 +2031,7 @@ def dashboard():
 
     # Card: cursos por responsável (insersor)
     cursos_ins_stats = []
-    nomes_ins = responsaveis_atuais() if is_admin else [u.username]
+    nomes_ins = equipe_exibicao if is_admin else [u.username]
     for ins_nome in nomes_ins:
         q_ins = _ins_filter(Course.query, ins_nome)
         total_ins = q_ins.count()
@@ -2060,7 +2074,7 @@ def dashboard():
         serie_mensal.append({'label': ini.strftime('%b'), 'qtd': qtd})
 
     widgets_ordem, widgets_ocultos, widgets_tamanhos, widgets_posicoes, widgets_alturas_salvas = get_dashboard_prefs(u)
-    todos_usuarios = User.query.order_by(User.username).all() if is_admin else []
+    todos_usuarios = User.query.order_by(User.username).all() if u.role == 'admin' else []
     # Padrão global (definido pelo admin em /admin/visibilidade) de quais
     # widgets ficam disponíveis pra quem não é admin — admin sempre vê tudo.
     widgets_liberados = _widgets_dashboard_visiveis() if not is_admin else {}
@@ -2101,7 +2115,6 @@ def dashboard():
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
         is_admin=is_admin, usuario_atual=u, dados_ficticios_ativos=_dados_ficticios_ativos(),
-        mostrar_toolbar_admin=is_admin or u.is_conta_demo(),
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
         widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos, widgets_tamanhos=widgets_tamanhos,
@@ -6500,23 +6513,38 @@ _NOMES_FICTICIOS_PESSOA = [
     'Elisa Teste', 'Fábio Ilustrativo', 'Gabriela Demo', 'Hugo Simulado',
 ]
 
+def _mapa_nomes_ficticios():
+    """Mapa estável nome-real (da equipe atual) -> nome-fictício, sempre na
+    mesma ordem (alfabética, via responsaveis_atuais()) — usado tanto pra
+    gerar os dados fictícios quanto pra exibir insersor/responsável pra
+    conta de demonstração, pra ficar tudo consistente entre si."""
+    equipe = responsaveis_atuais()
+    return {_norm_name(nome): _NOMES_FICTICIOS_PESSOA[i % len(_NOMES_FICTICIOS_PESSOA)]
+            for i, nome in enumerate(equipe)}
+
 def _gerar_dados_ficticios():
     """Troca nome de curso/disciplina/professor/insersor/aluno/parceiro por
     dado fictício — nunca mexe em número (valor, horas, datas, ids) nem em
-    conta de usuário (login quebraria). O mesmo nome real de pessoa sempre
-    vira o mesmo nome fictício, pra não perder a coerência de "quem é
-    responsável por quê" na demonstração."""
-    mapa_pessoas = {}
+    conta de usuário (login quebraria). Usa o mapa estável da equipe, então
+    o mesmo nome real sempre vira o mesmo fictício — e bate com o que a
+    conta de demonstração vê no filtro de insersor do dashboard."""
+    mapa_equipe = _mapa_nomes_ficticios()
+    mapa_extras = {}
     def _fic_pessoa(nome_real):
         if not nome_real:
             return nome_real
         partes = [p.strip() for p in nome_real.split(',') if p.strip()]
         ficticias = []
         for p in partes:
-            chave = p.upper()
-            if chave not in mapa_pessoas:
-                mapa_pessoas[chave] = _NOMES_FICTICIOS_PESSOA[len(mapa_pessoas) % len(_NOMES_FICTICIOS_PESSOA)]
-            ficticias.append(mapa_pessoas[chave])
+            p_norm = _norm_name(p)
+            if len(p) == 1:
+                p_norm = _norm_name(INICIAIS_INSERCAO.get(p.upper(), p))
+            if p_norm in mapa_equipe:
+                ficticias.append(mapa_equipe[p_norm])
+            else:
+                if p_norm not in mapa_extras:
+                    mapa_extras[p_norm] = f'Colaborador Externo {len(mapa_extras) + 1}'
+                ficticias.append(mapa_extras[p_norm])
         return ', '.join(ficticias)
 
     cursos = Course.query.order_by(Course.id).all()
