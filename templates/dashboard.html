@@ -73,6 +73,7 @@
           Backup
         </button>
       </form>
+      {% if not dados_ficticios_ativos %}
       <form method="POST" action="{{ url_for('admin_importar_disciplinas') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary" style="color:#6366f1"
@@ -112,6 +113,11 @@ Corrige cursos com matriz incompleta (bug de desalinhamento entre os 2 blocos da
           Importar GGBR
         </button>
       </form>
+      {% else %}
+      <span style="font-size:11px;color:var(--text-muted);align-self:center" title="Este ambiente tem dados fictícios — importar da planilha real traria nome de verdade de volta">
+        🧪 Importações da planilha desativadas (dados fictícios ativos)
+      </span>
+      {% endif %}
       {% endif %}
     </div>
   </div>

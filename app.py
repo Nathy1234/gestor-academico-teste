@@ -53,7 +53,7 @@ for _chave in ('ANTHROPIC_API_KEY', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'):
 app = Flask(__name__)
 
 # Versão exibida no rodapé — atualize aqui a cada mudança relevante publicada.
-VERSAO = '1.19.46'
+VERSAO = '1.19.47'
 NO_AR_DESDE = '22/05/2026'
 
 @app.context_processor
@@ -2100,7 +2100,7 @@ def dashboard():
         por_tipo=por_tipo, pos_count=pos_count, recentes=recentes,
         ultimo_bk=ultimo_bk, pend_por_ins=pend_por_ins,
         insersores=insersores, filtro_ins=filtro_ins,
-        is_admin=is_admin, usuario_atual=u,
+        is_admin=is_admin, usuario_atual=u, dados_ficticios_ativos=_dados_ficticios_ativos(),
         cursos_ins_stats=cursos_ins_stats, serie_mensal=serie_mensal,
         total_disc_pendentes=total_disc_pendentes, discs_pendentes_lista=discs_pendentes_lista,
         widgets_ordem=widgets_ordem, widgets_ocultos=widgets_ocultos, widgets_tamanhos=widgets_tamanhos,
@@ -6548,9 +6548,19 @@ def _gerar_dados_ficticios():
     for i, t in enumerate(terceiros):
         t.terceiro = f'Parceiro Fictício {i + 1:03d}'
 
+    setting = AppSetting.query.get('dados_ficticios_ativos')
+    if not setting:
+        setting = AppSetting(key='dados_ficticios_ativos')
+        db.session.add(setting)
+    setting.value = '1'
+
     db.session.commit()
     return {'cursos': len(cursos), 'disciplinas': len(discs),
             'reembolsos': len(refunds), 'terceiros': len(terceiros)}
+
+def _dados_ficticios_ativos():
+    setting = AppSetting.query.get('dados_ficticios_ativos')
+    return bool(setting and setting.value == '1')
 
 @app.route('/admin/gerar-dados-ficticios', methods=['GET', 'POST'])
 @admin_required
@@ -7493,6 +7503,9 @@ def seed_data():
 @admin_required
 def admin_importar_disciplinas():
     """Importa apenas disciplinas do Excel sem apagar dados existentes."""
+    if _dados_ficticios_ativos():
+        flash('Este ambiente tem dados fictícios gerados — importar da planilha real traria nome de verdade de volta. Use isso só num ambiente sem dado fictício.', 'danger')
+        return redirect(url_for('dashboard'))
     try:
         total = _importar_so_disciplinas()
         flash(f'{total} disciplina(s) importada(s) com sucesso!', 'success')
@@ -7573,6 +7586,9 @@ def admin_importar_ggbr():
     """Importa os cursos da aba GGBR da planilha que ainda não estão
     cadastrados e completa a matriz (1 disciplina por curso) de quem ainda
     não tinha — não mexe em nenhum outro tipo de curso nem duplica."""
+    if _dados_ficticios_ativos():
+        flash('Este ambiente tem dados fictícios gerados — importar da planilha real traria nome de verdade de volta. Use isso só num ambiente sem dado fictício.', 'danger')
+        return redirect(url_for('dashboard'))
     try:
         total_cursos, total_discs = _importar_ggbr_da_planilha()
         if total_cursos or total_discs:
@@ -7916,6 +7932,9 @@ def admin_corrigir_matriz_profissionalizantes():
     corrigindo cursos que ficaram com matriz incompleta pelo bug de
     desalinhamento entre os 2 blocos da planilha. Preserva o status "na
     plataforma" já marcado."""
+    if _dados_ficticios_ativos():
+        flash('Este ambiente tem dados fictícios gerados — importar da planilha real traria nome de verdade de volta. Use isso só num ambiente sem dado fictício.', 'danger')
+        return redirect(url_for('dashboard'))
     try:
         total = _corrigir_matriz_profissionalizantes()
         flash(f'Matriz de Profissionalizantes reconstruída — {total} disciplina(s).', 'success')
